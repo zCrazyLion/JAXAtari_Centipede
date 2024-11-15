@@ -13,10 +13,10 @@ class PongGame(BaseGame):
     BALL_Y = 1
     BALL_VX = 2
     BALL_VY = 3
-    PADDLE1_Y = 4
-    PADDLE2_Y = 5
-    SCORE1 = 6
-    SCORE2 = 7
+    PADDLE_CPU_Y = 4
+    PADDLE_PLAYER_Y = 5
+    SCORE_CPU = 6
+    SCORE_PLAYER = 7
     TIME = 8
     STATE_SIZE = 9
 
@@ -37,10 +37,10 @@ class PongGame(BaseGame):
                 height / 2,  # ball_y
                 self.ball_speed,  # ball_vx
                 0.0,  # ball_vy
-                height / 2,  # paddle1_y
-                height / 2,  # paddle2_y
-                0,  # score1
-                0,  # score2
+                height / 2,  # cpu_paddle_y
+                height / 2,  # player_paddle_y
+                0,  # cpu_score
+                0,  # player_score
                 0,  # time
             ]
         )
@@ -50,10 +50,10 @@ class PongGame(BaseGame):
     def get_oc_state(self):
         return jnp.array(
             [
-                [self.curr_state[4]],
-                [self.curr_state[5]],
-                [self.curr_state[0], self.curr_state[1]],
-                [self.curr_state[6], self.curr_state[7]],
+                self.curr_state[PongGame.PADDLE_PLAYER_Y],
+                self.curr_state[PongGame.PADDLE_CPU_Y],
+                self.curr_state[PongGame.BALL_X], self.curr_state[PongGame.BALL_Y],
+                self.curr_state[PongGame.SCORE_PLAYER], self.curr_state[PongGame.SCORE_CPU],
             ]
         )
 
@@ -143,9 +143,9 @@ class PongGame(BaseGame):
         # Extract current state
         ball_pos = state[PongGame.BALL_X : PongGame.BALL_Y + 1]
         ball_vel = state[PongGame.BALL_VX : PongGame.BALL_VY + 1]
-        cpu_paddle_pos = state[PongGame.PADDLE1_Y]
-        player_paddle_pos = state[PongGame.PADDLE2_Y]
-        score = state[PongGame.SCORE1 : PongGame.SCORE2 + 1]
+        cpu_paddle_pos = state[PongGame.PADDLE_CPU_Y]
+        player_paddle_pos = state[PongGame.PADDLE_PLAYER_Y]
+        score = state[PongGame.SCORE_CPU : PongGame.SCORE_PLAYER + 1]
         time = state[PongGame.TIME]
 
         # Update paddle positions
@@ -299,16 +299,16 @@ class PongRenderer:
         paddle_width = game_params["paddle_width"]
         paddle_height = game_params["paddle_height"]
 
-        # Left paddle (Player 1)
-        paddle1_y = float(state[PongGame.PADDLE1_Y])
+        # Left paddle (CPU)
+        paddle1_y = float(state[PongGame.PADDLE_CPU_Y])
         pygame.draw.rect(
             self.screen,
             self.WHITE,
             pygame.Rect(0, paddle1_y - paddle_height / 2, paddle_width, paddle_height),
         )
 
-        # Right paddle (Player 2)
-        paddle2_y = float(state[PongGame.PADDLE2_Y])
+        # Right paddle (Player)
+        paddle2_y = float(state[PongGame.PADDLE_PLAYER_Y])
         pygame.draw.rect(
             self.screen,
             self.WHITE,
@@ -334,8 +334,8 @@ class PongRenderer:
 
         # Draw scores
         font = pygame.font.Font(None, 74)
-        score1 = int(state[PongGame.SCORE1])
-        score2 = int(state[PongGame.SCORE2])
+        score1 = int(state[PongGame.SCORE_CPU])
+        score2 = int(state[PongGame.SCORE_PLAYER])
 
         score1_text = font.render(str(score1), True, self.WHITE)
         score2_text = font.render(str(score2), True, self.WHITE)
