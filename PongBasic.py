@@ -1,7 +1,10 @@
+import sys
+
 import jax
 import jax.numpy as jnp
 from typing import Dict, Tuple
 from BaseGame import BaseGame
+import pygame
 
 class PongGame(BaseGame):
     # State array indices
@@ -112,7 +115,8 @@ class PongGame(BaseGame):
     def update_state(
             state: jnp.ndarray,
             p1_movement: float,
-            game_params: Dict
+            game_params: Dict,
+            spacebar_released: bool = False
     ) -> jnp.ndarray:
         """Update game state for one frame"""
         width = game_params['width']
@@ -165,6 +169,25 @@ class PongGame(BaseGame):
         )
         new_vel = new_vel.at[1].multiply(jnp.where(wall_collision, -1.0, 1.0))
 
+        # Check if ball is moving away from the paddle (should be moving left from right paddle)
+        moving_away = jnp.less(ball_vel[0], 0.0)  # Moving left after hitting right paddle
+
+        # Define "near paddle" zone for right paddle
+        near_player_paddle = jnp.less(
+            jnp.abs(new_ball_pos[0] - (width - paddle_width)),
+            ball_size * 2
+        )
+
+        # Check for power shot conditions for right paddle only
+        power_shot = spacebar_released & (player_paddle_collision | near_player_paddle) & moving_away
+
+        # Apply power shot
+        new_vel = jnp.where(
+            power_shot,
+            new_vel * 1.25,
+            new_vel
+        )
+
         # Score update and ball reset conditions
         scored_cpu = new_ball_pos[0] >= width - ball_size / 2
         scored_player = new_ball_pos[0] <= ball_size / 2
@@ -210,7 +233,129 @@ class PongGame(BaseGame):
         """Reset game to initial state"""
         return self.initial_state
 
-    def step(self, state: jnp.ndarray, p1_movement: float) -> jnp.ndarray:
+    def step(self, state: jnp.ndarray, p1_movement: float, spacebar_released: bool) -> jnp.ndarray:
         """Take one game step"""
         self.curr_state = state
-        return self.update_state(state, p1_movement, self.get_game_params())
+        return self.update_state(state, p1_movement, self.get_game_params(), spacebar_released)
+
+
+class PongRenderer:
+    WHITE = (255, 255, 255)
+    BLACK = (0, 0, 0)
+
+    def __init__(self, width: int, height: int):
+        pygame.init()
+        self.width = width
+        self.height = height
+        self.screen = pygame.display.set_mode((width, height))
+        pygame.display.set_caption("JAX Pong")
+        self.clock = pygame.time.Clock()
+
+    def render(self, state: jnp.ndarray, game_params: Dict):
+        """Render the current game state"""
+        self.screen.fill(self.BLACK)
+
+        # Draw paddles
+        paddle_width = game_params['paddle_width']
+        paddle_height = game_params['paddle_height']
+
+        # Left paddle (Player 1)
+        paddle1_y = float(state[PongGame.PADDLE1_Y])
+        pygame.draw.rect(self.screen, self.WHITE,
+                         pygame.Rect(0,
+                                     paddle1_y - paddle_height / 2,
+                                     paddle_width,
+                                     paddle_height))
+
+        # Right paddle (Player 2)
+        paddle2_y = float(state[PongGame.PADDLE2_Y])
+        pygame.draw.rect(self.screen, self.WHITE,
+                         pygame.Rect(self.width - paddle_width,
+                                     paddle2_y - paddle_height / 2,
+                                     paddle_width,
+                                     paddle_height))
+
+        # Draw ball
+        ball_size = game_params['ball_size']
+        ball_x = float(state[PongGame.BALL_X])
+        ball_y = float(state[PongGame.BALL_Y])
+        pygame.draw.circle(self.screen, self.WHITE,
+                           (ball_x, ball_y), ball_size / 2)
+
+        # Draw center line
+        for i in range(0, self.height, 20):
+            pygame.draw.rect(self.screen, self.WHITE,
+                             pygame.Rect(self.width / 2 - 1, i, 2, 10))
+
+        # Draw scores
+        font = pygame.font.Font(None, 74)
+        score1 = int(state[PongGame.SCORE1])
+        score2 = int(state[PongGame.SCORE2])
+
+        score1_text = font.render(str(score1), True, self.WHITE)
+        score2_text = font.render(str(score2), True, self.WHITE)
+
+        self.screen.blit(score1_text, (self.width / 4, 20))
+        self.screen.blit(score2_text, (3 * self.width / 4, 20))
+
+        pygame.display.flip()
+        self.clock.tick(60)  # 60 FPS
+
+    def close(self):
+        pygame.quit()
+
+
+def main():
+    # Initialize game and renderer
+    width, height = 160, 210
+    game = PongGame(width, height)
+    renderer = PongRenderer(width, height)
+    game_params = game.get_game_params()
+    state = game.reset()
+
+    # Game loop
+    try:
+        frame_counter = 0
+        while True:
+            # Handle events
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    raise KeyboardInterrupt
+
+            # Handle paddle movement
+            keys = pygame.key.get_pressed()
+            p1_movement = 0.0
+            if keys[pygame.K_w]:
+                p1_movement -= game.paddle_speed
+            if keys[pygame.K_s]:
+                p1_movement += game.paddle_speed
+
+            p2_movement = 0.0
+            if keys[pygame.K_UP]:
+                p2_movement -= game.paddle_speed
+            if keys[pygame.K_DOWN]:
+                p2_movement += game.paddle_speed
+
+            spacebar_released = False
+            if event.type == pygame.KEYUP:
+                if event.key == pygame.K_SPACE:
+                    spacebar_released = True
+                    frame_counter = 3
+
+            if frame_counter > 0:
+                frame_counter -= 1
+                spacebar_released = True
+
+            # Update game state
+            state = game.step(state, p1_movement, spacebar_released)
+
+            # Render
+            renderer.render(state, game_params)
+
+    except KeyboardInterrupt:
+        renderer.close()
+        sys.exit(0)
+
+
+if __name__ == '__main__':
+    main()
