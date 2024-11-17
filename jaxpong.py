@@ -11,9 +11,12 @@ BALL_SPEED = jnp.array([1, 1])  # Ball speed in x and y direction
 ENEMY_SPEED = 1  # Speed of the enemy paddle
 
 # Action constants
-UP = 0
-DOWN = 1
-NOOP = 2
+NOOP = 0
+FIRE = 1
+RIGHT = 2
+LEFT = 3
+RIGHTFIRE = 4
+LEFTFIRE = 5
 
 # Background color and object colors
 BACKGROUND_COLOR = 144, 72, 17
@@ -45,50 +48,66 @@ def get_human_action():
     Records if UP or DOWN is being pressed and returns the corresponding action.
 
     Returns:
-        action: int, action taken by the player (UP, DOWN, NOOP).
+        action: int, action taken by the player (LEFT, RIGHT, FIRE, LEFTFIRE, RIGHTFIRE, NOOP).
     """
     keys = pygame.key.get_pressed()
-    if keys[pygame.K_UP]:
-        return UP
-    elif keys[pygame.K_DOWN]:
-        return DOWN
+    if keys[pygame.K_a] and keys[pygame.K_SPACE]:
+        return LEFTFIRE
+    elif keys[pygame.K_d] and keys[pygame.K_SPACE]:
+        return RIGHTFIRE
+    elif keys[pygame.K_a]:
+        return LEFT
+    elif keys[pygame.K_d]:
+        return RIGHT
+    elif keys[pygame.K_SPACE]:
+        return FIRE
     else:
         return NOOP
 
 class Game:
     def __init__(self):
         # Initialize game state
-        self.player_y = 150
+        self.player_y = 96
         self.player_speed = 0.0
-        self.ball_x = 80
-        self.ball_y = 100
-        self.enemy_y = 50
+        self.ball_x = 78
+        self.ball_y = 115
+        self.enemy_y = 115
         self.ball_vel_x = BALL_SPEED[0]
         self.ball_vel_y = BALL_SPEED[1]
         self.player_score = 0
         self.enemy_score = 0
         self.step_counter = 0
 
+        self.player_size = PLAYER_SIZE
+
     def player_step(self, action):
         """
         Updates the player's speed and position based on the action.
         """
-        if action == UP:
+        if action == LEFT:
             self.player_speed -= PLAYER_ACCELERATION
-        elif action == DOWN:
+        elif action == RIGHT:
             self.player_speed += PLAYER_ACCELERATION
         else:
             self.player_speed *= 0.9  # Apply friction when no action is taken
 
         # Limit player speed to the maximum allowed value
         self.player_speed = jnp.clip(self.player_speed, -PLAYER_MAX_SPEED, PLAYER_MAX_SPEED)
-
         # Update player position
         self.player_y += self.player_speed
 
+        if self.player_y > WALL_BOTTOM_Y - PLAYER_SIZE[1]:
+            self.player_size = (self.player_size[0], int(WALL_BOTTOM_Y-self.player_y)+1)
+
+        if self.player_y < WALL_TOP_Y + WALL_TOP_HEIGHT and self.player_speed < 0 and self.player_size[1] > 4:
+            self.player_size = (self.player_size[0], int(self.player_size[1]-1))
+        elif self.player_size[1] < PLAYER_SIZE[1] and self.player_speed > 0:
+            self.player_size = (self.player_size[0], int(self.player_size[1]+1))
+
         # Prevent player from going past the walls
-        self.player_y = jnp.maximum(self.player_y, WALL_TOP_Y + WALL_TOP_HEIGHT)
-        self.player_y = jnp.minimum(self.player_y, WALL_BOTTOM_Y - PLAYER_SIZE[1])
+        self.player_y = jnp.clip(self.player_y, WALL_TOP_Y + WALL_TOP_HEIGHT, WALL_BOTTOM_Y-4)
+        self.player_y = jnp.round(self.player_y)
+
 
     def ball_step(self):
         """
@@ -103,8 +122,8 @@ class Game:
             self.ball_vel_y = -self.ball_vel_y
 
         # Bounce on player paddle
-        if PLAYER_X <= self.ball_x <= PLAYER_X + PLAYER_SIZE[0]:
-            if self.player_y - BALL_SIZE[1] <= self.ball_y <= self.player_y + PLAYER_SIZE[1] + BALL_SIZE[1]:
+        if PLAYER_X <= self.ball_x <= PLAYER_X + self.player_size[0]:
+            if self.player_y - BALL_SIZE[1] <= self.ball_y <= self.player_y + self.player_size[1] + BALL_SIZE[1]:
                 self.ball_vel_x = -self.ball_vel_x
 
         # Bounce on enemy paddle
@@ -113,7 +132,7 @@ class Game:
                 self.ball_vel_x = -self.ball_vel_x
 
         # Ball goes past player paddle
-        if self.ball_x > PLAYER_X + PLAYER_SIZE[0]:
+        if self.ball_x > PLAYER_X + self.player_size[0]:
             self.enemy_score += 1
             self.reset_ball_position()
 
@@ -126,7 +145,7 @@ class Game:
         """
         Resets the ball position to the center of the game area.
         """
-        self.ball_x, self.ball_y = 80, 100  # Reset ball position
+        self.ball_x, self.ball_y = 78, 115  # Reset ball position
         self.ball_vel_x, self.ball_vel_y = BALL_SPEED[0], BALL_SPEED[1]  # Reset ball velocity
 
     def enemy_step(self):
@@ -158,8 +177,8 @@ class Game:
         canvas[WALL_BOTTOM_Y:WALL_BOTTOM_Y + WALL_BOTTOM_HEIGHT, :] = WALL_COLOR  # Bottom wall
 
         # Draw player, ball, and enemy on the canvas
-        if 0 <= int(self.player_y) < canvas.shape[0] - PLAYER_SIZE[1]:
-            canvas[int(self.player_y):int(self.player_y) + PLAYER_SIZE[1], PLAYER_X:PLAYER_X + PLAYER_SIZE[0]] = PLAYER_COLOR  # Player paddle
+        if 0 <= int(self.player_y) < canvas.shape[0] - self.player_size[1]:
+            canvas[int(self.player_y):int(self.player_y) + self.player_size[1], PLAYER_X:PLAYER_X + self.player_size[0]] = PLAYER_COLOR  # Player paddle
         if 0 <= int(self.enemy_y) < canvas.shape[0] - ENEMY_SIZE[1]:
             canvas[int(self.enemy_y):int(self.enemy_y) + ENEMY_SIZE[1], ENEMY_X:ENEMY_X + ENEMY_SIZE[0]] = ENEMY_COLOR  # Enemy paddle
         if 0 <= int(self.ball_y) < canvas.shape[0] - BALL_SIZE[1] and 0 <= int(self.ball_x) < canvas.shape[1] - BALL_SIZE[0]:
