@@ -1,4 +1,3 @@
-import jax
 import jax.numpy as jnp
 import numpy as np
 import pygame
@@ -8,7 +7,8 @@ from numbers_impl import digits
 PLAYER_ACCELERATION = 0.2
 PLAYER_MAX_SPEED = 2.0
 BALL_SPEED = jnp.array([1, 1])  # Ball speed in x and y direction
-ENEMY_SPEED = 1  # Speed of the enemy paddle
+ENEMY_ACCELERATION = 0.2
+ENEMY_MAX_SPEED = 2.0
 
 # Action constants
 NOOP = 0
@@ -72,13 +72,12 @@ class Game:
         self.ball_x = 78
         self.ball_y = 115
         self.enemy_y = 115
+        self.enemy_speed = 0.0
         self.ball_vel_x = BALL_SPEED[0]
         self.ball_vel_y = BALL_SPEED[1]
         self.player_score = 0
         self.enemy_score = 0
         self.step_counter = 0
-
-        self.player_size = PLAYER_SIZE
 
     def player_step(self, action):
         """
@@ -96,16 +95,8 @@ class Game:
         # Update player position
         self.player_y += self.player_speed
 
-        if self.player_y > WALL_BOTTOM_Y - PLAYER_SIZE[1]:
-            self.player_size = (self.player_size[0], int(WALL_BOTTOM_Y-self.player_y)+1)
-
-        if self.player_y < WALL_TOP_Y + WALL_TOP_HEIGHT and self.player_speed < 0 and self.player_size[1] > 4:
-            self.player_size = (self.player_size[0], int(self.player_size[1]-1))
-        elif self.player_size[1] < PLAYER_SIZE[1] and self.player_speed > 0:
-            self.player_size = (self.player_size[0], int(self.player_size[1]+1))
-
         # Prevent player from going past the walls
-        self.player_y = jnp.clip(self.player_y, WALL_TOP_Y + WALL_TOP_HEIGHT, WALL_BOTTOM_Y-4)
+        self.player_y = jnp.clip(self.player_y, WALL_TOP_Y + WALL_TOP_HEIGHT - 8, WALL_BOTTOM_Y - 4)
         self.player_y = jnp.round(self.player_y)
 
 
@@ -122,22 +113,22 @@ class Game:
             self.ball_vel_y = -self.ball_vel_y
 
         # Bounce on player paddle
-        if PLAYER_X <= self.ball_x <= PLAYER_X + self.player_size[0]:
-            if self.player_y - BALL_SIZE[1] <= self.ball_y <= self.player_y + self.player_size[1] + BALL_SIZE[1]:
+        if PLAYER_X <= self.ball_x <= PLAYER_X + PLAYER_SIZE[0] and self.ball_vel_x > 0:
+            if self.player_y - BALL_SIZE[1] <= self.ball_y <= self.player_y + PLAYER_SIZE[1] + BALL_SIZE[1]:
                 self.ball_vel_x = -self.ball_vel_x
 
         # Bounce on enemy paddle
-        if ENEMY_X <= self.ball_x <= ENEMY_X + ENEMY_SIZE[0]:
+        if ENEMY_X <= self.ball_x <= ENEMY_X + ENEMY_SIZE[0]  and self.ball_vel_x < 0:
             if self.enemy_y - BALL_SIZE[1] <= self.ball_y <= self.enemy_y + ENEMY_SIZE[1] + BALL_SIZE[1]:
                 self.ball_vel_x = -self.ball_vel_x
 
         # Ball goes past player paddle
-        if self.ball_x > PLAYER_X + self.player_size[0]:
+        if self.ball_x > PLAYER_X + PLAYER_SIZE[0]:
             self.enemy_score += 1
             self.reset_ball_position()
 
         # Ball goes past enemy paddle
-        if self.ball_x < ENEMY_X - 4:
+        if self.ball_x < ENEMY_X - ENEMY_SIZE[0]:
             self.player_score += 1
             self.reset_ball_position()
 
@@ -153,8 +144,21 @@ class Game:
         Updates the enemy paddle's y-coordinate to track the ball's position.
         """
         if self.step_counter % 8:
-            self.enemy_y += jnp.sign(self.ball_y - self.enemy_y) * ENEMY_SPEED
-            self.enemy_y = jnp.maximum(WALL_TOP_Y + WALL_TOP_HEIGHT, jnp.minimum(self.enemy_y, WALL_BOTTOM_Y - ENEMY_SIZE[1]))
+            direction = jnp.sign(self.ball_y - self.enemy_y)
+
+            if direction < 0:
+                self.enemy_speed -= ENEMY_ACCELERATION
+            elif direction > 0:
+                self.enemy_speed += ENEMY_ACCELERATION
+            else:
+                self.enemy_speed *= 0.9  # Apply friction when no action is taken
+
+            # Limit player speed to the maximum allowed value
+            self.enemy_speed = jnp.clip(self.enemy_speed, -ENEMY_MAX_SPEED, ENEMY_MAX_SPEED)
+            # Update player position
+            self.enemy_y += self.enemy_speed
+
+            self.enemy_y = jnp.clip(self.enemy_y, WALL_TOP_Y + WALL_TOP_HEIGHT - 8, WALL_BOTTOM_Y - 4)
 
     def step(self, action):
         """
@@ -172,17 +176,17 @@ class Game:
         # Create a blank canvas with background color
         canvas = np.full((210, 160, 3), BACKGROUND_COLOR, dtype=np.uint8)
 
-        # Draw walls
-        canvas[WALL_TOP_Y:WALL_TOP_Y + WALL_TOP_HEIGHT, :] = WALL_COLOR  # Top wall
-        canvas[WALL_BOTTOM_Y:WALL_BOTTOM_Y + WALL_BOTTOM_HEIGHT, :] = WALL_COLOR  # Bottom wall
-
         # Draw player, ball, and enemy on the canvas
-        if 0 <= int(self.player_y) < canvas.shape[0] - self.player_size[1]:
-            canvas[int(self.player_y):int(self.player_y) + self.player_size[1], PLAYER_X:PLAYER_X + self.player_size[0]] = PLAYER_COLOR  # Player paddle
+        if 0 <= int(self.player_y) < canvas.shape[0] - PLAYER_SIZE[1]:
+            canvas[int(self.player_y):int(self.player_y) + PLAYER_SIZE[1], PLAYER_X:PLAYER_X + PLAYER_SIZE[0]] = PLAYER_COLOR  # Player paddle
         if 0 <= int(self.enemy_y) < canvas.shape[0] - ENEMY_SIZE[1]:
             canvas[int(self.enemy_y):int(self.enemy_y) + ENEMY_SIZE[1], ENEMY_X:ENEMY_X + ENEMY_SIZE[0]] = ENEMY_COLOR  # Enemy paddle
         if 0 <= int(self.ball_y) < canvas.shape[0] - BALL_SIZE[1] and 0 <= int(self.ball_x) < canvas.shape[1] - BALL_SIZE[0]:
             canvas[int(self.ball_y):int(self.ball_y) + BALL_SIZE[1], int(self.ball_x):int(self.ball_x) + BALL_SIZE[0]] = BALL_COLOR  # Ball
+
+        # Draw walls
+        canvas[WALL_TOP_Y:WALL_TOP_Y + WALL_TOP_HEIGHT, :] = WALL_COLOR  # Top wall
+        canvas[WALL_BOTTOM_Y:WALL_BOTTOM_Y + WALL_BOTTOM_HEIGHT, :] = WALL_COLOR  # Bottom wall
 
         # Draw scores
         self.draw_score(canvas, self.player_score, position=(120, 2), color=PLAYER_COLOR)
