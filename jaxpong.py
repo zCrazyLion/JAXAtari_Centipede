@@ -83,9 +83,9 @@ class Game:
         """
         Updates the player's speed and position based on the action.
         """
-        if action == LEFT:
+        if action == LEFT or action == LEFTFIRE:
             self.player_speed -= PLAYER_ACCELERATION
-        elif action == RIGHT:
+        elif action == RIGHT or action == RIGHTFIRE:
             self.player_speed += PLAYER_ACCELERATION
         else:
             self.player_speed *= 0.9  # Apply friction when no action is taken
@@ -100,7 +100,7 @@ class Game:
         self.player_y = jnp.round(self.player_y)
 
 
-    def ball_step(self):
+    def ball_step(self, fire_activated):
         """
         Updates the ball's position and handles bouncing on walls and paddles.
         """
@@ -115,7 +115,10 @@ class Game:
         # Bounce on player paddle
         if PLAYER_X <= self.ball_x <= PLAYER_X + PLAYER_SIZE[0] and self.ball_vel_x > 0:
             if self.player_y - BALL_SIZE[1] <= self.ball_y <= self.player_y + PLAYER_SIZE[1] + BALL_SIZE[1]:
-                self.ball_vel_x = -self.ball_vel_x
+                if fire_activated:
+                    self.ball_vel_x = -self.ball_vel_x * 2
+                else:
+                    self.ball_vel_x = -self.ball_vel_x
 
         # Bounce on enemy paddle
         if ENEMY_X <= self.ball_x <= ENEMY_X + ENEMY_SIZE[0]  and self.ball_vel_x < 0:
@@ -166,7 +169,11 @@ class Game:
         """
         self.step_counter += 1
         self.player_step(action)
-        self.ball_step()
+        if action == FIRE or action == RIGHTFIRE or action == LEFTFIRE:
+            fire_activated = True
+        else:
+            fire_activated = False
+        self.ball_step(fire_activated)
         self.enemy_step()
 
     def jax_rendering(self):
