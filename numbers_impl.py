@@ -61,4 +61,7 @@ nine = [[1, 1, 1],
         [0, 0, 1],
         [1, 1, 1]]
 
-digits = [jnp.array(digit) for digit in [zero, one, two, three, four, five, six, seven, eight, nine]]
+digits = [
+    jnp.array(digit)
+    for digit in [zero, one, two, three, four, five, six, seven, eight, nine]
+]

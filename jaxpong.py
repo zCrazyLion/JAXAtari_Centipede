@@ -43,6 +43,7 @@ WALL_BOTTOM_HEIGHT = 16
 WINDOW_WIDTH = 160 * 4
 WINDOW_HEIGHT = 210 * 4
 
+
 def get_human_action():
     """
     Records if UP or DOWN is being pressed and returns the corresponding action.
@@ -63,6 +64,7 @@ def get_human_action():
         return FIRE
     else:
         return NOOP
+
 
 class Game:
     def __init__(self):
@@ -91,14 +93,17 @@ class Game:
             self.player_speed *= 0.9  # Apply friction when no action is taken
 
         # Limit player speed to the maximum allowed value
-        self.player_speed = jnp.clip(self.player_speed, -PLAYER_MAX_SPEED, PLAYER_MAX_SPEED)
+        self.player_speed = jnp.clip(
+            self.player_speed, -PLAYER_MAX_SPEED, PLAYER_MAX_SPEED
+        )
         # Update player position
         self.player_y += self.player_speed
 
         # Prevent player from going past the walls
-        self.player_y = jnp.clip(self.player_y, WALL_TOP_Y + WALL_TOP_HEIGHT - 8, WALL_BOTTOM_Y - 4)
+        self.player_y = jnp.clip(
+            self.player_y, WALL_TOP_Y + WALL_TOP_HEIGHT - 8, WALL_BOTTOM_Y - 4
+        )
         self.player_y = jnp.round(self.player_y)
-
 
     def ball_step(self, fire_activated):
         """
@@ -109,20 +114,31 @@ class Game:
         self.ball_y += self.ball_vel_y
 
         # Bounce on top and bottom walls
-        if self.ball_y <= WALL_TOP_Y + WALL_TOP_HEIGHT or self.ball_y >= WALL_BOTTOM_Y - BALL_SIZE[1]:
+        if (
+            self.ball_y <= WALL_TOP_Y + WALL_TOP_HEIGHT
+            or self.ball_y >= WALL_BOTTOM_Y - BALL_SIZE[1]
+        ):
             self.ball_vel_y = -self.ball_vel_y
 
         # Bounce on player paddle
         if PLAYER_X <= self.ball_x <= PLAYER_X + PLAYER_SIZE[0] and self.ball_vel_x > 0:
-            if self.player_y - BALL_SIZE[1] <= self.ball_y <= self.player_y + PLAYER_SIZE[1] + BALL_SIZE[1]:
+            if (
+                self.player_y - BALL_SIZE[1]
+                <= self.ball_y
+                <= self.player_y + PLAYER_SIZE[1] + BALL_SIZE[1]
+            ):
                 if fire_activated:
                     self.ball_vel_x = -self.ball_vel_x * 2
                 else:
                     self.ball_vel_x = -self.ball_vel_x
 
         # Bounce on enemy paddle
-        if ENEMY_X <= self.ball_x <= ENEMY_X + ENEMY_SIZE[0]  and self.ball_vel_x < 0:
-            if self.enemy_y - BALL_SIZE[1] <= self.ball_y <= self.enemy_y + ENEMY_SIZE[1] + BALL_SIZE[1]:
+        if ENEMY_X <= self.ball_x <= ENEMY_X + ENEMY_SIZE[0] and self.ball_vel_x < 0:
+            if (
+                self.enemy_y - BALL_SIZE[1]
+                <= self.ball_y
+                <= self.enemy_y + ENEMY_SIZE[1] + BALL_SIZE[1]
+            ):
                 self.ball_vel_x = -self.ball_vel_x
 
         # Ball goes past player paddle
@@ -140,7 +156,10 @@ class Game:
         Resets the ball position to the center of the game area.
         """
         self.ball_x, self.ball_y = 78, 115  # Reset ball position
-        self.ball_vel_x, self.ball_vel_y = BALL_SPEED[0], BALL_SPEED[1]  # Reset ball velocity
+        self.ball_vel_x, self.ball_vel_y = (
+            BALL_SPEED[0],
+            BALL_SPEED[1],
+        )  # Reset ball velocity
 
     def enemy_step(self):
         """
@@ -157,11 +176,15 @@ class Game:
                 self.enemy_speed *= 0.9  # Apply friction when no action is taken
 
             # Limit player speed to the maximum allowed value
-            self.enemy_speed = jnp.clip(self.enemy_speed, -ENEMY_MAX_SPEED, ENEMY_MAX_SPEED)
+            self.enemy_speed = jnp.clip(
+                self.enemy_speed, -ENEMY_MAX_SPEED, ENEMY_MAX_SPEED
+            )
             # Update player position
             self.enemy_y += self.enemy_speed
 
-            self.enemy_y = jnp.clip(self.enemy_y, WALL_TOP_Y + WALL_TOP_HEIGHT - 8, WALL_BOTTOM_Y - 4)
+            self.enemy_y = jnp.clip(
+                self.enemy_y, WALL_TOP_Y + WALL_TOP_HEIGHT - 8, WALL_BOTTOM_Y - 4
+            )
 
     def step(self, action):
         """
@@ -185,18 +208,34 @@ class Game:
 
         # Draw player, ball, and enemy on the canvas
         if 0 <= int(self.player_y) < canvas.shape[0] - PLAYER_SIZE[1]:
-            canvas[int(self.player_y):int(self.player_y) + PLAYER_SIZE[1], PLAYER_X:PLAYER_X + PLAYER_SIZE[0]] = PLAYER_COLOR  # Player paddle
+            canvas[
+                int(self.player_y) : int(self.player_y) + PLAYER_SIZE[1],
+                PLAYER_X : PLAYER_X + PLAYER_SIZE[0],
+            ] = PLAYER_COLOR  # Player paddle
         if 0 <= int(self.enemy_y) < canvas.shape[0] - ENEMY_SIZE[1]:
-            canvas[int(self.enemy_y):int(self.enemy_y) + ENEMY_SIZE[1], ENEMY_X:ENEMY_X + ENEMY_SIZE[0]] = ENEMY_COLOR  # Enemy paddle
-        if 0 <= int(self.ball_y) < canvas.shape[0] - BALL_SIZE[1] and 0 <= int(self.ball_x) < canvas.shape[1] - BALL_SIZE[0]:
-            canvas[int(self.ball_y):int(self.ball_y) + BALL_SIZE[1], int(self.ball_x):int(self.ball_x) + BALL_SIZE[0]] = BALL_COLOR  # Ball
+            canvas[
+                int(self.enemy_y) : int(self.enemy_y) + ENEMY_SIZE[1],
+                ENEMY_X : ENEMY_X + ENEMY_SIZE[0],
+            ] = ENEMY_COLOR  # Enemy paddle
+        if (
+            0 <= int(self.ball_y) < canvas.shape[0] - BALL_SIZE[1]
+            and 0 <= int(self.ball_x) < canvas.shape[1] - BALL_SIZE[0]
+        ):
+            canvas[
+                int(self.ball_y) : int(self.ball_y) + BALL_SIZE[1],
+                int(self.ball_x) : int(self.ball_x) + BALL_SIZE[0],
+            ] = BALL_COLOR  # Ball
 
         # Draw walls
-        canvas[WALL_TOP_Y:WALL_TOP_Y + WALL_TOP_HEIGHT, :] = WALL_COLOR  # Top wall
-        canvas[WALL_BOTTOM_Y:WALL_BOTTOM_Y + WALL_BOTTOM_HEIGHT, :] = WALL_COLOR  # Bottom wall
+        canvas[WALL_TOP_Y : WALL_TOP_Y + WALL_TOP_HEIGHT, :] = WALL_COLOR  # Top wall
+        canvas[WALL_BOTTOM_Y : WALL_BOTTOM_Y + WALL_BOTTOM_HEIGHT, :] = (
+            WALL_COLOR  # Bottom wall
+        )
 
         # Draw scores
-        self.draw_score(canvas, self.player_score, position=(120, 2), color=PLAYER_COLOR)
+        self.draw_score(
+            canvas, self.player_score, position=(120, 2), color=PLAYER_COLOR
+        )
         self.draw_score(canvas, self.enemy_score, position=(30, 2), color=ENEMY_COLOR)
 
         return jnp.array(canvas)
@@ -219,8 +258,12 @@ class Game:
                 for j in range(digit.shape[1]):
                     if digit[i, j] == 1:
                         for di in range(4):  # Zoom each pixel by 4 times vertically
-                            for dj in range(4):  # Zoom each pixel by 4 times horizontally
-                                canvas[y_offset + i * 4 + di, x_offset + j * 4 + dj] = color
+                            for dj in range(
+                                4
+                            ):  # Zoom each pixel by 4 times horizontally
+                                canvas[y_offset + i * 4 + di, x_offset + j * 4 + dj] = (
+                                    color
+                                )
             x_offset += 16  # Space between digits (4 times the original space)
 
     def display(self, screen):
@@ -229,16 +272,31 @@ class Game:
         """
         canvas = self.jax_rendering()
         canvas_np = np.array(canvas)
-        canvas_np = np.flipud(np.rot90(canvas_np, k=1))  # Rotate 90 degrees counterclockwise and flip vertically to fix orientation
+        canvas_np = np.flipud(
+            np.rot90(canvas_np, k=1)
+        )  # Rotate 90 degrees counterclockwise and flip vertically to fix orientation
         pygame_surface = pygame.surfarray.make_surface(canvas_np)
-        screen.blit(pygame.transform.scale(pygame_surface, (WINDOW_WIDTH, WINDOW_HEIGHT)), (0, 0))
+        screen.blit(
+            pygame.transform.scale(pygame_surface, (WINDOW_WIDTH, WINDOW_HEIGHT)),
+            (0, 0),
+        )
         pygame.display.flip()
 
     def get_state(self):
         """
         Returns the current state of the game.
         """
-        return [self.player_y, self.ball_x, self.ball_y, self.enemy_y, self.ball_vel_x, self.ball_vel_y, self.player_score, self.enemy_score]
+        return [
+            self.player_y,
+            self.ball_x,
+            self.ball_y,
+            self.enemy_y,
+            self.ball_vel_x,
+            self.ball_vel_y,
+            self.player_score,
+            self.enemy_score,
+        ]
+
 
 # Initialize Pygame
 pygame.init()

@@ -52,8 +52,10 @@ class PongGame(BaseGame):
             [
                 self.curr_state[PongGame.PADDLE_PLAYER_Y],
                 self.curr_state[PongGame.PADDLE_CPU_Y],
-                self.curr_state[PongGame.BALL_X], self.curr_state[PongGame.BALL_Y],
-                self.curr_state[PongGame.SCORE_PLAYER], self.curr_state[PongGame.SCORE_CPU],
+                self.curr_state[PongGame.BALL_X],
+                self.curr_state[PongGame.BALL_Y],
+                self.curr_state[PongGame.SCORE_PLAYER],
+                self.curr_state[PongGame.SCORE_CPU],
             ]
         )
 
