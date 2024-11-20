@@ -43,6 +43,7 @@ WALL_TOP_Y = 24
 WALL_TOP_HEIGHT = 9
 WALL_BOTTOM_Y = 194
 WALL_BOTTOM_HEIGHT = 16
+BALL_BOOST_MULTIPLIER = 1.5
 
 # Pygame window dimensions
 WINDOW_WIDTH = 160 * 4
@@ -174,11 +175,18 @@ class Game:
             )
         )
 
+        # Apply speed boost if spacebar is pressed during paddle hit
+        boost_multiplier = jnp.where(
+            jnp.logical_and(paddle_bounce, jnp.logical_or(action == FIRE, action == RIGHTFIRE)),
+            BALL_BOOST_MULTIPLIER,
+            1.0
+        )
+
         # calculate bounces on player paddle
         ball_vel_x = jax.lax.cond(
             paddle_bounce,
-            lambda s: -s,
-            lambda s: s,
+            lambda s: jnp.array(-s * boost_multiplier, float),
+            lambda s: jnp.array(s, float),
             operand=state.ball_vel_x
         )
 
@@ -335,14 +343,14 @@ class Renderer:
 
     def draw_score(self, canvas, score, position, color):
         """
-        Draws the score on the canvas.
-
-        Args:
-            canvas: The canvas to draw on.
-            score: The score to draw.
-            position: The (x, y) position to start drawing the score.
-            color: The color to use for the score.
-        """
+                Draws the score on the canvas.
+        
+                Args:
+                    canvas: The canvas to draw on.
+                    score: The score to draw.
+                    position: The (x, y) position to start drawing the score.
+                    color: The color to use for the score.
+                """
         x_offset, y_offset = position
         score_str = str(score)
         for digit_char in score_str:
