@@ -1,4 +1,4 @@
-from typing import Tuple, NamedTuple
+from typing import NamedTuple
 
 import jax.lax
 import jax.numpy as jnp
@@ -12,6 +12,7 @@ from functools import partial
 PLAYER_ACCELERATION = 0.2
 PLAYER_MAX_SPEED = 2.0
 BALL_SPEED = jnp.array([1, 1])  # Ball speed in x and y direction
+BALL_MAX_SPEED = 3.0
 ENEMY_ACCELERATION = 0.2
 ENEMY_MAX_SPEED = 2.0
 
@@ -103,7 +104,137 @@ class State(NamedTuple):
     step_counter: chex.Array
 
 
-# TODO: how far do the competencies of the environment extend? Does it need to handle rewards and timesteps?
+def player_step(state_player_y, state_player_speed, action: chex.Array):
+    player_speed = jax.lax.cond(
+        jnp.logical_or(action == LEFT, action == LEFTFIRE),
+        lambda s: s - PLAYER_ACCELERATION,
+        lambda s: jax.lax.cond(
+            jnp.logical_or(action == RIGHT, action == RIGHTFIRE),
+            lambda s: s + PLAYER_ACCELERATION,
+            lambda s: s * 0.9,
+            operand=state_player_speed,
+        ),
+        state_player_speed,
+    )
+
+    player_speed = jnp.clip(player_speed, -PLAYER_MAX_SPEED, PLAYER_MAX_SPEED)
+
+    player_y = state_player_y + player_speed
+
+    # check that the player is within the bounds of the game
+    player_y = jnp.clip(player_y, WALL_TOP_Y + WALL_TOP_HEIGHT - 8, WALL_BOTTOM_Y - 4)
+    player_y = jnp.round(player_y)
+    return player_y, player_speed
+
+
+def ball_step(
+    state_ball_x,
+    state_ball_y,
+    state_ball_vel_x,
+    state_ball_vel_y,
+    state_player_y,
+    state_enemy_y,
+    action,
+):
+    # update the balls position
+    ball_x = state_ball_x + state_ball_vel_x
+    ball_y = state_ball_y + state_ball_vel_y
+
+    wall_bounce = jnp.logical_or(
+        ball_y <= WALL_TOP_Y + WALL_TOP_HEIGHT,
+        ball_y >= WALL_BOTTOM_Y - BALL_SIZE[1],
+    )
+    # calculate bounces on top and bottom walls
+    ball_vel_y = jnp.where(wall_bounce, -state_ball_vel_y, state_ball_vel_y)
+
+    player_paddle_bounce = jnp.logical_and(
+        jnp.logical_and(PLAYER_X <= ball_x, ball_x <= PLAYER_X + PLAYER_SIZE[0]),
+        state_ball_vel_x > 0,
+    )
+
+    # also check if the y position is within the player paddle
+    player_paddle_bounce = jnp.logical_and(
+        player_paddle_bounce,
+        jnp.logical_and(
+            state_player_y - BALL_SIZE[1] <= ball_y,
+            ball_y <= state_player_y + PLAYER_SIZE[1] + BALL_SIZE[1],
+        ),
+    )
+
+    # Apply speed boost if spacebar is pressed during paddle hit
+    boost_multiplier = jnp.where(
+        jnp.logical_and(
+            player_paddle_bounce,
+            jnp.logical_or(
+                jnp.logical_or(action == LEFTFIRE, action == RIGHTFIRE),
+                action == FIRE,
+            ),
+        ),
+        BALL_BOOST_MULTIPLIER,
+        1.0,
+    )
+
+    # calculate bounces on player paddle
+    ball_vel_x = (
+        jax.lax.cond(
+            player_paddle_bounce, lambda s: -s, lambda s: s, operand=state_ball_vel_x
+        )
+        * boost_multiplier
+    )
+
+    enemy_paddle_bounce = jnp.logical_and(
+        jnp.logical_and(ENEMY_X <= ball_x, ball_x <= ENEMY_X + ENEMY_SIZE[0]),
+        state_ball_vel_x < 0,
+    )
+
+    # also check if the y position is within the enemy paddle
+    enemy_paddle_bounce = jnp.logical_and(
+        enemy_paddle_bounce,
+        jnp.logical_and(
+            state_enemy_y - BALL_SIZE[1] <= ball_y,
+            ball_y <= state_enemy_y + ENEMY_SIZE[1] + BALL_SIZE[1],
+        ),
+    )
+
+    # calculate bounces on enemy paddle
+    ball_vel_x = jax.lax.cond(
+        enemy_paddle_bounce, lambda s: -s, lambda s: s, operand=ball_vel_x
+    )
+
+    ball_vel_x = jnp.clip(ball_vel_x, -BALL_MAX_SPEED, BALL_MAX_SPEED)
+    return ball_x, ball_y, ball_vel_x, ball_vel_y
+
+
+def enemy_step(state_enemy_y, state_enemy_speed, step_counter, ball_y):
+    # update the enemy paddle by first checking if this is the 8th step and then updating the speed depending on the ball position
+    enemy_speed = jax.lax.cond(
+        step_counter % 8,
+        lambda s: jax.lax.cond(
+            jnp.sign(ball_y - state_enemy_y) < 0,
+            lambda x: x - ENEMY_ACCELERATION,
+            lambda x: jax.lax.cond(
+                jnp.sign(ball_y - state_enemy_y) > 0,
+                lambda y: y + ENEMY_ACCELERATION,
+                lambda y: y * 0.9,
+                operand=x,
+            ),
+            operand=s,
+        ),
+        lambda s: s,
+        operand=state_enemy_speed,
+    )
+
+    # limit the enemy speed to the maximum allowed value
+    enemy_speed = jnp.clip(enemy_speed, -ENEMY_MAX_SPEED, ENEMY_MAX_SPEED)
+
+    # update the enemy position
+    enemy_y = state_enemy_y + enemy_speed
+
+    # check collision with the walls
+    enemy_y = jnp.clip(enemy_y, WALL_TOP_Y + WALL_TOP_HEIGHT - 8, WALL_BOTTOM_Y - 4)
+    return enemy_y, enemy_speed
+
+
 class Game:
     def __init__(self):
         pass
@@ -129,97 +260,19 @@ class Game:
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: State, action: chex.Array) -> State:
-        player_speed = jax.lax.cond(
-            jnp.logical_or(action == LEFT, action == LEFTFIRE),
-            lambda s: s - PLAYER_ACCELERATION,
-            lambda s: jax.lax.cond(
-                jnp.logical_or(action == RIGHT, action == RIGHTFIRE),
-                lambda s: s + PLAYER_ACCELERATION,
-                lambda s: s * 0.9,
-                operand=state.player_speed,
-            ),
-            state.player_speed,
+        player_y, player_speed = player_step(state.player_y, state.player_speed, action)
+        enemy_y, enemy_speed = enemy_step(
+            state.enemy_y, state.enemy_speed, state.step_counter, state.ball_y
         )
 
-        player_speed = jnp.clip(player_speed, -PLAYER_MAX_SPEED, PLAYER_MAX_SPEED)
-
-        player_y = state.player_y + player_speed
-
-        # check that the player is within the bounds of the game
-        player_y = jnp.clip(
-            player_y, WALL_TOP_Y + WALL_TOP_HEIGHT - 8, WALL_BOTTOM_Y - 4
-        )
-        player_y = jnp.round(player_y)
-
-        # update the balls position
-        ball_x = state.ball_x + state.ball_vel_x
-        ball_y = state.ball_y + state.ball_vel_y
-
-        wall_bounce = jnp.logical_or(
-            ball_y <= WALL_TOP_Y + WALL_TOP_HEIGHT,
-            ball_y >= WALL_BOTTOM_Y - BALL_SIZE[1],
-        )
-        # calculate bounces on top and bottom walls
-        ball_vel_y = jnp.where(wall_bounce, -state.ball_vel_y, state.ball_vel_y)
-
-        paddle_bounce = jnp.logical_and(
-            jnp.logical_and(
-                PLAYER_X <= ball_x,
-                ball_x <= PLAYER_X + PLAYER_SIZE[0]
-            ),
-            state.ball_vel_x > 0
-        )
-
-        # also check if the y position is within the player paddle
-        paddle_bounce = jnp.logical_and(
-            paddle_bounce,
-            jnp.logical_and(
-                state.player_y - BALL_SIZE[1] <= ball_y,
-                ball_y <= state.player_y + PLAYER_SIZE[1] + BALL_SIZE[1],
-            ),
-        )
-
-        # Apply speed boost if spacebar is pressed during paddle hit
-        boost_multiplier = jnp.where(
-            jnp.logical_and(paddle_bounce, jnp.logical_or(action == FIRE, action == RIGHTFIRE)),
-            BALL_BOOST_MULTIPLIER,
-            1.0
-        )
-
-        # calculate bounces on player paddle
-        ball_vel_x = jax.lax.cond(
-            paddle_bounce, lambda s: -s, lambda s: s, operand=state.ball_vel_x
-        )
-
-        ball_vel_x = jnp.where(
-            jnp.logical_and(
-                paddle_bounce,
-                jnp.logical_or(
-                    jnp.logical_or(action == LEFTFIRE, action == RIGHTFIRE),
-                    action == FIRE,
-                ),
-            ),
-            ball_vel_x * 2,
-            ball_vel_x,
-        )
-
-        paddle_bounce = jnp.logical_and(
-            jnp.logical_and(ENEMY_X <= ball_x, ball_x <= ENEMY_X + ENEMY_SIZE[0]),
-            state.ball_vel_x < 0,
-        )
-
-        # also check if the y position is within the enemy paddle
-        paddle_bounce = jnp.logical_and(
-            paddle_bounce,
-            jnp.logical_and(
-                state.enemy_y - BALL_SIZE[1] <= ball_y,
-                ball_y <= state.enemy_y + ENEMY_SIZE[1] + BALL_SIZE[1],
-            ),
-        )
-
-        # calculate bounces on enemy paddle
-        ball_vel_x = jax.lax.cond(
-            paddle_bounce, lambda s: -s, lambda s: s, operand=ball_vel_x
+        ball_x, ball_y, ball_vel_x, ball_vel_y = ball_step(
+            state.ball_x,
+            state.ball_y,
+            state.ball_vel_x,
+            state.ball_vel_y,
+            player_y,
+            enemy_y,
+            action,
         )
 
         # calculate score changes
@@ -250,33 +303,6 @@ class Game:
 
         # Unpack the values
         ball_x, ball_y, ball_vel_x, ball_vel_y = new_values
-
-        # update the enemy paddle by first checking if this is the 8th step and then updating the speed depending on the ball position
-        enemy_speed = jax.lax.cond(
-            state.step_counter % 8,
-            lambda s: jax.lax.cond(
-                jnp.sign(state.ball_y - state.enemy_y) < 0,
-                lambda x: x - ENEMY_ACCELERATION,
-                lambda x: jax.lax.cond(
-                    jnp.sign(state.ball_y - state.enemy_y) > 0,
-                    lambda y: y + ENEMY_ACCELERATION,
-                    lambda y: y * 0.9,
-                    operand=x,
-                ),
-                operand=s,
-            ),
-            lambda s: s,
-            operand=state.enemy_speed,
-        )
-
-        # limit the enemy speed to the maximum allowed value
-        enemy_speed = jnp.clip(enemy_speed, -ENEMY_MAX_SPEED, ENEMY_MAX_SPEED)
-
-        # update the enemy position
-        enemy_y = state.enemy_y + enemy_speed
-
-        # check collision with the walls
-        enemy_y = jnp.clip(enemy_y, WALL_TOP_Y + WALL_TOP_HEIGHT - 8, WALL_BOTTOM_Y - 4)
 
         return State(
             player_y=player_y,
