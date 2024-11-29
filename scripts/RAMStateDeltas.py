@@ -92,6 +92,9 @@ class Renderer:
 
         self.window = pygame.display.set_mode(window_size)
         self.clock = pygame.time.Clock()
+
+        print(self.clock.get_fps())
+
         self.ram_cell_id_font = pygame.font.SysFont(
             "Pixel12x10", round(25 * (UPSCALE_FACTOR / 4))
         )
@@ -125,9 +128,9 @@ class Renderer:
                     self.delta_render = []
                     delta = self.ram - self.past_ram
 
-                    for i, value in enumerate(delta):
+                    for j, value in enumerate(delta):
                         if value != 0:
-                            self.delta_render.append(i)
+                            self.delta_render.append(j)
 
                 if len(self.clicked_cells) > 0:
                     selected_cell = self.clicked_cells[0]
@@ -139,7 +142,11 @@ class Renderer:
 
                 self._render()
                 self.next_frame = False
+                if i % 60 == 0:
+                    print(f"Current FPS: {self.clock.get_fps()}")
             self._render()
+
+             # Print FPS every 60 frames (optional)
             i += 1
         pygame.quit()
 
