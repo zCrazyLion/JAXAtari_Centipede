@@ -81,6 +81,15 @@ class Renderer:
             self.env_render_shape[0] + RAM_RENDER_WIDTH,
             self.env_render_shape[1],
         )
+ 
+        # Print Shapes of environment 
+        print(f"Render-Shape (0) aka height: {self.env_render_shape[0]}")
+        print(f"Render-Shape (1) aka width: {self.env_render_shape[1]}")
+
+        print(f"Actual shape of environment: {self.env.image_size}")
+        print(f"Scaling Factor of env -> rendering: {self.env_render_shape[0]/self.env.image_size[0]}")
+
+
         self.window = pygame.display.set_mode(window_size)
         self.clock = pygame.time.Clock()
         self.ram_cell_id_font = pygame.font.SysFont(
