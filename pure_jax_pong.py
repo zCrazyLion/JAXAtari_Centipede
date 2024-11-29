@@ -576,7 +576,7 @@ if __name__ == "__main__":
         if tick:
             action = get_human_action()
             curr_state = jitted_step(curr_state, action)
-            tick = True
+            tick = False
         else:
             tick = True
         renderer.display(screen, curr_state)
