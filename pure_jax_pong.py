@@ -21,9 +21,7 @@ BALL_MAX_SPEED = 4  # Maximum ball speed cap
 # constants for paddle speed influence
 MIN_BALL_SPEED = 1
 
-# TODO: remove this soon!
-PLAYER_ACCELERATION = 0.2
-
+PLAYER_ACCELERATION = jnp.array([6, 3, 1, 1, 1])
 
 # Action constants
 NOOP = 0
@@ -75,6 +73,7 @@ STATE_TRANSLATOR: dict = {
     8: "player_score",
     9: "enemy_score",
     10: "step_counter",
+    11: "acceleration_counter"
 }
 
 
@@ -113,29 +112,87 @@ class State(NamedTuple):
     player_score: chex.Array
     enemy_score: chex.Array
     step_counter: chex.Array
+    acceleration_counter: chex.Array
 
 
-def player_step(state_player_y, state_player_speed, action: chex.Array):
-    player_speed = jax.lax.cond(
-        jnp.logical_or(action == LEFT, action == LEFTFIRE),
-        lambda s: s - PLAYER_ACCELERATION,
-        lambda s: jax.lax.cond(
-            jnp.logical_or(action == RIGHT, action == RIGHTFIRE),
-            lambda s: s + PLAYER_ACCELERATION,
-            lambda s: s * 0.9,
-            operand=state_player_speed,
-        ),
-        state_player_speed,
+def player_step(state_player_y, state_player_speed, acceleration_counter, action: chex.Array):
+    # check if one of the buttons is pressed
+    up = jnp.logical_or(action == LEFT, action == LEFTFIRE)
+    down = jnp.logical_or(action == RIGHT, action == RIGHTFIRE)
+
+    # get the current acceleration
+    acceleration = PLAYER_ACCELERATION[acceleration_counter]
+
+    # perform the deceleration checks first, since in the base game
+    # on a direction switch the player is first decelerated and then accelerated in the new direction
+    # check if the player touches a wall
+    touches_wall = jnp.logical_or(
+        state_player_y < WALL_TOP_Y,
+        state_player_y + PLAYER_SIZE[1] > WALL_BOTTOM_Y,
     )
 
-    player_speed = jnp.clip(player_speed, -MAX_SPEED, MAX_SPEED)
+    player_speed = state_player_speed
 
-    player_y = state_player_y + player_speed
+    # if no button was clicked OR the paddle touched a wall and there is a speed, apply deceleration (halfing the speed every tick)
+    player_speed = jax.lax.cond(
+        jnp.logical_or(jnp.logical_not(jnp.logical_or(up, down)), touches_wall),
+        lambda s: jnp.round(s / 2).astype(jnp.int32),
+        lambda s: s,
+        operand=player_speed,
+    )
 
-    # check that the player is within the bounds of the game
-    player_y = jnp.clip(player_y, WALL_TOP_Y + WALL_TOP_HEIGHT - 8, WALL_BOTTOM_Y - 4)
-    player_y = jnp.round(player_y)
-    return player_y, player_speed
+    direction_change_up = jnp.logical_and(up, state_player_speed < 0)
+    # also apply deceleration if the direction is changed
+    player_speed = jax.lax.cond(
+        direction_change_up,
+        lambda s: jnp.round(s / 2).astype(jnp.int32),
+        lambda s: s,
+        operand=player_speed,
+    )
+    direction_change_down = jnp.logical_and(down, state_player_speed > 0)
+    player_speed = jax.lax.cond(
+        direction_change_down,
+        lambda s: jnp.round(s / 2).astype(jnp.int32),
+        lambda s: s,
+        operand=player_speed,
+    )
+
+    # reset the acceleration counter on a direction change
+    direction_change = jnp.logical_or(direction_change_up, direction_change_down)
+    acceleration_counter = jax.lax.cond(
+        direction_change,
+        lambda _: 0,
+        lambda s: s,
+        operand=acceleration_counter,
+    )
+
+    # add the current acceleration to the speed (positive if up, negative if down)
+    player_speed = jax.lax.cond(
+        up,
+        lambda s: jnp.minimum(s + acceleration, MAX_SPEED),
+        lambda s: s,
+        operand=player_speed,
+    )
+
+    player_speed = jax.lax.cond(
+        down,
+        lambda s: jnp.maximum(s - acceleration, -MAX_SPEED),
+        lambda s: s,
+        operand=player_speed,
+    )
+
+    # reset or increment the acceleration counter here
+    new_acceleration_counter = jax.lax.cond(
+        jnp.logical_or(up, down),  # If moving in either direction
+        lambda s: jnp.minimum(s + 1, 4),  # Increment counter
+        lambda s: 0,  # Reset if no movement
+        operand=acceleration_counter,
+    )
+
+    # calculate the new player position
+    player_y = jnp.clip(state_player_y + player_speed, WALL_TOP_Y, WALL_BOTTOM_Y - PLAYER_SIZE[1])
+
+    return player_y, player_speed, jnp.minimum(acceleration_counter + 1, 4)
 
 
 def ball_step(
@@ -342,27 +399,39 @@ class Game:
         Returns the initial state and the reward (i.e. 0)
         """
         return State(
-            player_y=jnp.array(96),
-            player_speed=jnp.array(0.0),
-            ball_x=jnp.array(78),
-            ball_y=jnp.array(115),
-            enemy_y=jnp.array(115),
-            enemy_speed=jnp.array(0.0),
-            ball_vel_x=BALL_SPEED[0],
-            ball_vel_y=BALL_SPEED[1],
-            player_score=jnp.array(0),
-            enemy_score=jnp.array(0),
-            step_counter=jnp.array(0),
+            player_y=jnp.array(96).astype(jnp.int32),
+            player_speed=jnp.array(0.0).astype(jnp.int32),
+            ball_x=jnp.array(78).astype(jnp.int32),
+            ball_y=jnp.array(115).astype(jnp.int32),
+            enemy_y=jnp.array(115).astype(jnp.int32),
+            enemy_speed=jnp.array(0.0).astype(jnp.int32),
+            ball_vel_x=BALL_SPEED[0].astype(jnp.int32),
+            ball_vel_y=BALL_SPEED[1].astype(jnp.int32),
+            player_score=jnp.array(0).astype(jnp.int32),
+            enemy_score=jnp.array(0).astype(jnp.int32),
+            step_counter=jnp.array(0).astype(jnp.int32),
+            acceleration_counter=jnp.array(0).astype(jnp.int32),
         )
 
     #@partial(jax.jit, static_argnums=(0,))
     def step(self, state: State, action: chex.Array) -> State:
         # Step 1: Update player position and speed
-        player_y, player_speed = player_step(
-            state.player_y,
-            state.player_speed,
-            action,
+        # only execute player step on even steps (base implementation only moves the player every second tick)
+        player_y, player_speed, new_acceleration_counter = jax.lax.cond(
+            state.step_counter % 2 == 0,
+            lambda _: player_step(
+                state.player_y,
+                state.player_speed,
+                state.acceleration_counter,
+                action,
+            ),
+            lambda _: (state.player_y, state.player_speed, state.acceleration_counter),
+            operand=None,
         )
+
+        jax.debug.print('tick: {x}', x=state.step_counter)
+        jax.debug.print('player_y: {x}', x=player_y)
+        jax.debug.print('player_speed: {x}', x=player_speed)
 
         # Step 2: Update ball position and velocity
         ball_x, ball_y, ball_vel_x, ball_vel_y = ball_step(state, action)
@@ -444,7 +513,8 @@ class Game:
             ball_vel_y=ball_vel_y_final,
             player_score=player_score,
             enemy_score=enemy_score,
-            step_counter=step_counter + 1,
+            step_counter=step_counter,
+            acceleration_counter=new_acceleration_counter,
         )
 
 
@@ -567,18 +637,23 @@ if __name__ == "__main__":
     curr_state = jitted_reset()
     # Run the game until the user quits
     running = True
-    tick = True
+    frame_by_frame = False
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_f:
+                    frame_by_frame = not frame_by_frame
+            elif event.type == pygame.KEYDOWN or (event.type == pygame.KEYUP and event.key == pygame.K_n):
+                if event.key == pygame.K_n and frame_by_frame:
+                    action = get_human_action()
+                    curr_state = jitted_step(curr_state, action)
 
-        if tick:
+        if not frame_by_frame:
             action = get_human_action()
             curr_state = jitted_step(curr_state, action)
-            tick = False
-        else:
-            tick = True
+
         renderer.display(screen, curr_state)
         clock.tick(60)
 
