@@ -193,7 +193,7 @@ def player_step(state_player_y, state_player_speed, acceleration_counter, action
     # calculate the new player position
     player_y = jnp.clip(state_player_y + player_speed, WALL_TOP_Y, WALL_BOTTOM_Y - PLAYER_SIZE[1])
 
-    return player_y, player_speed, jnp.minimum(acceleration_counter + 1, 4)
+    return player_y, player_speed, new_acceleration_counter
 
 
 def ball_step(
