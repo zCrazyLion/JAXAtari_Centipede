@@ -1,6 +1,6 @@
 from functools import partial
 from typing import NamedTuple, Tuple
-
+import matplotlib.pyplot as plt
 import jax.lax
 import jax.numpy as jnp
 import chex
@@ -538,6 +538,10 @@ class Renderer:
             (0, 0),
         )
         pygame.display.flip()
+
+    def get_rgb_img(self, state: jnp.ndarray) -> np.ndarray:
+        canvas = self.jax_rendering(self.convert_jax_arr(state))
+        return np.array(canvas)
 
     def convert_jax_arr(self, state: jnp.array) -> dict:
         """
