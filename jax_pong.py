@@ -1,4 +1,5 @@
-from typing import NamedTuple, Tuple, Any
+from functools import partial
+from typing import NamedTuple, Tuple
 
 import jax.lax
 import jax.numpy as jnp
@@ -413,7 +414,7 @@ class Game:
             acceleration_counter=jnp.array(0).astype(jnp.int32),
         )
 
-    #@partial(jax.jit, static_argnums=(0,))
+    @partial(jax.jit, static_argnums=(0,))
     def step(self, state: State, action: chex.Array) -> State:
         # Step 1: Update player position and speed
         # only execute player step on even steps (base implementation only moves the player every second tick)
