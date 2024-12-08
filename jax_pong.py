@@ -1,6 +1,5 @@
 from functools import partial
 from typing import NamedTuple, Tuple
-import matplotlib.pyplot as plt
 import jax.lax
 import jax.numpy as jnp
 import chex
@@ -391,8 +390,8 @@ def _reset_ball_after_goal(
 
 
 class Game:
-    def __init__(self):
-        pass
+    def __init__(self, frameskip=0):
+        self.frameskip = frameskip + 1
 
     def reset(self) -> State:
         """
@@ -429,10 +428,6 @@ class Game:
             lambda _: (state.player_y, state.player_speed, state.acceleration_counter),
             operand=None,
         )
-
-        jax.debug.print('tick: {x}', x=state.step_counter)
-        jax.debug.print('player_y: {x}', x=player_y)
-        jax.debug.print('player_speed: {x}', x=player_speed)
 
         # Step 2: Update ball position and velocity
         ball_x, ball_y, ball_vel_x, ball_vel_y = ball_step(state, action)
@@ -631,7 +626,7 @@ if __name__ == "__main__":
     clock = pygame.time.Clock()
 
     # Create a Game instance
-    game = Game()
+    game = Game(frameskip=1)
 
     # create a Renderer instance
     renderer = Renderer(STATE_TRANSLATOR)
@@ -643,6 +638,8 @@ if __name__ == "__main__":
     # Run the game until the user quits
     running = True
     frame_by_frame = False
+    frameskip = game.frameskip
+    counter = 1
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -659,7 +656,9 @@ if __name__ == "__main__":
             action = get_human_action()
             curr_state = jitted_step(curr_state, action)
 
-        renderer.display(screen, curr_state)
+        if counter % frameskip != 0:
+            renderer.display(screen, curr_state)
+        counter += 1
         clock.tick(60)
 
     # Quit Pygame
