@@ -6,7 +6,7 @@ import random
 import numpy as np
 
 # Initialize environments
-jax_env = JaxPong()
+jax_env = JaxPong(frameskip=1)
 jax_renderer = JaxRenderer(STATE_TRANSLATOR)
 oc_atari_env = OCAtari("Pong-v4", frameskip=1)
 
@@ -33,6 +33,9 @@ def extract_positions_oc(env):
 for i in range(1000):
     # Get a random action
     action = random.randint(0, 5)
+
+    if i < 64:
+        continue
 
     # Step both environments
     oc_atari_env.step(action)
