@@ -1,6 +1,6 @@
 from ocatari import OCAtari
 from ocatari.ram.pong import Ball, Player, Enemy
-
+import matplotlib.pyplot as plt
 from jax_pong import Game as JaxPong, Renderer as JaxRenderer, STATE_TRANSLATOR, PLAYER_X, ENEMY_X
 import random
 import numpy as np
@@ -34,15 +34,23 @@ for i in range(1000):
     # Get a random action
     action = random.randint(0, 5)
 
-    if i < 64:
-        continue
-
     # Step both environments
     oc_atari_env.step(action)
     oc_atari_image = oc_atari_env.getScreenRGB()
 
     jax_state = jax_env.step(jax_state, action)  # Get the state from the JAX environment
     jax_img = jax_renderer.get_rgb_img(jax_state)
+
+    if 100 < i < 110:
+        print(action)
+        a = plt.figure()
+        a.add_subplot(1, 2, 1)
+        plt.imshow(jax_img)
+        plt.title("Jax")
+        a.add_subplot(1, 2, 2)
+        plt.imshow(oc_atari_image)
+        plt.title("OC Atari")
+        plt.show()
 
     # Pixel difference
     img_loss = np.sum(jax_img!= oc_atari_image)

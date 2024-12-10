@@ -51,7 +51,7 @@ PLAYER_SIZE = (4, 15)
 BALL_SIZE = (2, 4)
 ENEMY_SIZE = (4, 15)
 WALL_TOP_Y = 24
-WALL_TOP_HEIGHT = 9
+WALL_TOP_HEIGHT = 10
 WALL_BOTTOM_Y = 194
 WALL_BOTTOM_HEIGHT = 16
 
@@ -73,7 +73,8 @@ STATE_TRANSLATOR: dict = {
     8: "player_score",
     9: "enemy_score",
     10: "step_counter",
-    11: "acceleration_counter"
+    11: "acceleration_counter",
+    12: "buffer"
 }
 
 
@@ -113,6 +114,7 @@ class State(NamedTuple):
     enemy_score: chex.Array
     step_counter: chex.Array
     acceleration_counter: chex.Array
+    buffer: chex.Array
 
 
 def player_step(state_player_y, state_player_speed, acceleration_counter, action: chex.Array):
@@ -169,14 +171,14 @@ def player_step(state_player_y, state_player_speed, acceleration_counter, action
     # add the current acceleration to the speed (positive if up, negative if down)
     player_speed = jax.lax.cond(
         up,
-        lambda s: jnp.minimum(s + acceleration, MAX_SPEED),
+        lambda s: jnp.maximum(s - acceleration, -MAX_SPEED),
         lambda s: s,
         operand=player_speed,
     )
 
     player_speed = jax.lax.cond(
         down,
-        lambda s: jnp.maximum(s - acceleration, -MAX_SPEED),
+        lambda s: jnp.minimum(s + acceleration, MAX_SPEED),
         lambda s: s,
         operand=player_speed,
     )
@@ -190,8 +192,7 @@ def player_step(state_player_y, state_player_speed, acceleration_counter, action
     )
 
     # calculate the new player position
-    player_y = jnp.clip(state_player_y - player_speed, WALL_TOP_Y, WALL_BOTTOM_Y - PLAYER_SIZE[1])
-
+    player_y = jnp.clip(state_player_y + player_speed, WALL_TOP_Y + WALL_TOP_HEIGHT - 8, WALL_BOTTOM_Y - 4)
     return player_y, player_speed, new_acceleration_counter
 
 
@@ -411,23 +412,28 @@ class Game:
             enemy_score=jnp.array(0).astype(jnp.int32),
             step_counter=jnp.array(0).astype(jnp.int32),
             acceleration_counter=jnp.array(0).astype(jnp.int32),
+            buffer=jnp.array(96).astype(jnp.int32),
         )
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: State, action: chex.Array) -> State:
         # Step 1: Update player position and speed
         # only execute player step on even steps (base implementation only moves the player every second tick)
-        player_y, player_speed, new_acceleration_counter = jax.lax.cond(
-            state.step_counter % 2 == 0,
-            lambda _: player_step(
-                state.player_y,
-                state.player_speed,
-                state.acceleration_counter,
-                action,
-            ),
-            lambda _: (state.player_y, state.player_speed, state.acceleration_counter),
-            operand=None,
+        buffer, player_speed, new_acceleration_counter = player_step(
+            state.player_y,
+            state.player_speed,
+            state.acceleration_counter,
+            action,
         )
+
+        #player_y, player_speed, new_acceleration_counter = jax.lax.cond(
+        #    state.step_counter % 2 == 0,
+        #    lambda _: (player_y, player_speed, new_acceleration_counter),
+        #    lambda _: (state.buffer, player_speed, new_acceleration_counter),
+        #    operand=None,
+        #)
+
+        player_y = state.buffer
 
         # Step 2: Update ball position and velocity
         ball_x, ball_y, ball_vel_x, ball_vel_y = ball_step(state, action)
@@ -511,6 +517,7 @@ class Game:
             enemy_score=enemy_score,
             step_counter=step_counter,
             acceleration_counter=new_acceleration_counter,
+            buffer=buffer
         )
 
 
@@ -583,10 +590,10 @@ class Renderer:
 
         # Draw scores
         self.draw_score(
-            canvas, state["player_score"], position=(120, 2), color=PLAYER_COLOR
+            canvas, state["player_score"], position=(116, 1), color=PLAYER_COLOR
         )
         self.draw_score(
-            canvas, state["enemy_score"], position=(30, 2), color=ENEMY_COLOR
+            canvas, state["enemy_score"], position=(36, 1), color=ENEMY_COLOR
         )
 
         return jnp.array(canvas)
