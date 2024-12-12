@@ -656,15 +656,16 @@ if __name__ == "__main__":
                     frame_by_frame = not frame_by_frame
             elif event.type == pygame.KEYDOWN or (event.type == pygame.KEYUP and event.key == pygame.K_n):
                 if event.key == pygame.K_n and frame_by_frame:
-                    action = get_human_action()
-                    curr_state = jitted_step(curr_state, action)
+                    if counter % frameskip == 0:
+                        action = get_human_action()
+                        curr_state = jitted_step(curr_state, action)
 
         if not frame_by_frame:
-            action = get_human_action()
-            curr_state = jitted_step(curr_state, action)
+            if counter % frameskip == 0:
+                action = get_human_action()
+                curr_state = jitted_step(curr_state, action)
 
-        if counter % frameskip != 0:
-            renderer.display(screen, curr_state)
+        renderer.display(screen, curr_state)
         counter += 1
         clock.tick(60)
 
