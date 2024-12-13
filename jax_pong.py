@@ -5,14 +5,14 @@ import jax.numpy as jnp
 import chex
 import numpy as np
 import pygame
+from numpy.random.mtrand import operator
 
 from numbers_impl import digits
 
 # Constants for game environment
 MAX_SPEED = 12
-BALL_SPEED = jnp.array([1, 1])  # Ball speed in x and y direction
+BALL_SPEED = jnp.array([-1, 1])  # Ball speed in x and y direction
 ENEMY_STEP_SIZE = 2
-ACCELERATION_SEQUENCE = jnp.array([6, 3, 1, 1, 1])
 
 # Constants for ball physics
 BASE_BALL_SPEED = 1
@@ -21,7 +21,8 @@ BALL_MAX_SPEED = 4  # Maximum ball speed cap
 # constants for paddle speed influence
 MIN_BALL_SPEED = 1
 
-PLAYER_ACCELERATION = jnp.array([6, 3, 1, 1, 1])
+PLAYER_ACCELERATION = jnp.array([3, 7, 9, 10, 11, 12, 11, 11, 12, 12, 11, 11, 12])
+WALL_ACCELERATION = jnp.array([5, 8, 10, 11, 11, 11])
 
 # Action constants
 NOOP = 0
@@ -47,9 +48,9 @@ PLAYER_X = 140
 ENEMY_X = 16
 
 # Object sizes (width, height)
-PLAYER_SIZE = (4, 15)
+PLAYER_SIZE = (4, 16)
 BALL_SIZE = (2, 4)
-ENEMY_SIZE = (4, 15)
+ENEMY_SIZE = (4, 16)
 WALL_TOP_Y = 24
 WALL_TOP_HEIGHT = 10
 WALL_BOTTOM_Y = 194
@@ -123,7 +124,10 @@ def player_step(state_player_y, state_player_speed, acceleration_counter, action
     down = jnp.logical_or(action == RIGHT, action == RIGHTFIRE)
 
     # get the current acceleration
-    acceleration = PLAYER_ACCELERATION[acceleration_counter]
+    acceleration = jax.lax.cond(jax.lax.le(state_player_y, WALL_TOP_Y+WALL_TOP_HEIGHT),
+                                lambda _: WALL_ACCELERATION[acceleration_counter],
+                                lambda _:PLAYER_ACCELERATION[acceleration_counter],
+                                 operand=None)
 
     # perform the deceleration checks first, since in the base game
     # on a direction switch the player is first decelerated and then accelerated in the new direction
@@ -192,7 +196,7 @@ def player_step(state_player_y, state_player_speed, acceleration_counter, action
     )
 
     # calculate the new player position
-    player_y = jnp.clip(state_player_y + player_speed, WALL_TOP_Y + WALL_TOP_HEIGHT - 8, WALL_BOTTOM_Y - 4)
+    player_y = jnp.clip(state_player_y + player_speed, WALL_TOP_Y + WALL_TOP_HEIGHT - 10, WALL_BOTTOM_Y - 4)
     return player_y, player_speed, new_acceleration_counter
 
 
@@ -419,28 +423,31 @@ class Game:
     def step(self, state: State, action: chex.Array) -> State:
         # Step 1: Update player position and speed
         # only execute player step on even steps (base implementation only moves the player every second tick)
-        buffer, player_speed, new_acceleration_counter = player_step(
+        new_player_y, player_speed, new_acceleration_counter = player_step(
             state.player_y,
             state.player_speed,
             state.acceleration_counter,
             action,
         )
 
-        #player_y, player_speed, new_acceleration_counter = jax.lax.cond(
-        #    state.step_counter % 2 == 0,
-        #    lambda _: (player_y, player_speed, new_acceleration_counter),
-        #    lambda _: (state.buffer, player_speed, new_acceleration_counter),
-        #    operand=None,
-        #)
-
+        buffer = jax.lax.cond(jax.lax.eq(state.buffer, state.player_y), lambda _: new_player_y, lambda _: state.buffer, operand=None)
         player_y = state.buffer
+
+        enemy_y = enemy_step(state, state.step_counter, state.ball_y, state.ball_y)
 
         # Step 2: Update ball position and velocity
         ball_x, ball_y, ball_vel_x, ball_vel_y = ball_step(state, action)
 
+        ball_x, ball_y = jax.lax.cond(
+            jax.lax.eq(ball_vel_x, state.ball_vel_x),#TODO: Fix ball movement
+            lambda _: (ball_x.astype(jnp.int32), ball_y.astype(jnp.int32)),
+            lambda _: (state.ball_x, state.ball_y),
+            operand=None,
+        )
+
         # Step 3: Score and goal detection
-        player_goal = ball_x < ENEMY_X - ENEMY_SIZE[0]
-        enemy_goal = ball_x > PLAYER_X + PLAYER_SIZE[0]
+        player_goal = ball_x < 2
+        enemy_goal = ball_x > 158
         ball_reset = jnp.logical_or(enemy_goal, player_goal)
 
         # Step 4: Update scores
@@ -480,7 +487,6 @@ class Game:
         )
 
         # Step 7: Update enemy position and speed
-        enemy_y = enemy_step(state, step_counter, ball_y_final, ball_vel_y_final)
 
         # Step 8: Reset enemy position on goal
         enemy_y_final = jax.lax.cond(
@@ -492,13 +498,13 @@ class Game:
 
         # Step 9: Handle ball position during game freeze
         ball_x_final = jax.lax.cond(
-            step_counter < 64,
+            step_counter < 60,
             lambda s: BALL_START_X.astype(jnp.int32),
             lambda s: s,
             operand=ball_x_final,
         )
         ball_y_final = jax.lax.cond(
-            step_counter < 64,
+            step_counter < 60,
             lambda s: BALL_START_Y.astype(jnp.int32),
             lambda s: s,
             operand=ball_y_final,
