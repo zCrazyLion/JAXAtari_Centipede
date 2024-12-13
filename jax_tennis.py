@@ -1,10 +1,11 @@
 from functools import partial
-from typing import NamedTuple, Tuple
+from typing import NamedTuple, Tuple, Any
 import jax
 import jax.numpy as jnp
 import chex
 import numpy as np
 import pygame
+
 
 # Action constants (placeholders - to be defined according to ALE)
 NOOP = 0
@@ -24,15 +25,18 @@ ENEMY_START_Y = 159
 BALL_START_X = 75  # taken from the RAM extraction script (initial ram 77 - 2)
 BALL_START_Y = 44  # taken from the RAM extraction script (189 - initial ram 145)
 BALL_START_Z = 7  # of course there is no real z, but using the shadow it is suggested that there is a z
+PLAYER_WIDTH = 13
+PLAYER_HEIGHT = 23
+BALL_SIZE = 2
 
-WAIT_AFTER_GOAL = 125  # number of ticks that are waited after a goal was scored
+WAIT_AFTER_GOAL = 0  # number of ticks that are waited after a goal was scored
 
 # game constrains (i.e. the net)
 NET_RANGE = (98, 113)
 
 # TODO: define the constraints of everyone (player, ball, enemy) according to the base implementation
 
-
+# TODO: due to the movement properties of the ball in Tennis, the velocity values should probably represent how frequent ticks are skipped..
 # Define state container
 class State(NamedTuple):
     player_x: chex.Array  # Player x position
@@ -47,6 +51,7 @@ class State(NamedTuple):
     ball_vel_z: chex.Array
     player_score: chex.Array
     enemy_score: chex.Array
+    serving: chex.Array  # boolean for serve state
     current_tick: chex.Array
 
 
@@ -64,7 +69,8 @@ STATE_TRANSLATOR = {
     9: "ball_vel_z",
     10: "player_score",
     11: "enemy_score",
-    12: "current_tick"
+    12: "serving",
+    13: "current_tick"
 }
 
 
@@ -91,26 +97,137 @@ def get_human_action() -> chex.Array:
 
 
 def ball_step(
-        state: State,
+        ball_x: chex.Array,
+        ball_y: chex.Array,
+        ball_z: chex.Array,
+        ball_vel_x: chex.Array,
+        ball_vel_y: chex.Array,
+        ball_vel_z: chex.Array,
+        serving: chex.Array,
+        current_tick: chex.Array,
+        top_x: chex.Array,
+        top_y: chex.Array,
+        bot_x: chex.Array,
+        bot_y: chex.Array,
+        collision: chex.Array,
+        valid_z: chex.Array,
         action: chex.Array
-) -> Tuple[chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array]:
+) -> tuple[Any, Any, Any, Any, Any, Any, Any]:
     """
     Updates ball position and velocity based on current state and action.
+    All calculations use integer math to match Atari 2600 capabilities.
 
     Args:
-        state: Current game state containing ball position and velocity
+        ball_x: Current ball x position
+        ball_y: Current ball y position
+        ball_z: Current ball z position (height/shadow)
+        ball_vel_x: Current ball x velocity
+        ball_vel_y: Current ball y velocity
+        ball_vel_z: Current ball z velocity
+        serving: Whether ball is currently being served
+        current_tick: Current game tick
+        top_x: X position of top racket
+        top_y: Y position of top racket
+        bot_x: X position of bottom racket
+        bot_y: Y position of bottom racket
+        collision: Whether ball collided with racket this frame
+        valid_z: Whether ball z position is valid for collision
         action: Current player action
 
     Returns:
-        Tuple containing:
-            chex.Array: New ball x position
-            chex.Array: New ball y position
-            chex.Array: New ball z position (height)
-            chex.Array: New ball x velocity
-            chex.Array: New ball y velocity
-            chex.Array: New ball z velocity
+        Tuple containing new:
+        - ball_x: Ball x position (int32)
+        - ball_y: Ball y position (int32)
+        - ball_z: Ball height/shadow distance (int32)
+        - ball_vel_x: Ball x velocity (int32)
+        - ball_vel_y: Ball y velocity (int32)
+        - ball_vel_z: Ball vertical velocity (int32)
+        - serving: Updated serving state
     """
-    return state.ball_x, state.ball_y, state.ball_z, state.ball_vel_x, state.ball_vel_y, state.ball_vel_z
+    # Constants - adjusted for more consistent speeds
+    BASE_Y_VEL = jnp.array(2, dtype=jnp.int32)  # Reduced base velocity
+    COURT_MIDDLE = jnp.array(105, dtype=jnp.int32)
+
+    # Check if ball is in upper half
+    in_upper_half = ball_y < COURT_MIDDLE
+
+    # Only allow direction switch if ball is in the correct court half
+    valid_switch = jnp.logical_or(
+        jnp.logical_and(ball_vel_y > 0, ball_y > COURT_MIDDLE),
+        jnp.logical_and(ball_vel_y < 0, ball_y < COURT_MIDDLE)
+    )
+
+    # Update Z position (cycles 0-39) # TODO: this is (obviously) not correct, check in the base implementation. I think it has somehting to do with the distance to the net
+    new_z = (ball_z + 1) % 40
+
+    # Combine collision check with valid switch
+    should_switch = collision & valid_switch & jnp.logical_not(serving) & valid_z
+
+    def compute_hit_response(curr_vel_x, curr_vel_y):
+        # TODO: check and insert logic for the angle of the hit
+
+        # get the current direction of the ball (i.e. check sign)
+        direction = jnp.where(curr_vel_y > 0, 1, -1)
+
+        # return the base velocity after a hit with the inverted direction
+        new_y_vel = BASE_Y_VEL * (-direction)
+
+        # TODO: insert angle logic here, for now keep same x velocity
+        new_x_vel = curr_vel_x
+
+        # Handle ball teleport after hit (for the top racket its teleported to the bottom left of the player and for the bottom its not teleported at all) TODO: how?
+
+        return new_x_vel, new_y_vel, ball_x, ball_y
+
+    # Update velocities and handle potential teleport
+    new_vel_x, new_vel_y, new_ball_x, new_ball_y = jax.lax.cond(
+        should_switch,
+        lambda _: compute_hit_response(ball_vel_x, ball_vel_y),
+        lambda _: (ball_vel_x, ball_vel_y, ball_x, ball_y),
+        None
+    )
+
+    # Update position using either teleport or normal movement
+    new_x = jnp.where(should_switch, new_ball_x, ball_x + new_vel_x)
+    new_y = jnp.where(should_switch, new_ball_y, ball_y + new_vel_y)
+
+
+    def serve_motion():
+        serve_started = action == FIRE
+
+        t = current_tick % 40
+        serve_y = jnp.where(t < 20,
+                            jnp.array(1, dtype=jnp.int32),
+                            jnp.array(-1, dtype=jnp.int32))
+
+        final_serve_y = jnp.where(serve_started,
+                                  serve_y,
+                                  jnp.array(0, dtype=jnp.int32))
+
+        # Use same BASE_Y_VEL as collisions for consistency
+        serve_vel = jnp.where(serve_started & (ball_vel_y == 0),
+                              BASE_Y_VEL,
+                              jnp.array(0, dtype=jnp.int32))
+
+        return (ball_x,
+                ball_y + final_serve_y,
+                ball_z,
+                jnp.array(0, dtype=jnp.int32),
+                serve_vel,
+                jnp.array(0, dtype=jnp.int32),
+                jnp.logical_not(serve_started))
+
+    final_x, final_y, final_z, final_vel_x, final_vel_y, final_vel_z, final_serve = \
+        jax.lax.cond(
+            jnp.logical_and(serving, collision),
+            lambda _: serve_motion(),
+            lambda _: (new_x, new_y, new_z, new_vel_x, new_vel_y,
+                       ball_vel_z, serving),
+            None
+        )
+
+    return (final_x, final_y, final_z,
+            final_vel_x, final_vel_y, final_vel_z, final_serve)
 
 def player_step(
         state_player_x: chex.Array,
@@ -196,8 +313,24 @@ def enemy_step(
             chex.Array: New enemy y position
     """
 
-    # TODO
-    return state_enemy_x, state_enemy_y
+    # TODO: basic implementation for now
+
+    # move 1 towards the ball in x
+    enemy_x = jnp.where(
+        ball_x < state_enemy_x,
+        state_enemy_x - 1,
+        state_enemy_x
+    )
+
+    enemy_x = jnp.where(
+        ball_x > state_enemy_x,
+        state_enemy_x + 1,
+        enemy_x
+    )
+
+    # for now dont move in y, I think there is some distance based movement happening
+
+    return enemy_x, state_enemy_y
 
 def check_scoring(
         state: State
@@ -217,18 +350,76 @@ def check_scoring(
     return state.player_score, state.enemy_score, False
 
 def check_collision(
-        state: State
-) -> bool:
+        player_x, player_y, ball_x, ball_y, ball_z, enemy_x, enemy_y
+) -> Tuple[chex.Array, chex.Array]:
     """
     Checks if a collision occurred between the ball and the player or enemy.
 
     Args:
-        state: Current game state containing ball and player/enemy positions
+        player_x: Current x coordinate of player
+        player_y: Current y coordinate of player
+        ball_x: Current x coordinate of ball
+        ball_y: Current y coordinate of ball
+        ball_z: Current z coordinate of ball
+        enemy_x: Current x coordinate of enemy
+        enemy_y: Current y coordinate of enemy
 
     Returns:
         bool: Whether a collision occurred
+        bool: Whether the z position of the ball is valid for the collision
     """
-    return False
+    # Correct detection: a collision is registered, when the ball and the racket have pixel overlap (with small margin)
+    # Assumption for now: a collision is registered, when the ball is in the 50% of the player that are closer to the ball
+    # The player is always turned towards the ball, therefore we can just check if the ball is intercepting with the player / enemy
+
+    # Z-value ranges for different court positions
+    TOP_VALID_Z = (16, 22)
+    MIDDLE_VALID_Z = (15, 32)
+    BOTTOM_VALID_Z = (0, 15)
+
+    TOP_HALF = (0, 98)
+    BOTTOM_HALF = (113, 210)
+
+    # Check player collision - using rectangle overlap
+    player_collision = jnp.logical_and(
+        jnp.logical_and(
+            ball_x < player_x + PLAYER_WIDTH,
+            ball_x + BALL_SIZE > player_x
+        ),
+        jnp.logical_and(
+            ball_y < player_y + PLAYER_HEIGHT,
+            ball_y + BALL_SIZE > player_y
+        )
+    )
+
+    # Check enemy collision - using rectangle overlap
+    enemy_collision = jnp.logical_and(
+        jnp.logical_and(
+            ball_x < enemy_x + PLAYER_WIDTH,
+            ball_x + BALL_SIZE > enemy_x
+        ),
+        jnp.logical_and(
+            ball_y < enemy_y + PLAYER_HEIGHT,
+            ball_y + BALL_SIZE > enemy_y
+        )
+    )
+
+    # check if the ball is in the correct z range for the player collision
+    # first, determine in which part of the field the ball is
+    curr_range = jnp.where(
+        jnp.logical_and(ball_y > TOP_HALF[0], ball_y <= TOP_HALF[1]),
+        jnp.array(TOP_VALID_Z),
+        jnp.where(
+            jnp.logical_and(ball_y > BOTTOM_HALF[0], ball_y <= BOTTOM_HALF[1]),
+            jnp.array(BOTTOM_VALID_Z),
+            jnp.array(MIDDLE_VALID_Z)
+        )
+    )
+
+    # check against the curr_range if the z-position is viable
+    valid_z_pos = jnp.logical_and(ball_z > curr_range[0], ball_z <= curr_range[1])
+
+    return jnp.logical_or(player_collision, enemy_collision), valid_z_pos
 
 def before_serve(state: State) -> chex.Array:
     """
@@ -260,7 +451,7 @@ def before_serve(state: State) -> chex.Array:
 
 class Game:
     def __init__(self, frameskip=0):
-        self.frameskip = frameskip + 1
+        self.frameskip = frameskip
 
     def reset(self) -> State:
         """Resets game to initial state."""
@@ -277,6 +468,7 @@ class Game:
             ball_vel_z=jnp.array(0).astype(jnp.int32),
             player_score=jnp.array(0).astype(jnp.int32),
             enemy_score=jnp.array(0).astype(jnp.int32),
+            serving=jnp.array(1).astype(jnp.bool), # boolean for serve state
             current_tick=jnp.array(0).astype(jnp.int32)
         )
 
@@ -286,20 +478,20 @@ class Game:
         # Update player position
         player_x, player_y = player_step(state.player_x, state.player_y, action)
 
-        # Update ball position and velocity
-        ball_x, ball_y, ball_z, ball_vel_x, ball_vel_y, ball_vel_z = ball_step(state, action)
+        # check if there was a collision
+        collision, valid_z = check_collision(player_x, player_y, state.ball_x, state.ball_y, state.ball_z, state.enemy_x, state.enemy_y)
+
+        # Update ball position and velocity (TODO: currently no side switching implemented)
+        ball_x, ball_y, ball_z, ball_vel_x, ball_vel_y, ball_vel_z, serve = ball_step(state.ball_x, state.ball_y, state.ball_z,
+                                                                                      state.ball_vel_x, state.ball_vel_y, state.ball_vel_z,
+                                                                                     state.serving, state.current_tick,
+                                                                                     player_x, player_y, state.enemy_x, state.enemy_y,
+                                                                                     collision, valid_z, action)
 
         # Check scoring
         player_score, enemy_score, point_scored = check_scoring(state)
 
         enemy_x, enemy_y = enemy_step(state.enemy_x, state.enemy_y, ball_x, ball_y)
-
-        # TODO: make sure this is accurate, the game should only be in the serve after a point was scored (i.e. check the velocities are never 0 in other cases)
-        # define the serve
-        serve = jnp.logical_and(
-            state.ball_vel_x == 0,
-            state.ball_vel_y == 0
-        )
 
         # if nothing is happening, play the idle animation of the ball
         ball_y = jnp.where(
@@ -322,9 +514,6 @@ class Game:
             state.enemy_y
         )
 
-        # print the current y position of the ball
-        jax.debug.print("ball_y {x}", x=ball_y)
-
         # if the game is freezed, return the current state
         calculated_state = State(
             player_x=player_x,
@@ -339,6 +528,7 @@ class Game:
             ball_vel_z=ball_vel_z,
             player_score=player_score,
             enemy_score=enemy_score,
+            serving=serve,
             current_tick=state.current_tick + 1
         )
         return jax.lax.cond(
@@ -472,16 +662,17 @@ if __name__ == "__main__":
                     frame_by_frame = not frame_by_frame
             elif event.type == pygame.KEYDOWN or (event.type == pygame.KEYUP and event.key == pygame.K_n):
                 if event.key == pygame.K_n and frame_by_frame:
-                    action = get_human_action()
-                    curr_state = jitted_step(curr_state, action)
+                    if counter % frameskip == 0:
+                        action = get_human_action()
+                        curr_state = jitted_step(curr_state, action)
 
         if not frame_by_frame:
-            # Get action (to be implemented with proper controls)
-            action = get_human_action()
-            curr_state = jitted_step(curr_state, action)
+            if counter % frameskip == 0:
+                # Get action (to be implemented with proper controls)
+                action = get_human_action()
+                curr_state = jitted_step(curr_state, action)
 
-        if counter % frameskip != 0:
-            renderer.display(screen, curr_state)
+        renderer.display(screen, curr_state)
 
         counter += 1
         clock.tick(60)
