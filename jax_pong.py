@@ -209,8 +209,8 @@ def ball_step(
     ball_y = state.ball_y + state.ball_vel_y
 
     wall_bounce = jnp.logical_or(
-        ball_y <= WALL_TOP_Y + WALL_TOP_HEIGHT,
-        ball_y >= WALL_BOTTOM_Y - BALL_SIZE[1],
+        ball_y <= WALL_TOP_Y + WALL_TOP_HEIGHT - BALL_SIZE[1],
+        ball_y >= WALL_BOTTOM_Y,
     )
     # calculate bounces on top and bottom walls
     ball_vel_y = jnp.where(wall_bounce, -state.ball_vel_y, state.ball_vel_y)
@@ -230,7 +230,7 @@ def ball_step(
     )
 
     enemy_paddle_hit = jnp.logical_and(
-        jnp.logical_and(ENEMY_X <= ball_x, ball_x <= ENEMY_X + ENEMY_SIZE[0]),
+        jnp.logical_and(ENEMY_X <= ball_x, ball_x <= ENEMY_X + ENEMY_SIZE[0]-1),
         state.ball_vel_x < 0,
     )
 
@@ -438,16 +438,9 @@ class Game:
         # Step 2: Update ball position and velocity
         ball_x, ball_y, ball_vel_x, ball_vel_y = ball_step(state, action)
 
-        ball_x, ball_y = jax.lax.cond(
-            jax.lax.eq(ball_vel_x, state.ball_vel_x),#TODO: Fix ball movement
-            lambda _: (ball_x.astype(jnp.int32), ball_y.astype(jnp.int32)),
-            lambda _: (state.ball_x, state.ball_y),
-            operand=None,
-        )
-
         # Step 3: Score and goal detection
-        player_goal = ball_x < 2
-        enemy_goal = ball_x > 158
+        player_goal = ball_x < 4
+        enemy_goal = ball_x > 156
         ball_reset = jnp.logical_or(enemy_goal, player_goal)
 
         # Step 4: Update scores
