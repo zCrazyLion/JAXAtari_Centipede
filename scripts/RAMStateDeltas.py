@@ -371,7 +371,7 @@ class Renderer:
         frame_surface = pygame.Surface(self.env_render_shape)
         pygame.pixelcopy.array_to_surface(frame_surface, frame)
         self.window.blit(frame_surface, (0, 0))
-        self.clock.tick(60)
+        self.clock.tick(1000)
 
     def _render_ram(self):
         ale = self.env.unwrapped.ale
