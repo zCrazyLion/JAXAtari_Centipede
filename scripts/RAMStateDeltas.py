@@ -6,6 +6,7 @@ from collections import deque
 from copy import deepcopy
 import pickle as pkl
 import atexit
+import matplotlib.pyplot as plt
 
 """
 
@@ -205,6 +206,37 @@ class Renderer:
                                     print(
                                         f"Second derivative for cell {cell_idx}: {second_derivative}"
                                     )
+
+                                    # Create a figure with three subplots
+                                    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(8, 8), sharex=True)
+
+                                    # Plot recorded_states on the first subplot
+                                    ax1.plot(recorded_states, marker='o', label='Recorded States')
+                                    ax1.set_title("Recorded State Over Time")
+                                    ax1.set_ylabel("State Value")
+                                    ax1.grid(True)
+                                    ax1.legend()
+
+                                    # Plot first_derivative on the second subplot
+                                    ax2.plot(first_derivative, marker='o', color='orange', label='First Derivative')
+                                    ax2.set_title("First Derivative Over Time")
+                                    ax2.set_ylabel("Derivative")
+                                    ax2.grid(True)
+                                    ax2.legend()
+
+                                    # Plot second_derivative on the third subplot
+                                    ax3.plot(second_derivative, marker='o', color='green', label='Second Derivative')
+                                    ax3.set_title("Second Derivative Over Time")
+                                    ax3.set_xlabel("Time [Frames]")
+                                    ax3.set_ylabel("Second Derivative")
+                                    ax3.grid(True)
+                                    ax3.legend()
+
+                                    # Adjust layout so titles and labels don't overlap
+                                    fig.tight_layout()
+
+                                    # Show the combined figure
+                                    plt.show()
 
                                     del self.recorded_ram_states[
                                         cell_idx
