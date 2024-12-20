@@ -198,6 +198,47 @@ def check_missile_collisions(
         init_carry
     )
 
+
+def check_player_collision(player_x, player_y, submarine_list, shark_list, enemy_projectile_list) -> chex.Array:
+    # check if the player has collided with any of the three given lists
+    # the player is a 16x11 rectangle
+    # the submarine is a 8x11 rectangle
+    # the shark is a 8x7 rectangle
+    # the missile is a 8x1 rectangle
+
+    # check if the player has collided with any of the submarines -> jax compatibility
+    submarine_collisions = jnp.any(
+        check_collision(
+            jnp.array([player_x, player_y]),
+            PLAYER_SIZE,
+            submarine_list,
+            ENEMY_SUB_SIZE
+        )
+    )
+
+    # check if the player has collided with any of the sharks -> jax compatibility
+    shark_collisions = jnp.any(
+        check_collision(
+            jnp.array([player_x, player_y]),
+            PLAYER_SIZE,
+            shark_list,
+            SHARK_SIZE
+        )
+    )
+
+    # check if the player has collided with any of the enemy projectiles -> jax compatibility
+    missile_collisions = jnp.any(
+        check_collision(
+            jnp.array([player_x, player_y]),
+            PLAYER_SIZE,
+            enemy_projectile_list,
+            MISSILE_SIZE
+        )
+    )
+
+    return jnp.any(jnp.array([submarine_collisions, shark_collisions, missile_collisions]))
+
+
 def initialize_spawn_state() -> SpawnState:
     """Initialize the spawn state components"""
     return SpawnState(
@@ -413,7 +454,6 @@ def player_step(state: State, action: chex.Array) -> tuple[chex.Array, chex.Arra
 
     return player_x, player_y, player_direction
 
-
 class Game:
     def __init__(self, frameskip: int = 1):
         self.frameskip = frameskip
@@ -426,7 +466,7 @@ class Game:
             player_x=jnp.array(PLAYER_START_X),
             player_y=jnp.array(PLAYER_START_Y),
             player_direction=jnp.array(0),
-            oxygen=jnp.array(63),  # Full oxygen
+            oxygen=jnp.array(0),  # Full oxygen
             divers_collected=jnp.array(0),
             score=jnp.array(0),
             lives=jnp.array(3),
@@ -462,12 +502,54 @@ class Game:
             new_sub_positions
         )
 
+        # check if the player is under the water surface, if so, decrease the oxygen level by 1 every 32 ticks
+        # if the player is above the water surface, increase the oxygen level by 1 every 2 ticks until it reaches 64
+
+        # check if oxygen should decrease or increase
+        decrease_ox = player_y > 53
+        increase_ox = player_y <= 53
+
+        # decrease the oxygen level by 1 every 32 ticks
+        new_oxygen = jnp.where(
+            decrease_ox,
+            jnp.where(
+                state.step_counter % 32 == 0,
+                state.oxygen - 1,
+                state.oxygen
+            ),
+            state.oxygen
+        )
+
+        # increase the oxygen level by 1 every 2 ticks until it reaches 64
+        new_oxygen = jnp.where(
+            increase_ox,
+            jnp.where(
+                state.oxygen < 64,
+                jnp.where(
+                    state.step_counter % 2 == 0,
+                    state.oxygen + 1,
+                    state.oxygen
+                ),
+                state.oxygen
+            ),
+            new_oxygen
+        )
+
+        oxygen_depleted = new_oxygen <= 0
+
+        # 36 - 128 -> 92 ticks wait
+        # 128 ticks oxygen replenish?
+        # oxygen decreases by 1 every 32 ticks
+
+        # check if the player has collided with any of the enemies
+        player_collision = check_player_collision(player_x, player_y, new_sub_positions, new_shark_positions, state.enemy_missile_positions)
+
         # Return unchanged state for now
         return State(
             player_x=player_x,
             player_y=player_y,
             player_direction=player_direction,
-            oxygen=jnp.array(63),  # Full oxygen
+            oxygen=new_oxygen,  # Full oxygen
             divers_collected=jnp.array(0),
             score=new_score,
             lives=jnp.array(3),
