@@ -21,8 +21,7 @@ BALL_MAX_SPEED = 4  # Maximum ball speed cap
 # constants for paddle speed influence
 MIN_BALL_SPEED = 1
 
-PLAYER_ACCELERATION = jnp.array([3, 7, 9, 10, 11, 12, 11, 11, 12, 12, 11, 11, 12])
-WALL_ACCELERATION = jnp.array([5, 8, 10, 11, 11, 11])
+PLAYER_ACCELERATION = jnp.array([6, 3, 1, -1, 1, -1, 0, 0, 1, 0, -1, 0, 1])
 
 # Action constants
 NOOP = 0
@@ -75,7 +74,7 @@ STATE_TRANSLATOR: dict = {
     9: "enemy_score",
     10: "step_counter",
     11: "acceleration_counter",
-    12: "buffer"
+    12: "buffer",
 }
 
 
@@ -124,10 +123,7 @@ def player_step(state_player_y, state_player_speed, acceleration_counter, action
     down = jnp.logical_or(action == RIGHT, action == RIGHTFIRE)
 
     # get the current acceleration
-    acceleration = jax.lax.cond(jax.lax.le(state_player_y, WALL_TOP_Y+WALL_TOP_HEIGHT),
-                                lambda _: WALL_ACCELERATION[acceleration_counter],
-                                lambda _:PLAYER_ACCELERATION[acceleration_counter],
-                                 operand=None)
+    acceleration = PLAYER_ACCELERATION[acceleration_counter]
 
     # perform the deceleration checks first, since in the base game
     # on a direction switch the player is first decelerated and then accelerated in the new direction
@@ -147,18 +143,19 @@ def player_step(state_player_y, state_player_speed, acceleration_counter, action
         operand=player_speed,
     )
 
-    direction_change_up = jnp.logical_and(up, state_player_speed < 0)
+    direction_change_up = jnp.logical_and(up, state_player_speed > 0)
     # also apply deceleration if the direction is changed
     player_speed = jax.lax.cond(
         direction_change_up,
-        lambda s: jnp.round(s / 2).astype(jnp.int32),
+        lambda s: 0,
         lambda s: s,
         operand=player_speed,
     )
-    direction_change_down = jnp.logical_and(down, state_player_speed > 0)
+    direction_change_down = jnp.logical_and(down, state_player_speed < 0)
+
     player_speed = jax.lax.cond(
         direction_change_down,
-        lambda s: jnp.round(s / 2).astype(jnp.int32),
+        lambda s: 0,
         lambda s: s,
         operand=player_speed,
     )
@@ -190,7 +187,7 @@ def player_step(state_player_y, state_player_speed, acceleration_counter, action
     # reset or increment the acceleration counter here
     new_acceleration_counter = jax.lax.cond(
         jnp.logical_or(up, down),  # If moving in either direction
-        lambda s: jnp.minimum(s + 1, 4),  # Increment counter
+        lambda s: jnp.minimum(s + 1, 15),  # Increment counter
         lambda s: 0,  # Reset if no movement
         operand=acceleration_counter,
     )
@@ -416,19 +413,25 @@ class Game:
             enemy_score=jnp.array(0).astype(jnp.int32),
             step_counter=jnp.array(0).astype(jnp.int32),
             acceleration_counter=jnp.array(0).astype(jnp.int32),
-            buffer=jnp.array(96).astype(jnp.int32),
+            buffer=jnp.array(96).astype(jnp.int32)
         )
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: State, action: chex.Array) -> State:
         # Step 1: Update player position and speed
         # only execute player step on even steps (base implementation only moves the player every second tick)
-        new_player_y, player_speed, new_acceleration_counter = player_step(
+        new_player_y, player_speed_b, new_acceleration_counter = player_step(
             state.player_y,
             state.player_speed,
             state.acceleration_counter,
-            action,
-        )
+            action)
+
+        new_player_y, player_speed, new_acceleration_counter = jax.lax.cond(
+            state.step_counter % 2 == 0,
+            lambda _: (new_player_y, player_speed_b, new_acceleration_counter),
+            lambda _: (state.player_y, state.player_speed, state.acceleration_counter),
+            operand=None)
+
 
         buffer = jax.lax.cond(jax.lax.eq(state.buffer, state.player_y), lambda _: new_player_y, lambda _: state.buffer, operand=None)
         player_y = state.buffer
@@ -516,7 +519,7 @@ class Game:
             enemy_score=enemy_score,
             step_counter=step_counter,
             acceleration_counter=new_acceleration_counter,
-            buffer=buffer
+            buffer=buffer,
         )
 
 

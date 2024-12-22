@@ -9,7 +9,7 @@ import random
 import numpy as np
 
 
-TIMESTEPS = 300
+TIMESTEPS = 1000
 VISUALIZE = True # Set this to True to visualize the comparison
 CONTROL_ACTIONS = True # Set this to True to control the game with the keyboard
 RESTART_WHEN_SCORED = False # Set this to True to restart the game when a point is scored
@@ -46,6 +46,7 @@ jax_ball_positions = []
 oc_ball_positions = []
 
 previous_oc_player_y = None
+previous_jax_player_y = None
 
 if VISUALIZE:
     pygame.init()
@@ -159,12 +160,15 @@ for i in range(TIMESTEPS):
 
     if previous_oc_player_y is not None:
         oc_player_speed = oc_player[1] - previous_oc_player_y
+        jax_player_speed = jax_player[1] - previous_jax_player_y
     else:
         oc_player_speed = 0
+        jax_player_speed = 0
         print("First timestep")
     oc_player_speeds.append(oc_player_speed)
     previous_oc_player_y = oc_player[1]
-    jax_player_speeds.append(jax_state.player_speed)
+    jax_player_speeds.append(jax_player_speed)
+    previous_jax_player_y = jax_player[1]
 
     # Save ball positions and errors after timestep 57 (before that the ball is at (-49, 46) in OC Atari) TODO why?
     if i > 57:
