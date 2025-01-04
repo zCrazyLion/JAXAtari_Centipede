@@ -1,14 +1,21 @@
 import pygame
 import ale_py
 import numpy as np
-import time
+import os
 
 # Initialize ALE
 ale = ale_py.ALEInterface()
 
 # Set the path to your Boxing ROM file
-rom_path = "testRun\Boxing.bin"
+rom_path = "./Boxing.bin"
 ale.loadROM(rom_path)
+
+# Create a directory for screenshots
+screenshot_dir = "screenshots"
+os.makedirs(screenshot_dir, exist_ok=True)
+
+# Counter for screenshot filenames
+screenshot_counter = 1
 
 def get_action_from_key(key):
     """Map keyboard keys to ALE actions."""
@@ -21,6 +28,18 @@ def get_action_from_key(key):
     }
     return key_action_map.get(key, 0)  # Default to no-op
 
+def get_current_render():
+    """Return the current rendering pixel array."""
+    return ale.getScreenRGB()
+
+def save_screenshot(frame):
+    """Save the given frame to a file with an auto-incremented filename."""
+    global screenshot_counter
+    filepath = os.path.join(screenshot_dir, f"{screenshot_counter}.png")
+    pygame.image.save(pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2))), filepath)
+    print(f"Screenshot saved: {filepath}")
+    screenshot_counter += 1
+
 def main():
     pygame.init()
     screen_width, screen_height = 160 * 4, 210 * 4
@@ -32,7 +51,7 @@ def main():
 
     running = True
     while running:
-        frame = ale.getScreenRGB()
+        frame = get_current_render()
         frame_surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
         frame_surface = pygame.transform.scale(frame_surface, (screen_width, screen_height))
         screen.blit(frame_surface, (0, 0))
@@ -43,7 +62,10 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN:
-                action = get_action_from_key(event.key)
+                if event.key == pygame.K_s:  # Save screenshot
+                    save_screenshot(frame)
+                else:
+                    action = get_action_from_key(event.key)
 
         ale.act(action)
 
@@ -51,7 +73,7 @@ def main():
             print("Game over!")
             ale.reset_game()
 
-        clock.tick(30)  # Limit to 30 FPS
+        clock.tick(5)  # Limit to 30 FPS
 
     pygame.quit()
 
