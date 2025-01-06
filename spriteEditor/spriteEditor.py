@@ -17,7 +17,7 @@ class NPYImageEditor:
         self.selection_start = None
         self.selection_end = None
         self.current_color = [0, 0, 0]  # Default color: black
-        
+        self.mouse_pressed = False # Added to keep track of mouse button state
         self.create_widgets()
 
     def create_widgets(self):
@@ -115,6 +115,7 @@ class NPYImageEditor:
         if self.image is None or event.xdata is None or event.ydata is None:
             return
 
+        self.mouse_pressed = True 
         x, y = int(event.xdata), int(event.ydata)
 
         if self.tool == "pencil":
@@ -126,13 +127,16 @@ class NPYImageEditor:
             self.current_color = self.image[y, x].tolist()
             self.color_indicator.config(bg=self.rgb_to_hex(self.current_color))
 
-    def on_mouse_release(self, event):
-        if self.tool == "rectangular_selection" and event.xdata and event.ydata:
-            self.selection_end = (int(event.ydata), int(event.xdata))
-            self.update_display()
+    def on_mouse_release(self, event): # Added to keep track of mouse button state
+        if self.mouse_pressed and event.xdata and event.ydata:
+            if self.tool == "rectangular_selection":
+                self.selection_end = (int(event.ydata), int(event.xdata))
+                self.update_display() # conclude a rectangular selection
+                
+        self.mouse_pressed = False
 
     def on_mouse_motion(self, event):
-        if self.tool == "pencil" and event.xdata and event.ydata:
+        if self.tool == "pencil" and event.xdata and event.ydata and self.mouse_pressed:
             x, y = int(event.xdata), int(event.ydata)
             self.image[y, x] = self.current_color
             self.update_display()
