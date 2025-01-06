@@ -2,6 +2,7 @@ import numpy as np
 import tkinter as tk
 from tkinter import filedialog
 from tkinter import messagebox
+from tkinter.colorchooser import askcolor
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from skimage.draw import rectangle
@@ -15,6 +16,7 @@ class NPYImageEditor:
         self.zoom_level = 1
         self.selection_start = None
         self.selection_end = None
+        self.current_color = [0, 0, 0]  # Default color: black
         
         self.create_widgets()
 
@@ -47,6 +49,12 @@ class NPYImageEditor:
         tk.Button(tools_frame, text="Pencil", command=self.activate_pencil).pack(side=tk.LEFT)
         tk.Button(tools_frame, text="Magic Wand", command=self.activate_magic_wand).pack(side=tk.LEFT)
         tk.Button(tools_frame, text="Rectangular Selection", command=self.activate_rectangular_selection).pack(side=tk.LEFT)
+        tk.Button(tools_frame, text="Dropper", command=self.activate_dropper).pack(side=tk.LEFT)
+
+        # Current Color Indicator
+        self.color_indicator = tk.Label(tools_frame, text="", bg=self.rgb_to_hex(self.current_color), width=5, relief=tk.RAISED)
+        self.color_indicator.pack(side=tk.LEFT, padx=5)
+        self.color_indicator.bind("<Button-1>", self.open_color_palette)
 
         self.tool = None
 
@@ -94,6 +102,15 @@ class NPYImageEditor:
     def activate_rectangular_selection(self):
         self.tool = "rectangular_selection"
 
+    def activate_dropper(self):
+        self.tool = "dropper"
+
+    def open_color_palette(self, event):
+        color = askcolor(color=self.rgb_to_hex(self.current_color), title="Choose Color")
+        if color[0]:
+            self.current_color = [int(c) for c in color[0]]
+            self.color_indicator.config(bg=self.rgb_to_hex(self.current_color))
+
     def on_mouse_press(self, event):
         if self.image is None or event.xdata is None or event.ydata is None:
             return
@@ -101,10 +118,13 @@ class NPYImageEditor:
         x, y = int(event.xdata), int(event.ydata)
 
         if self.tool == "pencil":
-            self.image[y, x] = [0, 0, 0]  # Example: Draw black
+            self.image[y, x] = self.current_color
             self.update_display()
         elif self.tool == "rectangular_selection":
             self.selection_start = (y, x)
+        elif self.tool == "dropper":
+            self.current_color = self.image[y, x].tolist()
+            self.color_indicator.config(bg=self.rgb_to_hex(self.current_color))
 
     def on_mouse_release(self, event):
         if self.tool == "rectangular_selection" and event.xdata and event.ydata:
@@ -114,7 +134,7 @@ class NPYImageEditor:
     def on_mouse_motion(self, event):
         if self.tool == "pencil" and event.xdata and event.ydata:
             x, y = int(event.xdata), int(event.ydata)
-            self.image[y, x] = [0, 0, 0]  # Example: Draw black
+            self.image[y, x] = self.current_color
             self.update_display()
 
     def update_display(self):
@@ -132,6 +152,9 @@ class NPYImageEditor:
             self.ax.plot(rect[1], rect[0], color="red")
 
         self.canvas.draw()
+
+    def rgb_to_hex(self, rgb):
+        return "#" + "".join(f"{c:02x}" for c in rgb)
 
 if __name__ == "__main__":
     root = tk.Tk()
