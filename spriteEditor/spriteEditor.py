@@ -9,8 +9,8 @@ from matplotlib.patches import Rectangle
 from PIL import Image, ImageTk
 
 class NPYImageEditor:
-    def __init__(self, root):
-        self.root = root
+    def __init__(self, master):
+        self.root = master
         self.root.title("NPY Image Editor")
 
         self.image = None
@@ -18,6 +18,7 @@ class NPYImageEditor:
         self.current_color = [0, 0, 0]  # Default color: black
         self.mouse_pressed = False
         self.create_widgets()
+        self.tool = None  # Initialize tool attribute
         self.selected = None
         self.selection_start = None
         self.selection_end = None
@@ -151,7 +152,7 @@ class NPYImageEditor:
         self.update_display()
         
     # undo the last step
-    def undo(self, event=None):
+    def undo(self, _):
         if self.current_state_index > 0:
             # Go back one step
             self.current_state_index -= 1
@@ -163,7 +164,7 @@ class NPYImageEditor:
         else:
             print("No more steps to undo.")
 
-    def redo(self, event=None):
+    def redo(self, _):
         if self.current_state_index < len(self.state_queue) - 1:
             # Move forward one step
             self.current_state_index += 1
@@ -199,7 +200,7 @@ class NPYImageEditor:
             self.update_display()
             self.selected = np.zeros(self.image.shape[:2], dtype=bool)
             self.update_state("open_file")
-        except Exception as e:
+        except (ValueError, IOError) as e:
             messagebox.showerror("Error", f"Failed to open file: {e}")
 
     def save_selection(self):
@@ -247,7 +248,7 @@ class NPYImageEditor:
     def activate_dropper(self):
         self.tool = "dropper"
 
-    def open_color_palette(self, event):
+    def open_color_palette(self, _):
         color = askcolor(color=self.rgb_to_hex(self.current_color), title="Choose Color")
         if color[0]:
             self.current_color = [int(c) for c in color[0]]
