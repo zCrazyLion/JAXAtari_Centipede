@@ -1,3 +1,4 @@
+from tkinter import simpledialog
 import numpy as np
 import tkinter as tk
 from tkinter import filedialog
@@ -7,6 +8,8 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.patches import Rectangle
 from PIL import Image, ImageTk
+from RGBAColorChooser import RGBAColorChooser
+
 
 class NPYImageEditor:
     def __init__(self, master):
@@ -15,7 +18,9 @@ class NPYImageEditor:
 
         self.image = None
         self.zoom_level = 1
-        self.current_color = [0, 0, 0]  # Default color: black
+        self.current_color = [0, 0, 0, 255]  # Default color: black with full opacity
+        self.selected_rgba_color = self.current_color  # Store the selected RGBA color
+
         self.mouse_pressed = False
         self.create_widgets()
         self.tool = None  # Initialize tool attribute
@@ -57,7 +62,6 @@ class NPYImageEditor:
 
         self.image = None
         self.zoom_level = 1.0
-        self.current_color = [0, 0, 0]  # Default color: black
         self.mouse_pressed = False
         self.tool = None  # Initialize tool attribute
         self.selected = None
@@ -75,7 +79,7 @@ class NPYImageEditor:
         file_menu = tk.Menu(menu, tearoff=0)
         menu.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="Open", command=self.open_file)
-        file_menu.add_command(label="Save Selection", command=self.save_selection)
+        file_menu.add_command(label="Save Selection", command=lambda: self.save_selection(None))
         file_menu.add_command(label="Exit", command=self.root.quit)
 
         edit_menu = tk.Menu(menu, tearoff=0)
@@ -104,9 +108,14 @@ class NPYImageEditor:
         tk.Button(tools_frame, text="Dropper", command=self.activate_dropper).pack(side=tk.LEFT)
 
         # Current Color Indicator
-        self.color_indicator = tk.Label(tools_frame, text="", bg=self.rgb_to_hex(self.current_color), width=5, relief=tk.RAISED)
+        self.color_indicator = tk.Label(tools_frame, text="", bg=self.rgb_to_hex(self.current_color[:3]), width=5, relief=tk.RAISED)
         self.color_indicator.pack(side=tk.LEFT, padx=5)
         self.color_indicator.bind("<Button-1>", self.open_color_palette)
+        
+        # Current Alpha Indicator
+        self.alpha_indicator = tk.Label(tools_frame, text=f"a: {self.current_color[3]}",  width=5, relief=tk.RAISED)
+        self.alpha_indicator.pack(side=tk.LEFT, padx=5)
+        self.alpha_indicator.bind("<Button-1>", self.open_alpha_input)
 
         self.tool = None
 
@@ -233,8 +242,15 @@ class NPYImageEditor:
 
         try:
             self.image = np.load(file_path)
-            if len(self.image.shape) != 3 or self.image.shape[2] != 3:
-                raise ValueError("Invalid NPY file format. Expected 3D array with RGB channels.")
+            # Convert to RGBA if not already in RGBA format
+            if len(self.image.shape) == 3 and self.image.shape[2] == 3:
+                # Convert to RGBA by adding an alpha channel (255 means fully opaque)
+                print("RGB format detected. Converts to RGBA format.")
+                self.image = np.dstack([self.image, np.ones(self.image.shape[:2], dtype=np.uint8) * 255])
+
+            elif len(self.image.shape) != 3 or self.image.shape[2] != 4:
+                raise ValueError("Invalid NPY file format. Expected 3D array with 4 channels (RGBA).")
+
             self.zoom_level = 1
             self.update_display()
             self.selected = np.zeros(self.image.shape[:2], dtype=bool)
@@ -243,17 +259,23 @@ class NPYImageEditor:
             messagebox.showerror("Error", f"Failed to open file: {e}")
 
     def save_selection(self, _):
-        if self.selection_start and self.selection_end:
-            y0, x0 = self.selection_start
-            y1, x1 = self.selection_end
-            selected_region = self.image[min(y0, y1):max(y0, y1)+1, min(x0, x1):max(x0, x1)+1]
+        # get the minimal rectangle that contains all selected pixels
+        y, x = np.where(self.selected)
+        # if no pixel is selected, return
+        if len(y) == 0:
+            messagebox.showwarning("Warning", "No pixel is selected. Please select a region to be saved.")
+            return
+        y0, y1 = np.min(y), np.max(y)
+        x0, x1 = np.min(x), np.max(x)
+        
+        region_to_save = self.image[y0:y1+1, x0:x1+1]
 
-            file_path = filedialog.asksaveasfilename(defaultextension=".npy", filetypes=[("NumPy files", "*.npy")])
-            if file_path:
-                np.save(file_path, selected_region)
-                messagebox.showinfo("Saved", f"Selection saved to {file_path}")
+        file_path = filedialog.asksaveasfilename(defaultextension=".npy", filetypes=[("NumPy files", "*.npy")])
+        if file_path:
+            np.save(file_path, region_to_save)
+            messagebox.showinfo("Saved", f"Selection saved to {file_path}")
         else:
-            messagebox.showwarning("Warning", "No selection to save.")
+            messagebox.showwarning("Warning", "Invalid Path.")
             
     def select_all(self, _):
         if self.image is not None:
@@ -294,11 +316,26 @@ class NPYImageEditor:
         self.selection_mode_frame.pack_forget()  # Hide selection mode buttons
 
 
-    def open_color_palette(self, _):
-        color = askcolor(color=self.rgb_to_hex(self.current_color), title="Choose Color")
-        if color[0]:
-            self.current_color = [int(c) for c in color[0]]
-            self.color_indicator.config(bg=self.rgb_to_hex(self.current_color))
+    def open_color_palette(self, event=None):
+        # Open color chooser dialog
+        color = askcolor(color=self.rgb_to_hex(self.current_color[:3]))[0]
+        if color:
+            # Convert the selected color to RGBA format
+            r, g, b = color
+            a = self.current_color[3]  # keep the alpha value
+            self.current_color = [int(r), int(g), int(b), a]  # Update color in RGBA format
+            self.color_indicator.config(bg=self.rgb_to_hex(self.current_color))  # Update color indicator
+            
+    def open_alpha_input(self, event=None):
+        # open a dialog to input the alpha value (0~255)
+        alpha = simpledialog.askinteger("Input", "Enter an integer between 0 and 255", parent=self.root, minvalue=0, maxvalue=255)
+        if alpha is not None:
+            self.current_color[3] = alpha
+            self.alpha_indicator.config(text=f"a: {alpha}")
+            self.color_indicator.config(bg=self.rgb_to_hex(self.current_color[:3]))
+
+
+            
 
     def on_mouse_press(self, event):
         if self.image is None or event.xdata is None or event.ydata is None:
@@ -315,7 +352,7 @@ class NPYImageEditor:
             self.selection_start = (y, x)
         elif self.tool == "dropper":
             self.current_color = self.image[y, x].tolist()
-            self.color_indicator.config(bg=self.rgb_to_hex(self.current_color))
+            self.color_indicator.config(bg=self.rgba_to_hex(self.current_color))
 
     def on_mouse_release(self, event): # Added to keep track of mouse button state
         
@@ -415,8 +452,18 @@ class NPYImageEditor:
         self.canvas.draw()
 
 
-    def rgb_to_hex(self, rgb):
-        return "#" + "".join(f"{c:02x}" for c in rgb)
+    def rgba_to_hex(self, rgba):
+        # Convert rgba to floats
+        rgba = np.array(rgba) / 255
+        # Adjust RGB with respect to alpha value
+        rgb = (1 - rgba[3]) + rgba[3] * rgba[:3]
+        # Convert RGB back to 0-255 range
+        rgb = (rgb * 255).astype(int)
+        # Convert RGB to Hex format
+        return f'#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}'
+    
+    def rgb_to_hex(self, rgb): 
+        return f'#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}'
     
     def submit_selection(self, selection):
         if self.selection_mode == "new":
