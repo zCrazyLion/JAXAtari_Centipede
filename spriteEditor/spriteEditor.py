@@ -24,6 +24,8 @@ class NPYImageEditor:
         self.selection_end = None
         self.state_queue = []
         self.current_state_index = -1
+        self.default_canvas_size = (600, 400)  # Default canvas size (width, height)
+
         
         # Bind keyboard shortcuts
         self.root.bind("<Control-z>", self.undo)
@@ -31,7 +33,10 @@ class NPYImageEditor:
         self.root.bind("<Control-a>", self.select_all)
         self.root.bind("<Control-d>", self.deselect_all)
         self.root.bind("<Control-s>", self.save_selection)
+            # ctrl + scroll to zoom 
+        self.root.bind("<Control-MouseWheel>", self.on_mouse_scroll)
 
+    
 
         # State Queue UI with Scrollbar
         self.state_queue_frame = tk.Frame(self.root)
@@ -51,7 +56,7 @@ class NPYImageEditor:
         self.root.title("NPY Image Editor")
 
         self.image = None
-        self.zoom_level = 1
+        self.zoom_level = 1.0
         self.current_color = [0, 0, 0]  # Default color: black
         self.mouse_pressed = False
         self.tool = None  # Initialize tool attribute
@@ -237,7 +242,7 @@ class NPYImageEditor:
         except (ValueError, IOError) as e:
             messagebox.showerror("Error", f"Failed to open file: {e}")
 
-    def save_selection(self):
+    def save_selection(self, _):
         if self.selection_start and self.selection_end:
             y0, x0 = self.selection_start
             y1, x1 = self.selection_end
@@ -260,11 +265,11 @@ class NPYImageEditor:
             self.selected = np.zeros(self.image.shape[:2], dtype=bool)  # Deselect all pixels
             self.update_state("deselect")
 
-    def zoom_in(self, _):
+    def zoom_in(self):
         self.zoom_level *= 1.5
         self.update_display()
 
-    def zoom_out(self, _):
+    def zoom_out(self):
         self.zoom_level /= 1.5
         self.update_display()
 
@@ -331,6 +336,14 @@ class NPYImageEditor:
                 new_selection = self.magic_wand(int(event.ydata), int(event.xdata), self.image[int(event.ydata), int(event.xdata)])
                 self.submit_selection(new_selection)
         self.mouse_pressed = False
+        
+        
+        
+    def on_mouse_scroll(self, event):
+        if event.delta > 0:
+            self.zoom_in()
+        else:
+            self.zoom_out()
     
     # DFS to find all connected pixels with the same color
     def magic_wand(self, y, x, target_color):
@@ -357,16 +370,31 @@ class NPYImageEditor:
         
         
         self.update_display()
+        
+    def update_canvas_size(self):
+        if self.image is not None:
+            original_height, original_width = self.image.shape[:2]
 
+            # Calculate new dimensions based on zoom level
+            new_width = int(original_width * self.zoom_level)
+            new_height = int(original_height * self.zoom_level)
+
+            # Update canvas widget size
+            self.canvas_widget.config(width=new_width, height=new_height)
     def update_display(self):
         if self.image is None:
             return
 
         self.ax.clear()
-        
+        self.ax.axis("off")  # Hide axes for a cleaner view
+
         # Display the base image
-        zoomed_image = self.image[::int(1/self.zoom_level), ::int(1/self.zoom_level)]
-        self.ax.imshow(zoomed_image)
+        
+        # Resize the canvas to match the new image size
+        self.update_canvas_size()
+
+        self.ax.imshow(self.image)
+
         
         # Mark the current rectangular selection with a rectangle border
         if self.selection_start and self.selection_end:
