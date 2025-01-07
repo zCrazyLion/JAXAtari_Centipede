@@ -47,6 +47,20 @@ class NPYImageEditor:
         self.state_canvas.configure(yscrollcommand=self.scrollbar.set)
 
         self.image_thumbnails = []  # List to store thumbnails for each state
+        self.root = master
+        self.root.title("NPY Image Editor")
+
+        self.image = None
+        self.zoom_level = 1
+        self.current_color = [0, 0, 0]  # Default color: black
+        self.mouse_pressed = False
+        self.tool = None  # Initialize tool attribute
+        self.selected = None
+        self.selection_start = None
+        self.selection_end = None
+        self.selection_mode = "new"  # Initialize selection mode
+        self.state_queue = []
+        self.current_state_index = -1
 
     def create_widgets(self):
         # Menu
@@ -90,6 +104,19 @@ class NPYImageEditor:
         self.color_indicator.bind("<Button-1>", self.open_color_palette)
 
         self.tool = None
+
+        # Second row for Selection Mode (hidden by default)
+        self.selection_mode_frame = tk.Frame(self.root)
+        self.selection_mode_frame.pack(fill=tk.X)
+        self.selection_mode_frame.pack_forget()  # Initially hide this frame
+
+        tk.Label(self.selection_mode_frame, text="Selection Mode:").pack(side=tk.LEFT, padx=5)
+        tk.Button(self.selection_mode_frame, text="New", command=lambda: self.set_selection_mode("new")).pack(side=tk.LEFT)
+        tk.Button(self.selection_mode_frame, text="Add", command=lambda: self.set_selection_mode("add")).pack(side=tk.LEFT)
+        tk.Button(self.selection_mode_frame, text="Subtract", command=lambda: self.set_selection_mode("subtract")).pack(side=tk.LEFT)
+        tk.Button(self.selection_mode_frame, text="Intersect", command=lambda: self.set_selection_mode("intersect")).pack(side=tk.LEFT)
+    def set_selection_mode(self, mode):
+        self.selection_mode = mode
 
     def update_state(self, last_step_name=None):
 
@@ -236,15 +263,24 @@ class NPYImageEditor:
 
     def activate_pencil(self):
         self.tool = "pencil"
+        self.selection_mode_frame.pack_forget()  # Hide selection mode buttons
+
 
     def activate_magic_wand(self):
         self.tool = "magic_wand"
+        self.selection_mode_frame.pack(fill=tk.X)  # Show selection mode buttons
+
+
 
     def activate_rectangular_selection(self):
         self.tool = "rectangular_selection"
+        self.selection_mode_frame.pack(fill=tk.X)  # Show selection mode buttons
+
 
     def activate_dropper(self):
         self.tool = "dropper"
+        self.selection_mode_frame.pack_forget()  # Hide selection mode buttons
+
 
     def open_color_palette(self, _):
         color = askcolor(color=self.rgb_to_hex(self.current_color), title="Choose Color")
@@ -263,8 +299,6 @@ class NPYImageEditor:
             self.image[y, x] = self.current_color
             self.update_display()
         elif self.tool == "rectangular_selection":
-            # reset the selected region
-            self.selected = np.zeros(self.image.shape[:2], dtype=bool)
             # mark the starting point of the selection
             self.selection_start = (y, x)
         elif self.tool == "dropper":
@@ -279,25 +313,30 @@ class NPYImageEditor:
                 # mark the rectangle between selection_start and selection_end as selected
                 y0, x0 = self.selection_start
                 y1, x1 = self.selection_end
-                self.selected[y0:y1+1, x0:x1+1] = True
+                selected_pixels = np.zeros(self.image.shape[:2], dtype=bool)
+                selected_pixels[y0:y1+1, x0:x1+1] = True
+                self.submit_selection(selected_pixels)
                 self.update_state("rectangular_selection")
                 
             if self.tool == "pencil":
                 self.update_state("pencil")
             if self.tool == "magic_wand":
-                self.apply_magic_wand(int(event.ydata), int(event.xdata), self.image[int(event.ydata), int(event.xdata)])
+                new_selection = self.magic_wand(int(event.ydata), int(event.xdata), self.image[int(event.ydata), int(event.xdata)])
+                self.submit_selection(new_selection)
         self.mouse_pressed = False
     
     # DFS to find all connected pixels with the same color
-    def apply_magic_wand(self, y, x, target_color):
+    def magic_wand(self, y, x, target_color):
         stack = [(y, x)]
+        new_selection = np.zeros(self.image.shape[:2], dtype=bool)
         while stack:
             y, x = stack.pop()
             if not (0 <= y < self.image.shape[0] and 0 <= x < self.image.shape[1]):
                 continue
-            if not self.selected[y, x] and np.all(self.image[y, x] == target_color):
-                self.selected[y, x] = True
+            if not new_selection[y, x] and np.all(self.image[y, x] == target_color):
+                new_selection[y, x] = True
                 stack.extend([(y-1, x), (y+1, x), (y, x-1), (y, x+1)])
+        return new_selection
 
     def on_mouse_motion(self, event):
         if event.xdata and event.ydata:
@@ -343,7 +382,17 @@ class NPYImageEditor:
 
     def rgb_to_hex(self, rgb):
         return "#" + "".join(f"{c:02x}" for c in rgb)
-
+    
+    def submit_selection(self, selection):
+        if self.selection_mode == "new":
+            self.selected = selection
+        elif self.selection_mode == "add":
+            self.selected = np.logical_or(self.selected, selection)
+        elif self.selection_mode == "subtract":
+            self.selected = np.logical_and(self.selected, np.logical_not(selection))
+        elif self.selection_mode == "intersect":
+            self.selected = np.logical_and(self.selected, selection)
+            
 if __name__ == "__main__":
     root = tk.Tk()
     app = NPYImageEditor(root)
