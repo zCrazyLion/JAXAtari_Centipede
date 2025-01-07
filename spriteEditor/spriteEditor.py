@@ -226,8 +226,6 @@ class NPYImageEditor:
             self.selected = np.zeros(self.image.shape[:2], dtype=bool)  # Deselect all pixels
             self.update_state("deselect")
 
-
-
     def zoom_in(self):
         self.zoom_level *= 1.5
         self.update_display()
@@ -286,7 +284,20 @@ class NPYImageEditor:
                 
             if self.tool == "pencil":
                 self.update_state("pencil")
+            if self.tool == "magic_wand":
+                self.apply_magic_wand(int(event.ydata), int(event.xdata), self.image[int(event.ydata), int(event.xdata)])
         self.mouse_pressed = False
+    
+    # DFS to find all connected pixels with the same color
+    def apply_magic_wand(self, y, x, target_color):
+        stack = [(y, x)]
+        while stack:
+            y, x = stack.pop()
+            if not (0 <= y < self.image.shape[0] and 0 <= x < self.image.shape[1]):
+                continue
+            if not self.selected[y, x] and np.all(self.image[y, x] == target_color):
+                self.selected[y, x] = True
+                stack.extend([(y-1, x), (y+1, x), (y, x-1), (y, x+1)])
 
     def on_mouse_motion(self, event):
         if event.xdata and event.ydata:
