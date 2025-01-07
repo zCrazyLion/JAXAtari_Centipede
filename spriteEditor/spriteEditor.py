@@ -5,8 +5,8 @@ from tkinter import messagebox
 from tkinter.colorchooser import askcolor
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from skimage.draw import rectangle
 from matplotlib.patches import Rectangle
+from PIL import Image, ImageTk
 
 class NPYImageEditor:
     def __init__(self, root):
@@ -16,11 +16,23 @@ class NPYImageEditor:
         self.image = None
         self.zoom_level = 1
         self.current_color = [0, 0, 0]  # Default color: black
-        self.mouse_pressed = False # Added to keep track of mouse button state
+        self.mouse_pressed = False
         self.create_widgets()
         self.selected = None
         self.selection_start = None
         self.selection_end = None
+        self.stateQueue = []
+        self.currentStateIndex = -1
+
+        # State Queue UI
+        self.state_queue_frame = tk.Frame(self.root)
+        self.state_queue_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5)
+        
+        # Add a canvas to align thumbnail and text
+        self.state_canvas = tk.Canvas(self.state_queue_frame, width=200, height=300)
+        self.state_canvas.pack(side=tk.LEFT, padx=5)
+
+        self.image_thumbnails = []  # List to store thumbnails for each state
 
     def create_widgets(self):
         # Menu
@@ -32,6 +44,11 @@ class NPYImageEditor:
         file_menu.add_command(label="Open", command=self.open_file)
         file_menu.add_command(label="Save Selection", command=self.save_selection)
         file_menu.add_command(label="Exit", command=self.root.quit)
+
+        edit_menu = tk.Menu(menu, tearoff=0)
+        menu.add_cascade(label="Edit", menu=edit_menu)
+        edit_menu.add_command(label="Undo", command=self.undo)
+        edit_menu.add_command(label="Redo", command=self.redo)
 
         # Canvas
         self.figure, self.ax = plt.subplots()
@@ -60,6 +77,88 @@ class NPYImageEditor:
 
         self.tool = None
 
+    def update_state(self, last_step_name=None):
+        state = self.get_current_state(last_step_name)
+        if self.currentStateIndex < len(self.stateQueue) - 1:
+            self.stateQueue = self.stateQueue[:self.currentStateIndex + 1]
+        self.stateQueue.append(state)
+        self.currentStateIndex = len(self.stateQueue) - 1
+        self.update_display()
+        self.update_state_queue_display()
+
+    def update_state_queue_display(self):
+        self.state_canvas.delete("all")  # Clear the canvas before drawing new items
+
+        # Clear the image_thumbnails list before creating new ones
+        self.image_thumbnails = []
+
+        y_position = 10  # Start from top position for the first state
+
+        for idx, state in enumerate(self.stateQueue):
+            image_thumb = self.create_thumbnail(state["image"])
+            self.image_thumbnails.append(image_thumb)  # Store the thumbnail
+
+            # Create an image for the thumbnail on the left
+            self.state_canvas.create_image(10, y_position, anchor=tk.NW, image=image_thumb)
+
+            # Add text to the right of the image
+            self.state_canvas.create_text(60, y_position + 10, anchor=tk.NW, text=state["last_step_name"])
+
+            y_position += 60  # Move the next state a bit lower on the canvas
+
+    def create_thumbnail(self, image):
+        # Resize the image to create a thumbnail (e.g., 50x50 pixels)
+        img_pil = Image.fromarray(image)  # Convert NumPy array to a PIL Image
+        img_resized = img_pil.resize((50, 50), Image.ANTIALIAS)  # Resize using interpolation
+
+        # Create a Tkinter PhotoImage from the resized PIL image
+        return ImageTk.PhotoImage(img_resized)
+
+    # Other methods remain unchanged...
+  
+        
+        # Get the current state of the editor
+    def get_current_state(self, last_step_name=None):
+        return {
+            # clone the reference type
+            "image": self.image.copy() if self.image is not None else None,
+            "zoom_level": self.zoom_level,
+            "current_color": self.current_color,
+            "selected": self.selected,
+            "last_step_name": self.tool if last_step_name is None else last_step_name
+        }
+    # load the state to the editor
+    def load_state(self, state):
+        self.image = state["image"]
+        self.zoom_level = state["zoom_level"]
+        self.current_color = state["current_color"]
+        self.selected = state["selected"]
+        self.update_display()
+        
+    # undo the last step
+    def undo(self):
+        if self.currentStateIndex > 0:
+            self.currentStateIndex -= 1
+            self.load_state(self.stateQueue[self.currentStateIndex])
+        else:
+            print("No more steps to undo.")
+    def redo(self):
+        if self.currentStateIndex < len(self.stateQueue) - 1:
+            self.currentStateIndex += 1
+            self.load_state(self.stateQueue[self.currentStateIndex])
+        else:
+            print("No more steps to redo.")
+            
+            
+        # Create a thumbnail of the image
+    def create_thumbnail(self, image):
+        # Resize the image to create a thumbnail (e.g., 50x50 pixels)
+        img_pil = Image.fromarray(image)  # Convert NumPy array to a PIL Image
+        img_resized = img_pil.resize((50, 50))  # Resize using interpolation
+
+        # Create a Tkinter PhotoImage from the resized PIL image
+        return ImageTk.PhotoImage(img_resized)
+        
     def open_file(self):
         file_path = filedialog.askopenfilename(filetypes=[("NumPy files", "*.npy")])
         if not file_path:
@@ -71,8 +170,8 @@ class NPYImageEditor:
                 raise ValueError("Invalid NPY file format. Expected 3D array with RGB channels.")
             self.zoom_level = 1
             self.update_display()
-            # make "selected" a boolean array of the same length and width as the image, but with all values set to False
             self.selected = np.zeros(self.image.shape[:2], dtype=bool)
+            self.update_state("open_file")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open file: {e}")
 
@@ -88,6 +187,7 @@ class NPYImageEditor:
                 messagebox.showinfo("Saved", f"Selection saved to {file_path}")
         else:
             messagebox.showwarning("Warning", "No selection to save.")
+
 
     def zoom_in(self):
         self.zoom_level *= 1.5
@@ -142,9 +242,10 @@ class NPYImageEditor:
                 y0, x0 = self.selection_start
                 y1, x1 = self.selection_end
                 self.selected[y0:y1+1, x0:x1+1] = True
-        
-            self.update_display() # conclude a rectangular selection
+                self.update_state("rectangular_selection")
                 
+            if self.tool == "pencil":
+                self.update_state("pencil")
         self.mouse_pressed = False
 
     def on_mouse_motion(self, event):
