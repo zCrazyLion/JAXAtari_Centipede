@@ -372,6 +372,8 @@ class NPYImageEditor:
             if self.tool == "magic_wand":
                 new_selection = self.magic_wand(int(event.ydata), int(event.xdata), self.image[int(event.ydata), int(event.xdata)])
                 self.submit_selection(new_selection)
+                self.update_state("magic_wand")
+
         self.mouse_pressed = False
         
         
