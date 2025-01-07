@@ -115,8 +115,15 @@ class NPYImageEditor:
         tk.Button(self.selection_mode_frame, text="Add", command=lambda: self.set_selection_mode("add")).pack(side=tk.LEFT)
         tk.Button(self.selection_mode_frame, text="Subtract", command=lambda: self.set_selection_mode("subtract")).pack(side=tk.LEFT)
         tk.Button(self.selection_mode_frame, text="Intersect", command=lambda: self.set_selection_mode("intersect")).pack(side=tk.LEFT)
+        tk.Button(self.selection_mode_frame, text="Fill Selected", command=lambda: self.fill_selected()).pack(side=tk.LEFT)
     def set_selection_mode(self, mode):
         self.selection_mode = mode
+
+    def fill_selected(self):
+        if self.selected is not None and self.image is not None:
+            self.image[self.selected] = self.current_color
+            self.update_display()
+            self.update_state("fill_selected")
 
     def update_state(self, last_step_name=None):
 
@@ -226,7 +233,7 @@ class NPYImageEditor:
             self.zoom_level = 1
             self.update_display()
             self.selected = np.zeros(self.image.shape[:2], dtype=bool)
-            self.update_state("open_file")
+            self.update_state("open file")
         except (ValueError, IOError) as e:
             messagebox.showerror("Error", f"Failed to open file: {e}")
 
@@ -243,21 +250,21 @@ class NPYImageEditor:
         else:
             messagebox.showwarning("Warning", "No selection to save.")
             
-    def select_all(self):
+    def select_all(self, _):
         if self.image is not None:
             self.selected = np.ones(self.image.shape[:2], dtype=bool)  # Select all pixels
             self.update_state("select all")
 
-    def deselect_all(self):
+    def deselect_all(self, _):
         if self.image is not None:
             self.selected = np.zeros(self.image.shape[:2], dtype=bool)  # Deselect all pixels
             self.update_state("deselect")
 
-    def zoom_in(self):
+    def zoom_in(self, _):
         self.zoom_level *= 1.5
         self.update_display()
 
-    def zoom_out(self):
+    def zoom_out(self, _):
         self.zoom_level /= 1.5
         self.update_display()
 
