@@ -21,8 +21,16 @@ class NPYImageEditor:
         self.selected = None
         self.selection_start = None
         self.selection_end = None
-        self.stateQueue = []
-        self.currentStateIndex = -1
+        self.state_queue = []
+        self.current_state_index = -1
+        
+        # Bind keyboard shortcuts
+        self.root.bind("<Control-z>", self.undo)
+        self.root.bind("<Control-y>", self.redo)
+        self.root.bind("<Control-a>", self.select_all)
+        self.root.bind("<Control-d>", self.deselect_all)
+        self.root.bind("<Control-s>", self.save_selection)
+
 
         # State Queue UI with Scrollbar
         self.state_queue_frame = tk.Frame(self.root)
@@ -84,10 +92,10 @@ class NPYImageEditor:
 
     def update_state(self, last_step_name=None):
         state = self.get_current_state(last_step_name)
-        if self.currentStateIndex < len(self.stateQueue) - 1:
-            self.stateQueue = self.stateQueue[:self.currentStateIndex + 1]
-        self.stateQueue.append(state)
-        self.currentStateIndex = len(self.stateQueue) - 1
+        if self.current_state_index < len(self.state_queue) - 1:
+            self.state_queue = self.state_queue[:self.current_state_index + 1]
+        self.state_queue.append(state)
+        self.current_state_index = len(self.state_queue) - 1
         self.update_display()
         self.update_state_queue_display()
 
@@ -99,7 +107,7 @@ class NPYImageEditor:
 
         y_position = 10  # Start from top position for the first state
 
-        for idx, state in enumerate(self.stateQueue):
+        for idx, state in enumerate(self.state_queue):
             image_thumb = self.create_thumbnail(state["image"])
             self.image_thumbnails.append(image_thumb)  # Store the thumbnail
 
@@ -107,7 +115,7 @@ class NPYImageEditor:
             self.state_canvas.create_image(10, y_position, anchor=tk.NW, image=image_thumb)
 
             # Set the text color (grey for states after the current state)
-            text_color = "grey" if idx > self.currentStateIndex else "black"
+            text_color = "grey" if idx > self.current_state_index else "black"
 
             # Add text to the right of the image
             self.state_canvas.create_text(60, y_position + 10, anchor=tk.NW, text=state["last_step_name"], fill=text_color)
@@ -117,24 +125,13 @@ class NPYImageEditor:
         # Automatically scroll to the bottom after updating
         self.state_canvas.config(scrollregion=self.state_canvas.bbox("all"))
         self.state_canvas.yview_moveto(1)  # Scroll to the bottom
-
-
-    def create_thumbnail(self, image):
-        # Resize the image to create a thumbnail (e.g., 50x50 pixels)
-        img_pil = Image.fromarray(image)  # Convert NumPy array to a PIL Image
-        img_resized = img_pil.resize((50, 50), Image.ANTIALIAS)  # Resize using interpolation
-
-        # Create a Tkinter PhotoImage from the resized PIL image
-        return ImageTk.PhotoImage(img_resized)
-
-    # Other methods remain unchanged...
   
         
         # Get the current state of the editor
     def get_current_state(self, last_step_name=None):
         return {
             # clone the reference type
-            "image": self.image.copy() if self.image is not None else None,
+            "image": self.image.copy(),
             "zoom_level": self.zoom_level,
             "current_color": self.current_color,
             "selected": self.selected,
@@ -149,21 +146,30 @@ class NPYImageEditor:
         self.update_display()
         
     # undo the last step
-    def undo(self):
-        if self.currentStateIndex > 0:
-            self.currentStateIndex -= 1
-            self.load_state(self.stateQueue[self.currentStateIndex])
+    def undo(self, event=None):
+        if self.current_state_index > 0:
+            # Go back one step
+            self.current_state_index -= 1
+            state_to_load = self.state_queue[self.current_state_index]
+            
+            # Load the previous state and update the state queue
+            self.load_state(state_to_load)
             self.update_state_queue_display()
         else:
             print("No more steps to undo.")
-    def redo(self):
-        if self.currentStateIndex < len(self.stateQueue) - 1:
-            self.currentStateIndex += 1
-            self.load_state(self.stateQueue[self.currentStateIndex])
-            self.update_state_queue_display()
 
+    def redo(self, event=None):
+        if self.current_state_index < len(self.state_queue) - 1:
+            # Move forward one step
+            self.current_state_index += 1
+            state_to_load = self.state_queue[self.current_state_index]
+            
+            # Load the next state and update the state queue
+            self.load_state(state_to_load)
+            self.update_state_queue_display()
         else:
             print("No more steps to redo.")
+
             
             
         # Create a thumbnail of the image
@@ -203,6 +209,17 @@ class NPYImageEditor:
                 messagebox.showinfo("Saved", f"Selection saved to {file_path}")
         else:
             messagebox.showwarning("Warning", "No selection to save.")
+            
+    def select_all(self):
+        if self.image is not None:
+            self.selected = np.ones(self.image.shape[:2], dtype=bool)  # Select all pixels
+            self.update_state("select all")
+
+    def deselect_all(self):
+        if self.image is not None:
+            self.selected = np.zeros(self.image.shape[:2], dtype=bool)  # Deselect all pixels
+            self.update_state("deselect")
+
 
 
     def zoom_in(self):
