@@ -91,11 +91,16 @@ class NPYImageEditor:
         self.tool = None
 
     def update_state(self, last_step_name=None):
-        state = self.get_current_state(last_step_name)
+
+        new_state = self.get_current_state(last_step_name)
+
         if self.current_state_index < len(self.state_queue) - 1:
-            self.state_queue = self.state_queue[:self.current_state_index + 1]
-        self.state_queue.append(state)
+            self.state_queue = self.state_queue[0:self.current_state_index + 1]
+
+        self.state_queue.append(new_state)
+
         self.current_state_index = len(self.state_queue) - 1
+
         self.update_display()
         self.update_state_queue_display()
 
@@ -133,16 +138,16 @@ class NPYImageEditor:
             # clone the reference type
             "image": self.image.copy(),
             "zoom_level": self.zoom_level,
-            "current_color": self.current_color,
-            "selected": self.selected,
+            "current_color": self.current_color.copy(),
+            "selected": self.selected.copy(),
             "last_step_name": self.tool if last_step_name is None else last_step_name
         }
     # load the state to the editor
     def load_state(self, state):
-        self.image = state["image"]
+        self.image = state["image"].copy()
         self.zoom_level = state["zoom_level"]
-        self.current_color = state["current_color"]
-        self.selected = state["selected"]
+        self.current_color = state["current_color"].copy()
+        self.selected = state["selected"].copy()
         self.update_display()
         
     # undo the last step
@@ -268,6 +273,7 @@ class NPYImageEditor:
             self.color_indicator.config(bg=self.rgb_to_hex(self.current_color))
 
     def on_mouse_release(self, event): # Added to keep track of mouse button state
+        
         if self.mouse_pressed and event.xdata and event.ydata:
             if self.tool == "rectangular_selection":
                 self.selection_end = (int(event.ydata), int(event.xdata))
