@@ -1064,9 +1064,6 @@ class Game:
             state.successful_rescues
         )
 
-        # update score after collision
-        #new_score = new_score + collision_score
-
         # perform all live loosing checks TODO: add other checks as needed
         lose_life = jnp.any(jnp.array([oxygen_depleted, player_collision, lose_life_surfacing]))
 
@@ -1134,6 +1131,24 @@ class Game:
             lose_life,
             lambda _: reset_state,
             lambda _: intermediate_state,
+            operand=None
+        )
+
+        # Check for additional life every 10,000 points
+        additional_lives = (final_state.score // 10000) - (state.score // 10000)
+        new_lives = jnp.minimum(final_state.lives + additional_lives, 6)
+
+        # Update the final state with new lives
+        final_state = final_state._replace(lives=new_lives)
+
+        # Check if the game is over
+        game_over = final_state.lives <= -1
+
+        # Handle game over state
+        final_state = jax.lax.cond(
+            game_over,
+            lambda _: self.reset()._replace(score=final_state.score, lives=-1),
+            lambda _: final_state,
             operand=None
         )
 
