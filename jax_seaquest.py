@@ -92,6 +92,7 @@ class State(NamedTuple):
     player_missile_position: chex.Array  # (1, 3) array for player missile (x, y, direction)
     step_counter: chex.Array
     just_surfaced: chex.Array  # Flag for tracking actual surfacing moment
+    successful_rescues: chex.Array # Number of times the player has surfaced with all six divers
 
 
 class CarryState(NamedTuple):
@@ -161,7 +162,8 @@ def check_missile_collisions(
         missile_pos: chex.Array,
         shark_positions: chex.Array,
         sub_positions: chex.Array,
-        score: chex.Array
+        score: chex.Array,
+        successful_rescues: chex.Array
 ) -> tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
     """Check for collisions between player missile and enemies"""
 
@@ -204,11 +206,11 @@ def check_missile_collisions(
             carry_state.sub_pos[enemy_idx]
         )
 
-        # Update score - sharks worth 20, subs worth 50
+        # Update score
         score_increase = jnp.where(
             shark_collision,
-            20,
-            jnp.where(sub_collision, 50, 0)
+            calculate_kill_points(successful_rescues),
+            jnp.where(sub_collision, calculate_kill_points(successful_rescues), 0)
         )
 
         # Remove missile if it hit anything
@@ -234,7 +236,7 @@ def check_missile_collisions(
     )
 
 
-def check_player_collision(player_x, player_y, submarine_list, shark_list, enemy_projectile_list) -> chex.Array:
+def check_player_collision(player_x, player_y, submarine_list, shark_list, enemy_projectile_list, score, successful_rescues) ->  Tuple[chex.Array, chex.Array]:
     # check if the player has collided with any of the three given lists
     # the player is a 16x11 rectangle
     # the submarine is a 8x11 rectangle
@@ -271,7 +273,15 @@ def check_player_collision(player_x, player_y, submarine_list, shark_list, enemy
         )
     )
 
-    return jnp.any(jnp.array([submarine_collisions, shark_collisions, missile_collisions]))
+    # Calculate points for collisions.
+    # When colliding with a shark or submarine the player gains points similar to killing the object
+    collision_points = jnp.where(
+        shark_collisions,
+        calculate_kill_points(successful_rescues),
+        jnp.where(submarine_collisions, calculate_kill_points(successful_rescues), 0)
+    )
+
+    return jnp.any(jnp.array([submarine_collisions, shark_collisions, missile_collisions])), collision_points
 
 
 def initialize_spawn_state() -> SpawnState:
@@ -945,6 +955,14 @@ def player_step(state: State, action: chex.Array) -> tuple[chex.Array, chex.Arra
 
     return player_x, player_y, player_direction
 
+def calculate_kill_points(successful_rescues: chex.Array) -> chex.Array:
+    """Calculate the points awarded for killing a shark or submarine. Sharks and submarines are worth 20 points.
+    The points are increased by 10 for each successful rescue with a maximum of 90."""
+    base_points = 20
+    max_points = 90
+    additional_points = 10 * successful_rescues
+    return jnp.minimum(base_points + additional_points, max_points)
+
 class Game:
     def __init__(self, frameskip: int = 1):
         self.frameskip = frameskip
@@ -969,7 +987,8 @@ class Game:
             surface_sub_position=jnp.zeros((MAX_SURFACE_SUBS, 3)),  # 1 surface sub
             player_missile_position=jnp.zeros(3),  # x,y,direction
             step_counter=jnp.array(0),
-            just_surfaced=jnp.array(-1)
+            just_surfaced=jnp.array(-1),
+            successful_rescues=jnp.array(0)
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -1005,7 +1024,8 @@ class Game:
             player_missile_position,
             state.shark_positions,
             state.sub_positions,
-            state.score
+            state.score,
+            state.successful_rescues
         )
 
         # perform all necessary spawn steps
@@ -1034,7 +1054,18 @@ class Game:
         )
 
         # check if the player has collided with any of the enemies
-        player_collision = check_player_collision(player_x, player_y, new_sub_positions, new_shark_positions, state.enemy_missile_positions)
+        player_collision, collision_points = check_player_collision(
+            player_x,
+            player_y,
+            new_sub_positions,
+            new_shark_positions,
+            state.enemy_missile_positions,
+            new_score,
+            state.successful_rescues
+        )
+
+        # update score after collision
+        #new_score = new_score + collision_score
 
         # perform all live loosing checks TODO: add other checks as needed
         lose_life = jnp.any(jnp.array([oxygen_depleted, player_collision, lose_life_surfacing]))
@@ -1043,15 +1074,30 @@ class Game:
         # if the player has lost a life, reset everything except lives, score and collected divers
         reset_state = self.reset()._replace(
             lives=state.lives - 1,
-            score=state.score,
-            divers_collected=state.divers_collected - 1
+            score=state.score + collision_points,
+            divers_collected=state.divers_collected - 1,
+            successful_rescues=state.successful_rescues
         )
 
-        # State for scoring all divers
-        BONUS_POINTS = 1000  # 1000 points bonus in the original game
+        # Calculate points for rescuing divers. Each diver is worth 50 points.
+        # Each successful rescue adds 50 points with a maximum of 1000 points each.
+        base_points_per_diver = 50
+        max_points_per_diver = 1000
+        additional_points_per_rescue = 50 * state.successful_rescues
+        points_per_diver = jnp.minimum(base_points_per_diver + additional_points_per_rescue, max_points_per_diver)
+        total_diver_points = points_per_diver * state.divers_collected
+
+        # Calculate bonus points for remaining oxygen
+        oxygen_bonus = state.oxygen * 20
+
+        # Calculate total points for successful rescue
+        total_rescue_points = total_diver_points + oxygen_bonus
+
+        # Create the scoring state
         scoring_state = self.reset()._replace(
             lives=state.lives,
-            score=state.score + BONUS_POINTS
+            score=state.score + total_rescue_points,
+            successful_rescues = state.successful_rescues + 1
         )
 
         # Create the normal returned state
@@ -1071,7 +1117,8 @@ class Game:
             surface_sub_position=jnp.zeros((MAX_SURFACE_SUBS, 3)),
             player_missile_position=player_missile_position,
             step_counter=state.step_counter + 1,
-            just_surfaced=new_just_surfaced
+            just_surfaced=new_just_surfaced,
+            successful_rescues=state.successful_rescues
         )
 
         # First handle surfacing with all divers (scoring)
