@@ -24,13 +24,18 @@ class NPYImageEditor:
         self.stateQueue = []
         self.currentStateIndex = -1
 
-        # State Queue UI
+        # State Queue UI with Scrollbar
         self.state_queue_frame = tk.Frame(self.root)
         self.state_queue_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5)
-        
-        # Add a canvas to align thumbnail and text
+
+        # Add a canvas for the state queue with an associated scrollbar
         self.state_canvas = tk.Canvas(self.state_queue_frame, width=200, height=300)
-        self.state_canvas.pack(side=tk.LEFT, padx=5)
+        self.state_canvas.pack(side=tk.LEFT, padx=5, fill=tk.Y)
+
+        self.scrollbar = tk.Scrollbar(self.state_queue_frame, orient=tk.VERTICAL, command=self.state_canvas.yview)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.state_canvas.configure(yscrollcommand=self.scrollbar.set)
 
         self.image_thumbnails = []  # List to store thumbnails for each state
 
@@ -101,10 +106,18 @@ class NPYImageEditor:
             # Create an image for the thumbnail on the left
             self.state_canvas.create_image(10, y_position, anchor=tk.NW, image=image_thumb)
 
+            # Set the text color (grey for states after the current state)
+            text_color = "grey" if idx > self.currentStateIndex else "black"
+
             # Add text to the right of the image
-            self.state_canvas.create_text(60, y_position + 10, anchor=tk.NW, text=state["last_step_name"])
+            self.state_canvas.create_text(60, y_position + 10, anchor=tk.NW, text=state["last_step_name"], fill=text_color)
 
             y_position += 60  # Move the next state a bit lower on the canvas
+
+        # Automatically scroll to the bottom after updating
+        self.state_canvas.config(scrollregion=self.state_canvas.bbox("all"))
+        self.state_canvas.yview_moveto(1)  # Scroll to the bottom
+
 
     def create_thumbnail(self, image):
         # Resize the image to create a thumbnail (e.g., 50x50 pixels)
@@ -140,12 +153,15 @@ class NPYImageEditor:
         if self.currentStateIndex > 0:
             self.currentStateIndex -= 1
             self.load_state(self.stateQueue[self.currentStateIndex])
+            self.update_state_queue_display()
         else:
             print("No more steps to undo.")
     def redo(self):
         if self.currentStateIndex < len(self.stateQueue) - 1:
             self.currentStateIndex += 1
             self.load_state(self.stateQueue[self.currentStateIndex])
+            self.update_state_queue_display()
+
         else:
             print("No more steps to redo.")
             
