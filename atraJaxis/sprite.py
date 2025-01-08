@@ -12,23 +12,24 @@ class renderMode(Enum):
 # sprites are defined as a sequence of frames, where each frame is a np array of pixels.
 class sprite:
     def __init__(self, frames, render_mode):
-        self.frames = frames # frames format: [(pixels: np.array, duration: int), ...]
+        self.key_frames = frames # key_frames format: [(pixels: np.array, duration: int), ...]
         self.render_mode = render_mode # render_mode: renderMode enum
-        self.current_frame = 0
+        self.current_frame_idx = 0
         self.finished = False
         # compute frame sequence
-        self.frame_sequence = [] # frame_sequence format: frame_sequence[i] is the i-th frame
+        self.frames = [] # frames format: frames[i] is the i-th frame
         for i in range(len(frames)):
             for _ in range(frames[i][1]):
-                self.frame_sequence.append(frames[i][0])
+                self.frames.append(frames[i][0])
+        self.total_length = len(self.frames)
     def update(self):
         if self.render_mode == renderMode.LOOP:
-            self.current_frame = (self.current_frame + 1) % len(self.frames)
+            self.current_frame_idx = (self.current_frame_idx + 1) % len(self.frames)
         elif self.render_mode == renderMode.ONCE:
-            self.current_frame += 1
-            if self.current_frame >= len(self.frames):
+            self.current_frame_idx += 1
+            if self.current_frame_idx >= len(self.key_frames):
                 self.finished = True
-                self.current_frame = len(self.frames) - 1
+                self.current_frame_idx = len(self.key_frames) - 1
         else:
             # exception: invalid render mode
             raise ValueError("Invalid render mode. The render_mode must be a renderMode enum.")
@@ -36,7 +37,8 @@ class sprite:
     def get_current_frame(self):
         if(self.finished):
             raise ValueError("The sprite has finished playing.")
-        original =  self.frame_sequence[self.current_frame]
+        original =  self.frames[self.current_frame_idx]
         # transpose x and y to match the format of Pygame
         return original.transpose(1, 0, 2)
-    
+    def get_current_frame_idx(self):
+        return self.current_frame_idx

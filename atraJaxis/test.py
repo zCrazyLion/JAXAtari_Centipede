@@ -18,8 +18,7 @@ windows_width = 100
 windows_height = 100
 
 canvas1 = canvas(windows_width, windows_height)
-
-canvas1.addLayer(layer('test_layer', windows_width, windows_height))
+canvas1.addLayer(layer('player_sub', windows_width, windows_height))
 canvas1.layers[0].addGameObject(sub)
 
 scaling_factor = 3
@@ -30,14 +29,18 @@ win = pygame.display.set_mode((windows_height*scaling_factor, windows_height*sca
 clock = pygame.time.Clock()
 # main loop
 running = True
+
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-    canvas1.update()
     grid = canvas1.render()
+
+    
+    canvas1.update()
+    
     frame_surface = pygame.surfarray.make_surface(grid)
     frame_surface = pygame.transform.scale(frame_surface, (windows_width*scaling_factor, windows_height*scaling_factor))
     win.blit(frame_surface, (0, 0))
     pygame.display.flip()
-    clock.tick(60)  # Limit to 60 FPS
+    clock.tick(3)  # Limit to 60 FPS

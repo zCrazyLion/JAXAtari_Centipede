@@ -1,4 +1,4 @@
-
+DEBUG = True
 class gameObject:
     def __init__(self, x, y, sprite):
         self.x = x
@@ -21,6 +21,9 @@ class gameObject:
     def render(self, grid):
         # put the sprite on the layer on the position (x, y)
         frame = self.sprite.get_current_frame()
+        idx = self.sprite.get_current_frame_idx()
+        if DEBUG:
+            print("current frame index: ", idx)
         for i in range(frame.shape[0]):
             for j in range(frame.shape[1]):
                 grid[self.y + i][self.x + j] = frame[i][j]
