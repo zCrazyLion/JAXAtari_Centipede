@@ -352,7 +352,8 @@ class NPYImageEditor:
         elif self.tool == "dropper":
             self.current_color = self.image[y, x].tolist()
             self.color_indicator.config(bg=self.rgba_to_hex(self.current_color))
-
+            self.alpha_indicator.config(text=f"a: {self.current_color[3]}")
+            
     def on_mouse_release(self, event): # Added to keep track of mouse button state
         
         if self.mouse_pressed and event.xdata and event.ydata:
