@@ -36,4 +36,7 @@ class sprite:
     def get_current_frame(self):
         if(self.finished):
             raise ValueError("The sprite has finished playing.")
-        return self.frame_sequence[self.current_frame]
+        original =  self.frame_sequence[self.current_frame]
+        # transpose x and y to match the format of Pygame
+        return original.transpose(1, 0, 2)
+    
