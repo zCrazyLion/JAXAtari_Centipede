@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.patches import Rectangle
 from PIL import Image, ImageTk
-from RGBAColorChooser import RGBAColorChooser
 
 
 class NPYImageEditor:
