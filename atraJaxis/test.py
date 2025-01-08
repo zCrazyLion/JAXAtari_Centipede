@@ -1,0 +1,37 @@
+import spriteLoader
+from sprite import renderMode
+from canvas import canvas
+from layer import layer
+from gameObject import gameObject
+import pygame
+
+sl = spriteLoader.spriteLoader()
+sl.loadFrame('./atraJaxis/test_frames/1.npy', name='sub1')
+sl.loadFrame('./atraJaxis/test_frames/2.npy', name='sub2')
+sl.loadFrame('./atraJaxis/test_frames/3.npy', name='sub3')
+
+sl.loadSprite('player_sub', [('sub1', 4), ('sub2', 4), ('sub3', 4)], renderMode.LOOP)
+
+sub = gameObject(0, 0, sl.getSprite('player_sub'))
+
+canvas1 = canvas(600, 400)
+
+canvas1.addLayer(layer('test_layer', 600, 400))
+canvas1.layers[0].addGameObject(sub)
+
+# make a pygame window 600 x 400 pixels
+pygame.init()
+screen = pygame.display.set_mode((600, 400))
+clock = pygame.time.Clock()
+# main loop
+running = True
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+    canvas1.update()
+    grid = canvas1.render()
+    frame_surface = pygame.surfarray.make_surface(grid)
+    screen.blit(frame_surface, (0, 0))
+    pygame.display.flip()
+    clock.tick(60)  # Limit to 60 FPS

@@ -7,7 +7,7 @@ import os
 ale = ale_py.ALEInterface()
 
 # Set the path to your ROM file
-rom_path = "./seaquest.bin"
+rom_path = "./testRun/seaquest.bin"
 ale.loadROM(rom_path)
 
 # Create a directory for screenshots (stored as NumPy arrays)

@@ -11,9 +11,8 @@ class spriteLoader:
         Loads a frame from a file and stores it in the sprite loader.
 
         Parameters:
-            name (str): The name of the frame.
             fileName (str): The file name of the frame image.
-
+            name (str): Optional: The name of the frame.
         Returns:
             None
         """

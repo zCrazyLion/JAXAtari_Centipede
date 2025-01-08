@@ -45,7 +45,7 @@ class layer:
             
     
     def render(self):
-        grid = np.zeros((self.height, self.width))
+        grid = np.zeros((self.height, self.width, 4))
         for gameObject in self.gameObjects:
             gameObject.render(grid)
         return grid
