@@ -48,14 +48,13 @@ class State(NamedTuple):
     player_vel_y: chex.Array
     player_score: chex.Array
     player_lives: chex.Array
-    enemy_x: chex.Array
-    enemy_y: chex.Array
     fruits: chex.Array
     current_level: chex.Array
     is_jumping: chex.Array
     is_climbing: chex.Array
     step_counter: chex.Array
-    apples: chex.Array
+    falling_coco_x: chex.Array
+    falling_coco_y: chex.Array
 
 
 def get_human_action() -> chex.Array:
@@ -142,45 +141,6 @@ def player_step(
     return x, y, vel_x, vel_y
 
 
-def enemy_step(state: State) -> Tuple[chex.Array, chex.Array]:
-    # Simple enemy movement: move towards the player
-    enemy_x, enemy_y = state.enemy_x, state.enemy_y
-    player_x, player_y = state.player_x, state.player_y
-
-    dx = jnp.where(player_x > enemy_x, 1, -1)
-    dy = jnp.where(player_y > enemy_y, 1, -1)
-
-    enemy_x = jnp.clip(enemy_x + dx, 0, SCREEN_WIDTH - ENEMY_WIDTH)
-    enemy_y = jnp.clip(enemy_y + dy, 0, SCREEN_HEIGHT - ENEMY_HEIGHT)
-
-    return enemy_x, enemy_y
-
-
-def update_apples(state: State) -> chex.Array:
-    # Create new apple periodically from enemy position
-    new_apple = jnp.where(
-        state.step_counter % 100 == 0,
-        jnp.array([state.enemy_x, state.enemy_y]),
-        jnp.array([0, 0]),
-    )
-
-    # Move existing apples (add trajectory)
-    moved_apples = state.apples[1:].at[:, 0].add(2)  # Move right
-    moved_apples = moved_apples.at[:, 1].add(1)  # Move down
-
-    # Remove apples that hit screen borders
-    moved_apples = jnp.where(
-        (moved_apples[:, 0] >= SCREEN_WIDTH)
-        | (moved_apples[:, 1] >= SCREEN_HEIGHT)
-        | (moved_apples[:, 0] <= 0)
-        | (moved_apples[:, 1] <= 0),
-        jnp.array([0, 0]),
-        moved_apples,
-    )
-
-    return jnp.vstack([moved_apples, new_apple])
-
-
 def collect_fruits(state: State) -> Tuple[chex.Array, chex.Array]:
     player_rect = jnp.array(
         [state.player_x, state.player_y, PLAYER_WIDTH, PLAYER_HEIGHT]
@@ -205,37 +165,34 @@ class Game:
             player_vel_y=jnp.array(0),
             player_score=jnp.array(0),
             player_lives=jnp.array(3),
-            enemy_x=jnp.array(100),
-            enemy_y=jnp.array(150),
             fruits=jnp.array([[50, 50], [100, 100], [150, 150], [75, 75], [125, 125]]),
-            apples=jnp.zeros((5, 2)),
             current_level=jnp.array(1),
             is_jumping=jnp.array(False),
             step_counter=jnp.array(0),
             is_climbing=jnp.array(False),
+            falling_coco_x=jnp.array(0),
+            falling_coco_y=jnp.array(0),
         )
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: State, action: chex.Array) -> State:
         player_x, player_y, vel_x, vel_y = player_step(state, action)
-        enemy_x, enemy_y = enemy_step(state)
-        apples = update_apples(state)
+        # enemy_x, enemy_y = enemy_step(state)
 
         return State(
-            apples=apples,
             player_x=player_x,
             player_y=player_y,
             player_vel_x=vel_x,
             player_vel_y=vel_y,
             player_score=state.player_score,
             player_lives=state.player_lives,
-            enemy_x=enemy_x,
-            enemy_y=enemy_y,
             fruits=state.fruits,
             current_level=state.current_level,
             is_jumping=jnp.logical_and(vel_y < 0, ~state.is_climbing),
             step_counter=state.step_counter + 1,
             is_climbing=state.is_climbing,
+            falling_coco_x=state.falling_coco_x,
+            falling_coco_y=state.falling_coco_y,
         )
 
 
@@ -261,18 +218,6 @@ class Renderer:
             ),
         )
 
-        # Draw enemy
-        pygame.draw.rect(
-            self.screen,
-            ENEMY_COLOR,
-            (
-                int(state.enemy_x) * RENDER_SCALE_FACTOR,
-                int(state.enemy_y) * RENDER_SCALE_FACTOR,
-                ENEMY_WIDTH * RENDER_SCALE_FACTOR,
-                ENEMY_HEIGHT * RENDER_SCALE_FACTOR,
-            ),
-        )
-
         # Draw fruits
         for fruit in state.fruits:
             if fruit[0] != 0:
@@ -285,19 +230,6 @@ class Renderer:
                         FRUIT_SIZE * RENDER_SCALE_FACTOR,
                         FRUIT_SIZE * RENDER_SCALE_FACTOR,
                     ),
-                )
-
-        # Draw apples
-        for apple in state.apples:
-            if apple[0] != 0:
-                pygame.draw.circle(
-                    self.screen,
-                    APPLE_COLOR,
-                    (
-                        int(apple[0]) * RENDER_SCALE_FACTOR,
-                        int(apple[1]) * RENDER_SCALE_FACTOR,
-                    ),
-                    APPLE_SIZE * RENDER_SCALE_FACTOR // 2,
                 )
 
         # Draw score
