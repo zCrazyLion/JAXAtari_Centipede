@@ -82,14 +82,15 @@ class Renderer:
             self.env_render_shape[0] + RAM_RENDER_WIDTH,
             self.env_render_shape[1],
         )
- 
-        # Print Shapes of environment 
+
+        # Print Shapes of environment
         print(f"Render-Shape (0) aka height: {self.env_render_shape[0]}")
         print(f"Render-Shape (1) aka width: {self.env_render_shape[1]}")
 
         print(f"Actual shape of environment: {self.env.image_size}")
-        print(f"Scaling Factor of env -> rendering: {self.env_render_shape[0]/self.env.image_size[0]}")
-
+        print(
+            f"Scaling Factor of env -> rendering: {self.env_render_shape[0]/self.env.image_size[0]}"
+        )
 
         self.window = pygame.display.set_mode(window_size)
         self.clock = pygame.time.Clock()
@@ -147,7 +148,7 @@ class Renderer:
                     print(f"Current FPS: {self.clock.get_fps()}")
             self._render()
 
-             # Print FPS every 60 frames (optional)
+            # Print FPS every 60 frames (optional)
             i += 1
         pygame.quit()
 
@@ -208,24 +209,40 @@ class Renderer:
                                     )
 
                                     # Create a figure with three subplots
-                                    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(8, 8), sharex=True)
+                                    fig, (ax1, ax2, ax3) = plt.subplots(
+                                        3, 1, figsize=(8, 8), sharex=True
+                                    )
 
                                     # Plot recorded_states on the first subplot
-                                    ax1.plot(recorded_states, marker='o', label='Recorded States')
+                                    ax1.plot(
+                                        recorded_states,
+                                        marker="o",
+                                        label="Recorded States",
+                                    )
                                     ax1.set_title("Recorded State Over Time")
                                     ax1.set_ylabel("State Value")
                                     ax1.grid(True)
                                     ax1.legend()
 
                                     # Plot first_derivative on the second subplot
-                                    ax2.plot(first_derivative, marker='o', color='orange', label='First Derivative')
+                                    ax2.plot(
+                                        first_derivative,
+                                        marker="o",
+                                        color="orange",
+                                        label="First Derivative",
+                                    )
                                     ax2.set_title("First Derivative Over Time")
                                     ax2.set_ylabel("Derivative")
                                     ax2.grid(True)
                                     ax2.legend()
 
                                     # Plot second_derivative on the third subplot
-                                    ax3.plot(second_derivative, marker='o', color='green', label='Second Derivative')
+                                    ax3.plot(
+                                        second_derivative,
+                                        marker="o",
+                                        color="green",
+                                        label="Second Derivative",
+                                    )
                                     ax3.set_title("Second Derivative Over Time")
                                     ax3.set_xlabel("Time [Frames]")
                                     ax3.set_ylabel("Second Derivative")
@@ -247,9 +264,9 @@ class Renderer:
                                     len(self.clicked_cells) == 0
                                 ):  # Ensure no other cell is selected
                                     self.clicked_cells.append(cell_idx)
-                                    self.recorded_ram_states[
-                                        cell_idx
-                                    ] = []  # Start recording
+                                    self.recorded_ram_states[cell_idx] = (
+                                        []
+                                    )  # Start recording
 
                 # Hiding of RAM Cells
                 elif event.button == 3:  # right mouse button pressed
