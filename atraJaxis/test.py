@@ -21,6 +21,7 @@ canvas1 = canvas(windows_width, windows_height)
 canvas1.addLayer(layer('player_sub', windows_width, windows_height))
 canvas1.layers[0].addGameObject(sub)
 
+
 scaling_factor = 3
 
 # make a pygame window 600 x 400 pixels
@@ -30,13 +31,15 @@ clock = pygame.time.Clock()
 # main loop
 running = True
 
+
+
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
     grid = canvas1.render()
 
-    
+    sub.move(1, 1)
     canvas1.update()
     
     frame_surface = pygame.surfarray.make_surface(grid)
@@ -44,3 +47,5 @@ while running:
     win.blit(frame_surface, (0, 0))
     pygame.display.flip()
     clock.tick(3)  # Limit to 60 FPS
+    
+    

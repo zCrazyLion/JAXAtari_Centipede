@@ -1,4 +1,3 @@
-DEBUG = True
 class gameObject:
     def __init__(self, x, y, sprite):
         self.x = x
@@ -9,6 +8,10 @@ class gameObject:
     def move(self, dx, dy):
         self.x += dx
         self.y += dy
+        
+    def displace(self, x, y):
+        self.x = x
+        self.y = y 
         
     def isDestroyed(self):
         return self.destroyed
@@ -22,8 +25,9 @@ class gameObject:
         # put the sprite on the layer on the position (x, y)
         frame = self.sprite.get_current_frame()
         idx = self.sprite.get_current_frame_idx()
-        if DEBUG:
-            print("current frame index: ", idx)
+
         for i in range(frame.shape[0]):
             for j in range(frame.shape[1]):
-                grid[self.y + i][self.x + j] = frame[i][j]
+                # if the pixel is in the range of the grid, put the pixel on the grid
+                if 0 <= i + self.y < grid.shape[0] and 0 <= j + self.x < grid.shape[1]:
+                    grid[i + self.y][j + self.x] = frame[i][j]
