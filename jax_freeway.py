@@ -31,16 +31,16 @@ class GameConfig:
             # Upper 5 lanes move left (-), lower 5 lanes move right (+)
             # Each lane has a different speed
             self.car_speeds = [
-                -3.0,   # Lane 0: Fast left
-                -1.5,   # Lane 1: Slow left
-                -2.2,   # Lane 2: Medium-fast left
-                -1.8,   # Lane 3: Medium-slow left
-                -2.5,   # Lane 4: Medium left
-                1.2,    # Lane 5: Slow right
-                2.8,    # Lane 6: Fast right
-                1.8,    # Lane 7: Medium right
-                2.2,    # Lane 8: Medium-fast right
-                1.5     # Lane 9: Medium-slow right
+                -1.0,   # Lane 0
+                -1.5,   # Lane 1
+                -2.2,   # Lane 2
+                -2.8,   # Lane 3
+                -3.5,   # Lane 4
+                3.0,    # Lane 5
+                2.8,    # Lane 6
+                1.8,    # Lane 7
+                1.2,    # Lane 8
+                1.0     # Lane 9
             ]
 
 
@@ -67,7 +67,7 @@ class FreewayGameLogic:
         # Initialize one car per lane
         cars = []
         for lane in range(self.config.num_lanes):
-            lane_y = self.config.lane_spacing * (lane + 1)
+            lane_y = self.config.lane_spacing * (lane + 1) + int(self.config.lane_spacing / 2)
             # Upper 5 lanes start from right, lower 5 lanes start from left
             if lane < 5:
                 x = self.config.screen_width  # Start from right
@@ -226,9 +226,9 @@ class GameRenderer:
             # Draw wheels
             wheel_radius = size[1] // 6
             pygame.draw.circle(sprite, (0, 0, 0),
-                               (wheel_radius * 2, size[1] * 3 // 4), wheel_radius)
+                               (wheel_radius, size[1] * 3 // 4), wheel_radius)
             pygame.draw.circle(sprite, (0, 0, 0),
-                               (size[0] - wheel_radius * 2, size[1] * 3 // 4),
+                               (size[0] - wheel_radius, size[1] * 3 // 4),
                                wheel_radius)
 
             sprites.append(sprite)
