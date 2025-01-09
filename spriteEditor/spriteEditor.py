@@ -407,7 +407,7 @@ class NPYImageEditor:
         self.mouse_pressed = False
         
     # delete the selected region. Set the alpha as 0
-    def delete_selected(self):
+    def delete_selected(self, _):
         if self.selected is not None:
             self.image[self.selected] = [0, 0, 0, 0]
             self.update_display()
