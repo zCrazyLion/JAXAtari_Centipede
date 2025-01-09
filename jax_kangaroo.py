@@ -88,6 +88,18 @@ def get_human_action() -> chex.Array:
     right = keys[pygame.K_d] or keys[pygame.K_RIGHT]
     fire = keys[pygame.K_SPACE]
 
+    if up and left and right and fire:
+        return jnp.array(UPFIRE)
+    if down and left and right and fire:
+        return jnp.array(DOWNFIRE)
+    if up and left and right:
+        return jnp.array(UP)
+    if down and left and right:
+        return jnp.array(DOWN)
+    if left and right and fire:
+        return jnp.array(FIRE)
+    if left and right:
+        return jnp.array(NOOP)
     if up and right and fire:
         return jnp.array(UPRIGHTFIRE)
     if up and left and fire:
@@ -347,7 +359,17 @@ def clamp_if_not_jumping(
     return final_y
 
 
-def player_step(state: State, action: chex.Array) -> Tuple[...]:
+def player_step(state: State, action: chex.Array) -> Tuple[
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+]:
     x, y = state.player_x, state.player_y
     vel_x, vel_y = state.player_vel_x, state.player_vel_y
     old_height = state.player_height
