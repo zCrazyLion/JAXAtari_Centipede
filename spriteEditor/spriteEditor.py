@@ -37,8 +37,9 @@ class NPYImageEditor:
         self.root.bind("<Control-a>", self.select_all)
         self.root.bind("<Control-d>", self.deselect_all)
         self.root.bind("<Control-s>", self.save_selection)
-            # ctrl + scroll to zoom 
+        # ctrl + scroll to zoom 
         self.root.bind("<Control-MouseWheel>", self.on_mouse_scroll)
+        
 
     
 
