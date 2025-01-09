@@ -69,6 +69,7 @@ class NPYImageEditor:
         self.selection_mode = "new"  # Initialize selection mode
         self.state_queue = []
         self.current_state_index = -1
+        self.selection_preset = None
 
     def create_widgets(self):
         # Menu
@@ -130,6 +131,8 @@ class NPYImageEditor:
         tk.Button(self.selection_mode_frame, text="Subtract", command=lambda: self.set_selection_mode("subtract")).pack(side=tk.LEFT)
         tk.Button(self.selection_mode_frame, text="Intersect", command=lambda: self.set_selection_mode("intersect")).pack(side=tk.LEFT)
         tk.Button(self.selection_mode_frame, text="Fill Selected", command=lambda: self.fill_selected()).pack(side=tk.LEFT)
+        tk.Button(self.selection_mode_frame, text="Save as Preset", command=lambda: self.save_selection_preset()).pack(side=tk.LEFT)
+        tk.Button(self.selection_mode_frame, text="Load from Preset", command=lambda: self.load_selection_preset()).pack(side=tk.LEFT)
     def set_selection_mode(self, mode):
         self.selection_mode = mode
 
@@ -322,7 +325,13 @@ class NPYImageEditor:
         self.tool = "select_all_with_color"
         self.selection_mode_frame.pack(fill=tk.X)  # Show selection mode buttons
 
-
+    def save_selection_preset(self):
+        if self.selected is not None:
+            self.selection_preset = self.selected.copy() # Save the current selection as a preset
+    
+    def load_selection_preset(self):
+        if self.selection_preset is not None:
+            self.selected = self.selection_preset.copy()
 
     def open_color_palette(self, event=None):
         # Open color chooser dialog
@@ -388,6 +397,8 @@ class NPYImageEditor:
                 self.submit_selection(new_selection)
                 self.update_state("select with same color")
 
+        self.selection_start = None
+        self.selection_end = None
         self.mouse_pressed = False
         
         

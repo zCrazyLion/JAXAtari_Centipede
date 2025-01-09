@@ -12,5 +12,9 @@ key frame 1 takes 16 frames, key frame 2 takes 8 frames
 Each key frame takes 8 frames
 ### Death Animation
 First flash b&w, 4w - 4b - 4w - 4b - 4w - 4b - 4w - 4b - 4w - 4b
-Then Each key frame takes 8 frames until starting to fade
-
+death1: 8
+death2: 8
+death3: 4
+death4: 4
+death5: 4
+death6: 4
