@@ -244,6 +244,8 @@ class NPYImageEditor:
             return
 
         try:
+            # set window title as the file name
+            self.root.title(f"NPY Image Editor - {file_path}")
             self.image = np.load(file_path)
             # Convert to RGBA if not already in RGBA format
             if len(self.image.shape) == 3 and self.image.shape[2] == 3:
