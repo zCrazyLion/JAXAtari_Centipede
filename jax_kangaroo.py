@@ -6,8 +6,6 @@ import chex
 import numpy as np
 import pygame
 
-# Test
-
 # Action constants
 NOOP, FIRE, UP, RIGHT, LEFT, DOWN, UPRIGHT, UPLEFT, DOWNRIGHT, DOWNLEFT = range(10)
 (
@@ -78,6 +76,7 @@ class State(NamedTuple):
     falling_coco_x: chex.Array
     falling_coco_y: chex.Array
     orientation: chex.Array
+    jump_base_y: chex.Array 
 
 
 def get_human_action() -> chex.Array:
@@ -194,47 +193,73 @@ def player_on_ground(state: State, action: chex.Array) -> Tuple[chex.Array]:
     return jnp.any(jnp.array([on_p1_ground, on_p2_ground, on_p3_ground, on_p4_ground]))
 
 
+@jax.jit
 def player_jump_controller(
     state: State, jump_pressed: chex.Array
-) -> Tuple[chex.Array, chex.Array, chex.Array]:
+) -> Tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
+    """
+    Schedule:
+      tick  8: total offset = -12
+      tick 16: still -12 (just sprite/hitbox change)
+      tick 24: total offset = -24
+      tick 32: total offset = -12  (moved up +12 from -24)
+      tick 40: total offset =  0   (moved up +12 from -12) -> jump ends
+    """
     player_y = state.player_y
     jump_counter = state.jump_counter
     is_jumping = state.is_jumping
+    jump_base_y = state.jump_base_y
 
-    # Constants
-    JUMP_DURATION = 48
-    JUMP_STEPS = jnp.array([8, 16, 24, 32, 40])
-    JUMP_HEIGHTS = jnp.array([1, 0, -1, -1, -1])  # Scaled jump heights
-
-    # Start jumping if W is pressed and not already jumping
+    # Start jump if pressed & not already jumping
     jump_start = jump_pressed & ~is_jumping
     jump_counter = jnp.where(jump_start, 0, jump_counter)
+    jump_base_y = jnp.where(jump_start, player_y, jump_base_y)
     is_jumping = is_jumping | jump_start
 
-    # Update jump counter
+    # If currently jumping, increment counter
     jump_counter = jnp.where(is_jumping, jump_counter + 1, jump_counter)
 
-    # Calculate jump offset
-    jump_offset = jnp.sum(jnp.where(jump_counter >= JUMP_STEPS, JUMP_HEIGHTS, 0))
+    def offset_for(count):
+        # piecewise intervals:
+        #   [0..8)    ->  0
+        #   [8..16)   -> -12
+        #   [16..24)  -> -12
+        #   [24..32)  -> -24
+        #   [32..40)  -> -12
+        #   >= 40     ->  0  (jump ends)
+        conditions = [
+            (count < 8),
+            (count < 16),
+            (count < 24),
+            (count < 32),
+            (count < 40),
+        ]
+        values = [
+            0,     # 0..7
+            -12,   # 8..15
+            -12,   # 16..23
+            -24,   # 24..31
+            -12,   # 32..39
+        ]
+        return jnp.select(conditions, values, default=0)
 
-    # Apply jump offset to player_y
-    player_y = jnp.where(is_jumping, player_y - jump_offset, player_y)
+    total_offset = offset_for(jump_counter)
 
-    # Check if jump is complete
-    jump_complete = jump_counter >= JUMP_DURATION
+    # Apply offset only if is_jumping
+    new_y = jnp.where(is_jumping, jump_base_y + total_offset, player_y)
+
+    # After 40 ticks, jump is done
+    jump_complete = jump_counter >= 40
     is_jumping = jnp.where(jump_complete, False, is_jumping)
     jump_counter = jnp.where(jump_complete, 0, jump_counter)
 
-    return player_y, jump_counter, is_jumping
+    return new_y, jump_counter, is_jumping, jump_base_y
 
 
-def player_step(
-    state: State, action: chex.Array
-) -> Tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
+def player_step(state: State, action: chex.Array) -> Tuple[...]:
     x, y = state.player_x, state.player_y
     vel_x, vel_y = state.player_vel_x, state.player_vel_y
 
-    # Handle horizontal movement
     press_left = jnp.any(
         jnp.array([action == LEFT, action == UPLEFT, action == DOWNLEFT])
     )
@@ -247,40 +272,30 @@ def player_step(
 
     orientation = jnp.where(vel_x < 0, -1, jnp.where(vel_x > 0, 1, state.orientation))
 
-    # Handle vertical movement
     press_up = jnp.any(jnp.array([action == UP, action == UPRIGHT, action == UPLEFT]))
 
-    # on_ground = player_on_ground(state, action)
+    # Use the piecewise jump
+    new_y, new_jump_counter, new_is_jumping, new_jump_base_y = player_jump_controller(
+        state, press_up
+    )
 
-    y, jump_counter, is_jumping = player_jump_controller(state, press_up)
-
-    # Update vertical velocity based on jumping
-    # vel_y = jnp.where(
-    #     action == NOOP,
-    #     vel_y + GRAVITY,
-    #     vel_y,
-    # )
-
-    # Update position
+    # Update horizontal position
     x = jnp.clip(x + vel_x, LEFT_CLIP, RIGHT_CLIP - PLAYER_WIDTH)
 
-    on_p1, on_p2, on_p3, on_p4 = get_player_platform(state)
-    y = jax.lax.cond(
-        on_p1, lambda y: jnp.clip(y, 0, L1P1.y - PLAYER_HEIGHT), lambda _: _, y
-    )
-    y = jax.lax.cond(
-        on_p2, lambda y: jnp.clip(y, 0, L1P2.y - PLAYER_HEIGHT), lambda _: _, y
-    )
-    y = jax.lax.cond(
-        on_p3, lambda y: jnp.clip(y, 0, L1P3.y - PLAYER_HEIGHT), lambda _: _, y
-    )
-    y = jax.lax.cond(
-        on_p4, lambda y: jnp.clip(y, 0, L1P4.y - PLAYER_HEIGHT), lambda _: _, y
+    # Then do any platform clamping or collision logic here
+    # ...
+    
+    return (
+        x,
+        new_y,
+        vel_x,
+        vel_y,
+        new_is_jumping,
+        new_jump_counter,
+        orientation,
+        new_jump_base_y
     )
 
-    jax.debug.print("x: {x}, y: {y}", x=x, y=y)
-
-    return x, y, vel_x, vel_y, is_jumping, jump_counter, orientation
 
 
 class Game:
@@ -303,14 +318,22 @@ class Game:
             falling_coco_x=jnp.array(0),
             falling_coco_y=jnp.array(0),
             orientation=jnp.array(1),
+            jump_base_y=jnp.array(PLAYER_START_Y),  # new
         )
+
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: State, action: chex.Array) -> State:
-        player_x, player_y, vel_x, vel_y, is_jumping, jump_counter, orientation = (
-            player_step(state, action)
-        )
-        # enemy_x, enemy_y = enemy_step(state)
+        (
+            player_x,
+            player_y,
+            vel_x,
+            vel_y,
+            is_jumping,
+            jump_counter,
+            orientation,
+            jump_base_y
+        ) = player_step(state, action)
 
         return State(
             player_x=player_x,
@@ -327,7 +350,9 @@ class Game:
             falling_coco_x=state.falling_coco_x,
             falling_coco_y=state.falling_coco_y,
             orientation=orientation,
+            jump_base_y=jump_base_y,
         )
+
 
 
 class Renderer:
