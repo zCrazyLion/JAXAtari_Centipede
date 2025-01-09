@@ -6,6 +6,8 @@ import chex
 import numpy as np
 import pygame
 
+# Test
+
 # Action constants
 NOOP, FIRE, UP, RIGHT, LEFT, DOWN, UPRIGHT, UPLEFT, DOWNRIGHT, DOWNLEFT = range(10)
 (
