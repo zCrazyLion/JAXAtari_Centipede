@@ -39,7 +39,8 @@ class NPYImageEditor:
         self.root.bind("<Control-s>", self.save_selection)
         # ctrl + scroll to zoom 
         self.root.bind("<Control-MouseWheel>", self.on_mouse_scroll)
-        
+        # delete key to delete selected pixels
+        self.root.bind("<Delete>", self.delete_selected)
 
     
 
@@ -202,6 +203,7 @@ class NPYImageEditor:
         self.current_color = state["current_color"].copy()
         self.selected = state["selected"].copy()
         self.update_display()
+        
         
     # undo the last step
     def undo(self, _):
@@ -404,7 +406,12 @@ class NPYImageEditor:
         self.selection_end = None
         self.mouse_pressed = False
         
-        
+    # delete the selected region. Set the alpha as 0
+    def delete_selected(self):
+        if self.selected is not None:
+            self.image[self.selected] = [0, 0, 0, 0]
+            self.update_display()
+            self.update_state("delete selected")
         
     def on_mouse_scroll(self, event):
         if event.delta > 0:
