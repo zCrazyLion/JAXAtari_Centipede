@@ -39,6 +39,8 @@ def save_frame_as_numpy(frame):
     np.save(filepath, frame)
     print(f"Frame saved as NumPy array: {filepath}")
     frame_counter += 1
+# Add a global set to track pressed keys
+pressed_keys = set()
 
 def main():
     pygame.init()
@@ -65,6 +67,7 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN:
+                pressed_keys.add(event.key)
                 if event.key == pygame.K_s:  # Save frame as NumPy array
                     save_frame_as_numpy(frame)
                 elif event.key == pygame.K_p:  # Toggle pause
@@ -75,15 +78,24 @@ def main():
                     print("Stepped one frame.")
                 else:
                     action = get_action_from_key(event.key)
+            elif event.type == pygame.KEYUP:
+                if event.key in pressed_keys:
+                    pressed_keys.remove(event.key)
 
         if not paused:
+            # Determine the action based on pressed keys
+            for key in pressed_keys:
+                action = get_action_from_key(key)
+                if action != 0:  # If any action is mapped, use it
+                    break
+
             ale.act(action)
 
         if ale.game_over():
             print("Game over!")
             ale.reset_game()
 
-        clock.tick(60)  # Limit to 5 FPS
+        clock.tick(60)  # Limit to 60 FPS
 
     pygame.quit()
 
