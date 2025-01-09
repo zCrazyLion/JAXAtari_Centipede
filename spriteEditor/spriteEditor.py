@@ -268,7 +268,7 @@ class NPYImageEditor:
         y0, y1 = np.min(y), np.max(y)
         x0, x1 = np.min(x), np.max(x)
         
-        region_to_save = self.image[y0:y1+1, x0:x1+1]
+        region_to_save = self.image[y0:y1+1, x0:x1+1].copy()
         selected_pixels = self.selected[y0:y1+1, x0:x1+1]
         # set the unselected pixels as transparent (a=0)
         region_to_save[~selected_pixels] = [0, 0, 0, 0]
