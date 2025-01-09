@@ -105,6 +105,7 @@ class NPYImageEditor:
         tk.Button(tools_frame, text="Magic Wand", command=self.activate_magic_wand).pack(side=tk.LEFT)
         tk.Button(tools_frame, text="Rectangular Selection", command=self.activate_rectangular_selection).pack(side=tk.LEFT)
         tk.Button(tools_frame, text="Dropper", command=self.activate_dropper).pack(side=tk.LEFT)
+        tk.Button(tools_frame, text="Select w/ Same Color", command=self.select_all_with_color).pack(side=tk.LEFT)
 
         # Current Color Indicator
         self.color_indicator = tk.Label(tools_frame, text="", bg=self.rgb_to_hex(self.current_color[:3]), width=5, relief=tk.RAISED)
@@ -268,6 +269,9 @@ class NPYImageEditor:
         x0, x1 = np.min(x), np.max(x)
         
         region_to_save = self.image[y0:y1+1, x0:x1+1]
+        selected_pixels = self.selected[y0:y1+1, x0:x1+1]
+        # set the unselected pixels as transparent (a=0)
+        region_to_save[~selected_pixels] = [0, 0, 0, 0]
 
         file_path = filedialog.asksaveasfilename(defaultextension=".npy", filetypes=[("NumPy files", "*.npy")])
         if file_path:
@@ -313,6 +317,11 @@ class NPYImageEditor:
     def activate_dropper(self):
         self.tool = "dropper"
         self.selection_mode_frame.pack_forget()  # Hide selection mode buttons
+        
+    def select_all_with_color(self):
+        self.tool = "select_all_with_color"
+        self.selection_mode_frame.pack(fill=tk.X)  # Show selection mode buttons
+
 
 
     def open_color_palette(self, event=None):
@@ -373,6 +382,11 @@ class NPYImageEditor:
                 new_selection = self.magic_wand(int(event.ydata), int(event.xdata), self.image[int(event.ydata), int(event.xdata)])
                 self.submit_selection(new_selection)
                 self.update_state("magic_wand")
+            
+            if self.tool == "select_all_with_color":
+                new_selection = np.all(self.image == self.image[int(event.ydata), int(event.xdata)], axis=2)
+                self.submit_selection(new_selection)
+                self.update_state("select with same color")
 
         self.mouse_pressed = False
         
