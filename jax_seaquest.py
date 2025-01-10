@@ -46,7 +46,7 @@ MAX_DIVERS = 4
 MAX_SHARKS = 4
 MAX_SUBS = 4
 MAX_ENEMY_MISSILES = 4
-MAX_PLAYER_MISSILES = 1
+MAX_PLAYER_TORPS = 1
 MAX_SURFACE_SUBS = 1
 MAX_COLLECTED_DIVERS = 6
 
@@ -1297,7 +1297,7 @@ class Renderer_AtraJaxis:
         self.canvas.addLayer(Layer('waves', self.window_width, self.window_height))
         self.canvas.addLayer(Layer('divers', self.window_width, self.window_height))
         self.canvas.addLayer(Layer('enemies', self.window_width, self.window_height))
-        self.canvas.addLayer(Layer('missiles', self.window_width, self.window_height))
+        self.canvas.addLayer(Layer('torpedoes', self.window_width, self.window_height))
         
         # initialize game objects
         background = gameObject(0, 0, self.spriteLoader.getSprite('bg'))
@@ -1367,6 +1367,20 @@ class Renderer_AtraJaxis:
                     self.canvas.getLayer('enemies').removeGameObject(self.shark_objects[idx])
                     self.shark_objects[idx] = None
                     
+        # update player's torpedo
+        if state.player_missile_position[0] > 0: # exists
+            pltorp_x = int(state.player_missile_position[1].item())
+            pltorp_y = int(state.player_missile_position[0].item())
+            if self.player_torpedo_object is None: # if object does not exist, create it
+                self.player_torpedo_object = gameObject(pltorp_x, pltorp_y, self.spriteLoader.getSprite('player_torpedo'))
+                self.canvas.getLayer('torpedoes').addGameObject(self.player_torpedo_object)
+            else: # if object exists, update its position
+                self.player_torpedo_object.displace(pltorp_x, pltorp_y)   
+        else: # the torpedo no longer exists
+            if self.player_torpedo_object is not None:
+                self.canvas.getLayer('torpedoes').removeGameObject(self.player_torpedo_object)
+                self.player_torpedo_object = None
+        
         
         # finally, update the canvas
         self.canvas.update()

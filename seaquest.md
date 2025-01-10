@@ -51,7 +51,7 @@ divers_collected=Array(0, dtype=int32, weak_type=True), score=Array(0, dtype=int
 lives=Array(3, dtype=int32, weak_type=True)
 ```
 
-### diver positions
+### Diver positions
 
 ```
  diver_positions=Array([[160.,  69.,  -1.],
@@ -60,6 +60,7 @@ lives=Array(3, dtype=int32, weak_type=True)
        [160., 141.,  -1.]], dtype=float32), 
 ```       
 
+### Shark Positions
 ```       
 shark_positions=Array([[0., 0., 0.],
        [0., 0., 0.],
@@ -67,6 +68,7 @@ shark_positions=Array([[0., 0., 0.],
        [0., 0., 0.]], dtype=float32),
 ```       
 
+### Enemy Submarine Positions
 ```
 sub_positions=Array([[0., 0., 0.],
        [0., 0., 0.],
@@ -77,10 +79,12 @@ sub_positions=Array([[0., 0., 0.],
        [0., 0., 0.]], dtype=float32),
 ```
 
+### Enemy Surface Sub Position
 ```
  surface_sub_position=Array([[0., 0., 0.]], dtype=float32),
 ``` 
-  
+
+### Player Torpedo Position
 ```  
   player_missile_position=Array([0., 0., 0.], dtype=float32),
 ```
