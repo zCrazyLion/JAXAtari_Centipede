@@ -1235,7 +1235,7 @@ class Renderer_AtraJaxis:
         # initialize renderer
         self.window_width = 160
         self.window_height = 210
-        self.scaling_factor = 3
+        self.scaling_factor = 1
         pygame.init()
         self.win = pygame.display.set_mode((self.window_width*self.scaling_factor, self.window_height*self.scaling_factor))
 
