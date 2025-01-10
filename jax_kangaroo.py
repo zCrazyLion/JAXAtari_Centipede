@@ -86,6 +86,7 @@ class State(NamedTuple):
     is_climbing: chex.Array
     step_counter: chex.Array
     jump_counter: chex.Array
+    climb_counter: chex.Array
     falling_coco_x: chex.Array
     falling_coco_y: chex.Array
     orientation: chex.Array
@@ -288,6 +289,21 @@ def player_on_ladder(
     )
 
 
+def player_on_ladder_no_thresh(
+    state: State, ladder: Ladder, threshold: float = 0.3
+) -> chex.Array:
+    return check_collision(
+        e1_x=state.player_x,
+        e1_y=state.player_y,
+        e1_w=PLAYER_WIDTH,
+        e1_h=state.player_height,
+        e2_x=ladder.x,
+        e2_y=ladder.y,
+        e2_w=ladder.w,
+        e2_h=ladder.h,
+    )
+
+
 # -------- Jumping and Climbing --------
 @jax.jit
 def player_jump_controller(
@@ -348,31 +364,32 @@ def player_climb_controller(
 
     player_y = y
     is_climbing = state.is_climbing
+
+    climb_counter = state.climb_counter
     
     climb_start = press_up & ~is_climbing & ladder_intersect
     is_climbing = is_climbing | climb_start
 
+    climb_counter = jnp.where(climb_start, 0, climb_counter)
     climb_base_y = jnp.where(climb_start, player_y, state.climb_base_y)
-
     new_y = jnp.where(climb_start, player_y - 8, player_y)
+
+    climb_counter = jnp.where(is_climbing, climb_counter + 1, climb_counter)
     
     climb_up = jnp.logical_and(press_up, is_climbing)
     climb_down = jnp.logical_and(press_down, is_climbing)
-
-    # Behavior im OG Game:
-    # Counter zählt bei is_climbing = true immer von 0-19
-    # Bei 19 -> Check ob BTN_UP oder BTN_DOWN und dann jeweils 8px nach oben / unten
-    # Wenn einmal ganz oben -> kein nach unten mehr (kein Problem, da dann eh kein Intersect mehr mit Leiter)
-    # -> right now too fast :D 
- 
-    new_y = jnp.where(climb_up, new_y - 8, new_y)
-    new_y = jnp.where(climb_down, new_y + 8, new_y)
+    
+    new_y = jnp.where(jnp.logical_and(climb_up, jnp.equal(climb_counter, 19)), new_y - 8, new_y)
+    new_y = jnp.where(jnp.logical_and(climb_down, jnp.equal(climb_counter, 19)), new_y + 8, new_y)
 
     climb_stop = jnp.logical_and(is_climbing,jnp.greater_equal(new_y, climb_base_y))
 
     is_climbing = jnp.where(climb_stop, False, is_climbing)
 
-    return new_y, is_climbing, climb_base_y
+    clock_reset = climb_counter > 19
+    climb_counter = jnp.where(clock_reset, 0, climb_counter)
+
+    return new_y, is_climbing, climb_base_y, climb_counter
 
 # -------- Player Height --------
 @jax.jit
@@ -462,10 +479,17 @@ def player_step(state: State, action: chex.Array) -> Tuple[
 
     # Ladder Collision 
     # Hardcoded Approach
-    collide_l1 = player_on_ladder(state, L1L1)
-    collide_l2 = player_on_ladder(state, L1L2)
-    collide_l3 = player_on_ladder(state, L1L3)
-    ladder_intersect = jnp.logical_or(collide_l1, jnp.logical_or(collide_l2, collide_l3))
+    collide_l1_thresh = player_on_ladder(state, L1L1)
+    collide_l2_thresh = player_on_ladder(state, L1L2)
+    collide_l3_thresh = player_on_ladder(state, L1L3)
+    ladder_intersect_thresh = jnp.logical_or(collide_l1_thresh, jnp.logical_or(collide_l2_thresh, collide_l3_thresh))
+
+    collide_l1 = player_on_ladder_no_thresh(state, L1L1)
+    collide_l2 = player_on_ladder_no_thresh(state, L1L2)
+    collide_l3 = player_on_ladder_no_thresh(state, L1L3)
+    ladder_intersect_no_thresh = jnp.logical_or(collide_l1, jnp.logical_or(collide_l2, collide_l3))
+
+    ladder_intersect = jnp.where(state.is_climbing, ladder_intersect_no_thresh, ladder_intersect_thresh)
 
     # Jump controller
     new_y, new_jump_counter, new_is_jumping, new_jump_base_y, new_jump_orientation = (
@@ -473,7 +497,7 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     )
 
     # Climb controller
-    new_y, new_is_climbing, new_jump_base_y = (
+    new_y, new_is_climbing, new_jump_base_y, new_climb_counter = (
         player_climb_controller(state, new_y, press_up, press_down, ladder_intersect)
     )
 
@@ -528,7 +552,8 @@ def player_step(state: State, action: chex.Array) -> Tuple[
         new_jump_base_y,
         new_player_height,
         new_jump_orientation,
-        new_jump_base_y
+        new_jump_base_y,
+        new_climb_counter
     )
 
 
@@ -557,6 +582,7 @@ class Game:
             jump_base_y=jnp.array(PLAYER_START_Y),
             player_height=jnp.array(PLAYER_HEIGHT),
             climb_base_y=jnp.array(PLAYER_START_Y),
+            climb_counter=jnp.array(0),
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -574,6 +600,7 @@ class Game:
             new_player_height,
             new_jump_orientation,
             climb_base_y,
+            climb_counter
         ) = player_step(state, action)
 
         return State(
@@ -595,6 +622,7 @@ class Game:
             jump_base_y=jump_base_y,
             player_height=new_player_height,
             climb_base_y=state.climb_base_y,
+            climb_counter=climb_counter
         )
 
 
