@@ -363,29 +363,14 @@ def player_climb_controller(
     # Counter zählt bei is_climbing = true immer von 0-19
     # Bei 19 -> Check ob BTN_UP oder BTN_DOWN und dann jeweils 8px nach oben / unten
     # Wenn einmal ganz oben -> kein nach unten mehr (kein Problem, da dann eh kein Intersect mehr mit Leiter)
+    # -> right now too fast :D 
  
-    new_y = jnp.where(climb_up, new_y - 1, new_y)
-    new_y = jnp.where(climb_down, new_y + 1, new_y)
+    new_y = jnp.where(climb_up, new_y - 8, new_y)
+    new_y = jnp.where(climb_down, new_y + 8, new_y)
 
     climb_stop = jnp.logical_and(is_climbing,jnp.greater_equal(new_y, climb_base_y))
 
     is_climbing = jnp.where(climb_stop, False, is_climbing)
-
-    #jump_counter = jnp.where(jump_start, 0, jump_counter)
-    #jump_orientation = jnp.where(jump_start, state.orientation, state.jump_orientation)
-    #
-    #is_jumping = is_jumping | jump_start
-
-    #jump_counter = jnp.where(is_jumping, jump_counter + 1, jump_counter)
-
-   
-
-    #total_offset = offset_for(jump_counter)
-    #new_y = jnp.where(is_jumping, jump_base_y + total_offset, player_y)
-
-    #jump_complete = jump_counter >= 41
-    #is_jumping = jnp.where(jump_complete, False, is_jumping)
-    #jump_counter = jnp.where(jump_complete, 0, jump_counter)
 
     return new_y, is_climbing, climb_base_y
 
@@ -481,8 +466,6 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     collide_l2 = player_on_ladder(state, L1L2)
     collide_l3 = player_on_ladder(state, L1L3)
     ladder_intersect = jnp.logical_or(collide_l1, jnp.logical_or(collide_l2, collide_l3))
-
-    #jax.debug.print("intersect with any ladder = {c}", c=ladder_intersect)
 
     # Jump controller
     new_y, new_jump_counter, new_is_jumping, new_jump_base_y, new_jump_orientation = (
