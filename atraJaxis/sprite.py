@@ -1,8 +1,10 @@
-from renderMode import RenderMode
 
 # class of sprites.
 # sprites are objects that can be drawn on the screen.
 # sprites are defined as a sequence of frames, where each frame is a np array of pixels.
+from .renderMode import RenderMode
+
+
 class Sprite:
     def __init__(self, frames, render_mode):
         self.key_frames = frames # key_frames format: [(pixels: np.array, duration: int), ...]

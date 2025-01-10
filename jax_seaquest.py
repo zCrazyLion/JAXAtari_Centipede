@@ -1237,6 +1237,8 @@ class Renderer_AtraJaxis:
         self.window_height = 210
         self.scaling_factor = 3
         pygame.init()
+        self.win = pygame.display.set_mode((self.window_width*self.scaling_factor, self.window_height*self.scaling_factor))
+
         self.screen = pygame.display.set_mode((self.window_width, self.window_height))
         pygame.display.set_caption("Seaquest")
         self.clock = pygame.time.Clock()
@@ -1247,9 +1249,9 @@ class Renderer_AtraJaxis:
         
         # player submarine
         spriteLoader = SpriteLoader()
-        spriteLoader.loadFrame('sprites\seaquest\player_sub\1.npy', name='pl_sub1')
-        spriteLoader.loadFrame('sprites\seaquest\player_sub\2.npy', name='pl_sub2')
-        spriteLoader.loadFrame('sprites\seaquest\player_sub\3.npy', name='pl_sub3')
+        spriteLoader.loadFrame('sprites\seaquest\player_sub\\1.npy', name='pl_sub1')
+        spriteLoader.loadFrame('sprites\seaquest\player_sub\\2.npy', name='pl_sub2')
+        spriteLoader.loadFrame('sprites\seaquest\player_sub\\3.npy', name='pl_sub3')
         spriteLoader.loadSprite('player_sub', [('pl_sub1', 4), ('pl_sub2', 4), ('pl_sub3', 4)], RenderMode.LOOP)
 
         
@@ -1264,18 +1266,26 @@ class Renderer_AtraJaxis:
         
         # initialize game objects
         pl_sub = gameObject(0, 0, spriteLoader.getSprite('player_sub'))
-        self.canvas.getLayer('player_sub').addObject(pl_sub)
+        self.canvas.getLayer('player_sub').addGameObject(pl_sub)
 
         
         
     def render(self, state):
-        # Clear screen
-        self.screen.fill(BACKGROUND_COLOR)
-
-        # Update display
+        grid = self.canvas.render()
+        self.update(state)
+        
+        frame_surface = pygame.surfarray.make_surface(grid)
+        frame_surface = pygame.transform.scale(frame_surface, (self.window_width*self.scaling_factor, self.window_height*self.scaling_factor))
+        self.win.blit(frame_surface, (0, 0))
+        
         pygame.display.flip()
+        # Update display from state
+        self.update(state)
         self.clock.tick(60)
-
+    def update(self, state):
+        # update according to state
+        self.canvas.getLayer('player_sub').gameObjects[0].displace(state.player_x.item(), state.player_y.item())
+        self.canvas.update()
     
 
 

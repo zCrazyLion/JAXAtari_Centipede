@@ -35,6 +35,7 @@ class Layer:
         self.gameObjects.append(gameObject)
     def removeGameObject(self, gameObject):
         self.gameObjects.remove(gameObject)
+
     def update(self):
         # remove destroyed gameObjects
         self.gameObjects = [gameObject for gameObject in self.gameObjects if not gameObject.isDestroyed()]

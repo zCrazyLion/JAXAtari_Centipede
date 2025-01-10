@@ -1,7 +1,8 @@
 # A utility class to load and manage sprites.
 import numpy as np
 # import sprite class from sprite.py
-from sprite import Sprite, RenderMode
+from .sprite import Sprite
+from .renderMode import RenderMode
 class SpriteLoader:
     def __init__(self):
         self.frames = {}

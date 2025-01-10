@@ -1,5 +1,4 @@
 import spriteLoader
-from sprite import Sprite
 from renderMode import RenderMode
 from canvas import Canvas
 from layer import Layer
