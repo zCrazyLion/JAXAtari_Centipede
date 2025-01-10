@@ -4,8 +4,13 @@ import jax
 import jax.numpy as jnp
 import chex
 import pygame
-import atraJaxis as aj
-from atraJaxis import spriteLoader, sprite, canvas, layer, gameObject
+from atraJaxis.canvas import Canvas
+from atraJaxis.sprite import Sprite
+from atraJaxis.layer import Layer
+from atraJaxis.gameObject import gameObject
+from atraJaxis.spriteLoader import SpriteLoader
+
+
 
 
 # Game Constants
@@ -1236,8 +1241,8 @@ class Renderer_AtraJaxis:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 36)
         running = True
-        self.canvas = aj.Canvas.Canvas(self.window_width, self.window_height)
-        canvas.addLayer(layer('player_sub', windows_width, windows_height))
+        self.canvas = Canvas(self.window_width, self.window_height)
+        self.canvas.addLayer(Layer('player_sub', self.window_width, self.window_height))
 
 
         

@@ -2,11 +2,11 @@ import spriteLoader
 from sprite import Sprite
 from renderMode import RenderMode
 from canvas import Canvas
-from layer import layer
+from layer import Layer
 from gameObject import gameObject
 import pygame
 
-sl = spriteLoader.spriteLoader()
+sl = spriteLoader.SpriteLoader()
 sl.loadFrame('./atraJaxis/test_frames/1.npy', name='sub1')
 sl.loadFrame('./atraJaxis/test_frames/2.npy', name='sub2')
 sl.loadFrame('./atraJaxis/test_frames/3.npy', name='sub3')
@@ -19,7 +19,7 @@ windows_width = 100
 windows_height = 100
 
 canvas1 = Canvas(windows_width, windows_height)
-canvas1.addLayer(layer('player_sub', windows_width, windows_height))
+canvas1.addLayer(Layer('player_sub', windows_width, windows_height))
 canvas1.layers[0].addGameObject(sub)
 
 

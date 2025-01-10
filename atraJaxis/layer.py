@@ -1,7 +1,7 @@
 # class of a layer.
 # A layer a collection of gameObjects.
 import numpy as np
-class layer:
+class Layer:
     """
     A class to represent a layer in a game.
     Attributes

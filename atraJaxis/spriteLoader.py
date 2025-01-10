@@ -2,7 +2,7 @@
 import numpy as np
 # import sprite class from sprite.py
 from sprite import Sprite, RenderMode
-class spriteLoader:
+class SpriteLoader:
     def __init__(self):
         self.frames = {}
         self.sprites = {}
