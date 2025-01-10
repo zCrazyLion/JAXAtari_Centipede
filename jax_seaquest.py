@@ -1367,6 +1367,23 @@ class Renderer_AtraJaxis:
                     self.canvas.getLayer('enemies').removeGameObject(self.shark_objects[idx])
                     self.shark_objects[idx] = None
                     
+        # update enemy submarines
+        # TBD: direction of enemy submarine
+        for idx in range(MAX_SUBS):
+            if state.sub_positions[idx][0] > 0: # indicates existence
+                sub_x = int(state.sub_positions[idx][1].item())
+                sub_y = int(state.sub_positions[idx][0].item())
+                if self.sub_objects[idx] is None:
+                    self.sub_objects[idx] = gameObject(sub_x, sub_y, self.spriteLoader.getSprite('enemy_sub'))
+                    self.canvas.getLayer('enemies').addGameObject(self.sub_objects[idx])
+                else:
+                    self.sub_objects[idx].displace(sub_x, sub_y)
+            else: # the submarine no longer exists
+                if self.sub_objects[idx] is not None:
+                    self.canvas.getLayer('enemies').removeGameObject(self.sub_objects[idx])
+                    self.sub_objects[idx] = None
+            
+                    
         # update player's torpedo
         if state.player_missile_position[0] > 0: # exists
             pltorp_x = int(state.player_missile_position[1].item())
@@ -1380,6 +1397,21 @@ class Renderer_AtraJaxis:
             if self.player_torpedo_object is not None:
                 self.canvas.getLayer('torpedoes').removeGameObject(self.player_torpedo_object)
                 self.player_torpedo_object = None
+                
+        # update enemy torpedoes
+        for idx in range(MAX_ENEMY_MISSILES):
+            if state.enemy_missile_positions[idx][0] > 0: # indicates existence
+                entorp_x = int(state.enemy_missile_positions[idx][1].item())
+                entorp_y = int(state.enemy_missile_positions[idx][0].item())
+                if self.enemy_torpedo_objects[idx] is None: # if object does not exist, create it
+                    self.enemy_torpedo_objects[idx] = gameObject(entorp_x, entorp_y, self.spriteLoader.getSprite('enemy_torpedo'))
+                    self.canvas.getLayer('torpedoes').addGameObject(self.enemy_torpedo_objects[idx])
+                else: # if object exists, update its position
+                    self.enemy_torpedo_objects[idx].displace(entorp_x, entorp_y)
+            else: # the torpedo no longer exists
+                if self.enemy_torpedo_objects[idx] is not None:
+                    self.canvas.getLayer('torpedoes').removeGameObject(self.enemy_torpedo_objects[idx])
+                    self.enemy_torpedo_objects[idx] = None
         
         
         # finally, update the canvas
