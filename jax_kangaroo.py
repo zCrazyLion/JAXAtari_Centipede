@@ -43,34 +43,26 @@ RIGHT_CLIP = 144
 
 
 # -------- Entity Classes --------
-class Platform(NamedTuple):
+class Entity(NamedTuple):
     x: chex.Array
     y: chex.Array
     w: chex.Array
     h: chex.Array
-
-
-class Ladder(NamedTuple):
-    x: chex.Array
-    y: chex.Array
-    w: chex.Array
-    h: chex.Array
-
 
 # -------- Entity Inits --------
 P_HEIGHT = 4
 
-L1P1 = Platform(x=16, y=172, w=128, h=P_HEIGHT)
-L1P2 = Platform(x=16, y=124, w=128, h=P_HEIGHT)
-L1P3 = Platform(x=16, y=76, w=128, h=P_HEIGHT)
-L1P4 = Platform(x=16, y=28, w=128, h=P_HEIGHT)
+L1P1 = Entity(x=16, y=172, w=128, h=P_HEIGHT)
+L1P2 = Entity(x=16, y=124, w=128, h=P_HEIGHT)
+L1P3 = Entity(x=16, y=76, w=128, h=P_HEIGHT)
+L1P4 = Entity(x=16, y=28, w=128, h=P_HEIGHT)
 
 LADDER_HEIGHT = 35
 LADDER_WIDTH = 8
 
-L1L1 = Platform(x=132, y=132, w=LADDER_WIDTH, h=LADDER_HEIGHT)
-L1L2 = Platform(x=20, y=85, w=LADDER_WIDTH, h=LADDER_HEIGHT)
-L1L3 = Platform(x=132, y=37, w=LADDER_WIDTH, h=LADDER_HEIGHT)
+L1L1 = Entity(x=132, y=132, w=LADDER_WIDTH, h=LADDER_HEIGHT)
+L1L2 = Entity(x=20, y=85, w=LADDER_WIDTH, h=LADDER_HEIGHT)
+L1L3 = Entity(x=132, y=37, w=LADDER_WIDTH, h=LADDER_HEIGHT)
 
 
 # -------- Game State --------
@@ -79,6 +71,7 @@ class State(NamedTuple):
     player_y: chex.Array
     player_vel_x: chex.Array
     player_vel_y: chex.Array
+    is_crouching: chex.Array
     player_score: chex.Array
     player_lives: chex.Array
     current_level: chex.Array
@@ -127,6 +120,8 @@ def get_human_action() -> chex.Array:
             return jnp.array(DOWNRIGHTFIRE)
         elif x == 1 and y == 1:
             return jnp.array(UPRIGHTFIRE)
+        elif x == 0 and y == -1:
+            return jnp.array(DOWNFIRE)
         else:
             return jnp.array(FIRE)
     else:
@@ -276,7 +271,7 @@ def check_collision_with_threshold(
 
 
 def player_on_ladder(
-    state: State, ladder: Ladder, threshold: float = 0.3
+    state: State, ladder: Entity, threshold: float = 0.3
 ) -> chex.Array:
     return check_collision_with_threshold(
         e1_x=state.player_x,
@@ -292,7 +287,7 @@ def player_on_ladder(
 
 
 def player_on_ladder_no_thresh(
-    state: State, ladder: Ladder, threshold: float = 0.3
+    state: State, ladder: Entity, threshold: float = 0.3
 ) -> chex.Array:
     return check_collision(
         e1_x=state.player_x,
@@ -391,6 +386,11 @@ def player_climb_controller(
     clock_reset = climb_counter > 19
     climb_counter = jnp.where(clock_reset, 0, climb_counter)
 
+    jax.debug.print(
+        "isclimbing={c}, counter={co}, climb_start={cs}, climb_base={y}, climb_up={u}, climb_down={d}, climb_stop={s}",
+        c=is_climbing, co=climb_counter, cs=climb_start, y=climb_base_y,u=climb_up, d=climb_down,s=climb_stop
+    )
+
     return new_y, is_climbing, climb_base_y, climb_counter
 
 # -------- Player Height --------
@@ -459,26 +459,33 @@ def player_step(state: State, action: chex.Array) -> Tuple[
 
     press_up = jnp.any(jnp.array([action == UP, action == UPRIGHT, action == UPLEFT]))
 
+
+    press_fire = jnp.any(
+        jnp.array([action == FIRE, action == DOWNFIRE, action == UPLEFTFIRE, action == UPRIGHTFIRE, action == DOWNLEFTFIRE, action == DOWNRIGHTFIRE])
+    )
+
+    press_down_fire = jnp.any(
+        jnp.array(action == DOWNFIRE)
+    )
+
     press_down = jnp.any(
         jnp.array([action == DOWN, action == DOWNLEFT, action == DOWNRIGHT])
     )
 
-    press_fire = jnp.any(
-        jnp.array([action == FIRE, action == UPLEFTFIRE, action == UPRIGHTFIRE, action == DOWNLEFTFIRE, action == DOWNRIGHTFIRE])
-    )
-
+    
     press_down = jnp.where(state.is_jumping, False, press_down)
     press_fire = jnp.where(state.is_jumping, False, press_fire)
     press_fire = jnp.where(state.is_climbing, False, press_fire)
-    press_fire = jnp.where(press_down, False, press_fire)
+    press_fire = jnp.where(press_down_fire, False, press_fire)
+
+    press_up = jnp.where(press_down_fire, False, press_up)
 
     # Forbid left/right movement while climbing
     press_right = jnp.where(state.is_climbing, False, press_right)
     press_left = jnp.where(state.is_climbing, False, press_left)
 
-    is_crouching = jnp.logical_and(press_down, jnp.logical_and(~state.is_climbing,~state.is_jumping))
-    press_fire = jnp.where(is_crouching, False, press_fire)
-
+    new_is_crouching = jnp.logical_and(press_down, jnp.logical_and(~state.is_climbing,~state.is_jumping))
+    
     is_looking_left = state.orientation == -1
     is_looking_right = state.orientation == 1
     is_punching_left = jnp.logical_and(press_fire, is_looking_left)
@@ -486,7 +493,7 @@ def player_step(state: State, action: chex.Array) -> Tuple[
 
     # Calculate horizontal velocity
     candidate_vel_x = jnp.where(
-        is_crouching,
+        new_is_crouching,
         0,
         jnp.where(
             press_left, -MOVEMENT_SPEED, jnp.where(press_right, MOVEMENT_SPEED, 0)
@@ -533,7 +540,7 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     new_player_height = player_height_controller(
         is_jumping=new_is_jumping,
         jump_counter=new_jump_counter,
-        is_crouching=is_crouching,
+        is_crouching=new_is_crouching,
     )
 
     # If height changes, shift the player's top so the bottom remains consistent
@@ -564,6 +571,7 @@ def player_step(state: State, action: chex.Array) -> Tuple[
         y,
         vel_x,
         state.player_vel_y,
+        new_is_crouching,
         new_is_jumping,
         new_is_climbing,
         new_jump_counter,
@@ -589,6 +597,7 @@ class Game:
             player_y=jnp.array(PLAYER_START_Y),
             player_vel_x=jnp.array(0),
             player_vel_y=jnp.array(0),
+            is_crouching = jnp.array(False),
             player_score=jnp.array(0),
             player_lives=jnp.array(3),
             current_level=jnp.array(1),
@@ -615,6 +624,7 @@ class Game:
             player_y,
             vel_x,
             vel_y,
+            is_crouching,
             is_jumping,
             is_climbing,
             jump_counter,
@@ -633,6 +643,7 @@ class Game:
             player_y=player_y,
             player_vel_x=vel_x,
             player_vel_y=vel_y,
+            is_crouching=is_crouching,
             player_score=state.player_score,
             player_lives=state.player_lives,
             current_level=state.current_level,
@@ -646,7 +657,7 @@ class Game:
             orientation=orientation,
             jump_base_y=jump_base_y,
             player_height=new_player_height,
-            climb_base_y=state.climb_base_y,
+            climb_base_y=climb_base_y,
             climb_counter=climb_counter,
             punch_left=punch_left,
             punch_right=punch_right,
