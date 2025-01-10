@@ -51,7 +51,7 @@ class SpriteLoader:
         # store sprite
         self.sprites[name] = Sprite([(self.frames[frame_name], duration) for frame_name, duration in frames], render_mode)
         
-    def getSprite(self, name):
+    def getSprite(self, name, copy=True):
         """
         Gets a sprite by name.
         
@@ -65,5 +65,5 @@ class SpriteLoader:
             raise ValueError("The sprite {} is not loaded.".format(name))
         sprite = self.sprites[name]
         # deep copy the sprite
-        return Sprite([(frame.copy(), duration) for frame, duration in sprite.key_frames], sprite.render_mode)
+        return Sprite([(frame.copy(), duration) for frame, duration in sprite.key_frames], sprite.render_mode) if copy else sprite
         

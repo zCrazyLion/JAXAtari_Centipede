@@ -13,6 +13,11 @@ class Canvas:
         self.layers.append(layer)
     def removeLayer(self, layer):
         self.layers.remove(layer)
+    def getLayer(self, name):
+        for layer in self.layers:
+            if layer.name == name:
+                return layer
+        raise ValueError(f"Layer {name} not found.")
     def update(self):
         for layer in self.layers:
             layer.update()

@@ -9,6 +9,7 @@ from atraJaxis.sprite import Sprite
 from atraJaxis.layer import Layer
 from atraJaxis.gameObject import gameObject
 from atraJaxis.spriteLoader import SpriteLoader
+from atraJaxis.renderMode import RenderMode
 
 
 
@@ -1231,7 +1232,7 @@ class Renderer:
     
 class Renderer_AtraJaxis:
     def __init__(self):
-    # initialize renderer
+        # initialize renderer
         self.window_width = 160
         self.window_height = 210
         self.scaling_factor = 3
@@ -1241,9 +1242,29 @@ class Renderer_AtraJaxis:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 36)
         running = True
-        self.canvas = Canvas(self.window_width, self.window_height)
-        self.canvas.addLayer(Layer('player_sub', self.window_width, self.window_height))
+        
+        # initialize sprites
+        
+        # player submarine
+        spriteLoader = SpriteLoader()
+        spriteLoader.loadFrame('sprites\seaquest\player_sub\1.npy', name='pl_sub1')
+        spriteLoader.loadFrame('sprites\seaquest\player_sub\2.npy', name='pl_sub2')
+        spriteLoader.loadFrame('sprites\seaquest\player_sub\3.npy', name='pl_sub3')
+        spriteLoader.loadSprite('player_sub', [('pl_sub1', 4), ('pl_sub2', 4), ('pl_sub3', 4)], RenderMode.LOOP)
 
+        
+        # initialize canvas  
+        self.canvas = Canvas(self.window_width, self.window_height)
+        self.canvas.addLayer(Layer('bg', self.window_width, self.window_height))
+        self.canvas.addLayer(Layer('player_sub', self.window_width, self.window_height))
+        self.canvas.addLayer(Layer('waves', self.window_width, self.window_height))
+        self.canvas.addLayer(Layer('divers', self.window_width, self.window_height))
+        self.canvas.addLayer(Layer('enemies', self.window_width, self.window_height))
+        self.canvas.addLayer(Layer('missiles', self.window_width, self.window_height))
+        
+        # initialize game objects
+        pl_sub = gameObject(0, 0, spriteLoader.getSprite('player_sub'))
+        self.canvas.getLayer('player_sub').addObject(pl_sub)
 
         
         

@@ -42,6 +42,8 @@ class Layer:
         # update gameObjects
         for gameObject in self.gameObjects:
             gameObject.update()
+    
+        
             
     
     def render(self):
