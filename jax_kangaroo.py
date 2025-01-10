@@ -520,8 +520,8 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     )
 
     # Climb controller
-    new_y, new_is_climbing, new_jump_base_y, new_climb_counter = (
-        player_climb_controller(state, new_y, press_up, press_down, ladder_intersect)
+    new_y, new_is_climbing, new_climb_base_y, new_climb_counter = (
+       player_climb_controller(state, new_y, press_up, press_down, ladder_intersect)
     )
 
     # Check Orientation (Left/Right)
@@ -579,7 +579,7 @@ def player_step(state: State, action: chex.Array) -> Tuple[
         new_jump_base_y,
         new_player_height,
         new_jump_orientation,
-        new_jump_base_y,
+        new_climb_base_y,
         new_climb_counter,
         is_punching_left,
         is_punching_right
