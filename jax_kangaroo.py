@@ -6,7 +6,7 @@ import chex
 import numpy as np
 import pygame
 
-# Action constants
+# -------- Action constants --------
 NOOP, FIRE, UP, RIGHT, LEFT, DOWN, UPRIGHT, UPLEFT, DOWNRIGHT, DOWNLEFT = range(10)
 (
     UPFIRE,
@@ -19,23 +19,20 @@ NOOP, FIRE, UP, RIGHT, LEFT, DOWN, UPRIGHT, UPLEFT, DOWNRIGHT, DOWNLEFT = range(
     DOWNLEFTFIRE,
 ) = range(10, 18)
 
-# Game constants
+# -------- Game constants --------
 RENDER_SCALE_FACTOR = 3
 SCREEN_WIDTH, SCREEN_HEIGHT = 160, 210
 PLAYER_WIDTH, PLAYER_HEIGHT = 8, 24
 ENEMY_WIDTH, ENEMY_HEIGHT = 8, 24
 FRUIT_SIZE = 8
-APPLE_SIZE = 8
 
-# Colors
 BACKGROUND_COLOR = (66, 72, 200)
 PLAYER_COLOR = (255, 145, 0)
 ENEMY_COLOR = (236, 200, 96)
 FRUIT_COLOR = (92, 186, 92)
 PLATFORM_COLOR = (130, 74, 0)
-APPLE_COLOR = (255, 0, 0)
+LADDER_COLOR = (199, 148, 97)
 
-# Initial positions and physics
 PLAYER_START_X, PLAYER_START_Y = 23, 148
 GRAVITY = 0.5
 JUMP_VELOCITY = -8
@@ -45,6 +42,7 @@ LEFT_CLIP = 16
 RIGHT_CLIP = 144
 
 
+# -------- Entity Classes --------
 class Platform(NamedTuple):
     x: chex.Array
     y: chex.Array
@@ -52,7 +50,14 @@ class Platform(NamedTuple):
     h: chex.Array
 
 
-# Platform positions
+class Ladder(NamedTuple):
+    x: chex.Array
+    y: chex.Array
+    w: chex.Array
+    h: chex.Array
+
+
+# -------- Entity Inits --------
 P_HEIGHT = 4
 
 L1P1 = Platform(x=16, y=172, w=128, h=P_HEIGHT)
@@ -60,7 +65,15 @@ L1P2 = Platform(x=16, y=124, w=128, h=P_HEIGHT)
 L1P3 = Platform(x=16, y=76, w=128, h=P_HEIGHT)
 L1P4 = Platform(x=16, y=28, w=128, h=P_HEIGHT)
 
+LADDER_HEIGHT = 35
+LADDER_WIDTH = 8
 
+L1L1 = Platform(x=132, y=132, w=LADDER_WIDTH, h=LADDER_HEIGHT)
+L1L2 = Platform(x=20, y=85, w=LADDER_WIDTH, h=LADDER_HEIGHT)
+L1L3 = Platform(x=132, y=37, w=LADDER_WIDTH, h=LADDER_HEIGHT)
+
+
+# -------- Game State --------
 class State(NamedTuple):
     player_x: chex.Array
     player_y: chex.Array
@@ -81,6 +94,7 @@ class State(NamedTuple):
     player_height: chex.Array
 
 
+# -------- Keyboard Inputs --------
 def get_human_action() -> chex.Array:
     keys = pygame.key.get_pressed()
     up = keys[pygame.K_w] or keys[pygame.K_UP]
@@ -132,6 +146,7 @@ def get_human_action() -> chex.Array:
     return jnp.array(NOOP)
 
 
+# -------- Functions for Clipping / Clamping and Platforms --------
 def get_player_platform(state: State) -> Tuple[chex.Array]:
     """
     Returns booleans for which platform "band" the player's top is in,
@@ -170,15 +185,6 @@ def get_player_platform(state: State) -> Tuple[chex.Array]:
 def player_on_ground(state: State, action: chex.Array) -> Tuple[chex.Array]:
     player_y = state.player_y
 
-    # def on_platform(i, val):
-
-    #     return jnp.logical_and(
-    #         jnp.logical_and(player_x >= platform.x, player_x < (platform.x + platform.w)),
-    #         jnp.logical_and(player_y >= platform.y, player_y < (platform.y + platform.h)),
-    #     )
-
-    # jax.lax.fori_loop()
-
     on_p1, on_p2, on_p3, on_p4 = get_player_platform(state)
 
     on_p1_ground = jnp.where(
@@ -197,6 +203,91 @@ def player_on_ground(state: State, action: chex.Array) -> Tuple[chex.Array]:
     return jnp.any(jnp.array([on_p1_ground, on_p2_ground, on_p3_ground, on_p4_ground]))
 
 
+# -------- Collision with entities --------
+@jax.jit
+def check_collision(
+    e1_x: chex.Array,
+    e1_y: chex.Array,
+    e1_w: chex.Array,
+    e1_h: chex.Array,
+    e2_x: chex.Array,
+    e2_y: chex.Array,
+    e2_w: chex.Array,
+    e2_h: chex.Array,
+) -> chex.Array:
+    """
+    Returns True if the two rectangles overlap, False otherwise.
+    We assume (x, y) is the top-left corner, w is width, h is height.
+    """
+    e1_left = e1_x
+    e1_right = e1_x + e1_w
+    e1_top = e1_y
+    e1_bottom = e1_y + e1_h
+
+    e2_left = e2_x
+    e2_right = e2_x + e2_w
+    e2_top = e2_y
+    e2_bottom = e2_y + e2_h
+
+    no_overlap = (
+        (e1_bottom < e2_top)
+        | (e1_top > e2_bottom)
+        | (e1_right < e2_left)
+        | (e1_left > e2_right)
+    )
+
+    return jnp.logical_not(no_overlap)
+
+
+@jax.jit
+def check_collision_with_threshold(
+    e1_x: chex.Array,
+    e1_y: chex.Array,
+    e1_w: chex.Array,
+    e1_h: chex.Array,
+    e2_x: chex.Array,
+    e2_y: chex.Array,
+    e2_w: chex.Array,
+    e2_h: chex.Array,
+    threshold: float,
+) -> chex.Array:
+
+    inter_left = jnp.maximum(e1_x, e2_x)
+    inter_right = jnp.minimum(e1_x + e1_w, e2_x + e2_w)
+    inter_top = jnp.maximum(e1_y, e2_y)
+    inter_bottom = jnp.minimum(e1_y + e1_h, e2_y + e2_h)
+
+    inter_width = jnp.maximum(inter_right - inter_left, 0)
+    inter_height = jnp.maximum(inter_bottom - inter_top, 0)
+
+    intersection_area = inter_width * inter_height
+
+    e1_area = e1_w * e1_h
+
+    required_overlap = e1_area * threshold
+
+    overlap_exceeds = intersection_area >= required_overlap
+
+    return overlap_exceeds
+
+
+def player_on_ladder(
+    state: State, ladder: Ladder, threshold: float = 0.3
+) -> chex.Array:
+    return check_collision_with_threshold(
+        e1_x=state.player_x,
+        e1_y=state.player_y,
+        e1_w=PLAYER_WIDTH,
+        e1_h=state.player_height,
+        e2_x=ladder.x,
+        e2_y=ladder.y,
+        e2_w=ladder.w,
+        e2_h=ladder.h,
+        threshold=threshold,
+    )
+
+
+# -------- Jumping --------
 @jax.jit
 def player_jump_controller(
     state: State, jump_pressed: chex.Array
@@ -214,7 +305,6 @@ def player_jump_controller(
     is_jumping = state.is_jumping
     jump_base_y = state.jump_base_y
 
-    # Start jump if pressed & not already jumping
     jump_start = jump_pressed & ~is_jumping
 
     jump_counter = jnp.where(jump_start, 0, jump_counter)
@@ -222,17 +312,9 @@ def player_jump_controller(
     jump_base_y = jnp.where(jump_start, player_y, jump_base_y)
     is_jumping = is_jumping | jump_start
 
-    # If currently jumping, increment counter
     jump_counter = jnp.where(is_jumping, jump_counter + 1, jump_counter)
 
     def offset_for(count):
-        # piecewise intervals:
-        #   [0..8)    ->  0
-        #   [8..16)   -> -12
-        #   [16..24)  -> -12
-        #   [24..32)  -> -24
-        #   [32..40)  -> -12
-        #   >= 40     ->  0  (jump ends)
         conditions = [
             (count <= 8),
             (count < 16),
@@ -241,20 +323,17 @@ def player_jump_controller(
             (count < 41),
         ]
         values = [
-            0,  # 0..7
-            -8,  # 8..15
-            -8,  # 16..23
-            -16,  # 24..31
-            -8,  # 32..39
+            0,
+            -8,
+            -8,
+            -16,
+            -8,
         ]
         return jnp.select(conditions, values, default=0)
 
     total_offset = offset_for(jump_counter)
-
-    # Apply offset only if is_jumping
     new_y = jnp.where(is_jumping, jump_base_y + total_offset, player_y)
 
-    # After 40 ticks, jump is done
     jump_complete = jump_counter >= 41
     is_jumping = jnp.where(jump_complete, False, is_jumping)
     jump_counter = jnp.where(jump_complete, 0, jump_counter)
@@ -262,6 +341,7 @@ def player_jump_controller(
     return new_y, jump_counter, is_jumping, jump_base_y, jump_orientation
 
 
+# -------- Player Height --------
 @jax.jit
 def player_height_controller(
     is_jumping: chex.Array,
@@ -280,28 +360,27 @@ def player_height_controller(
 
     def jump_based_height(count):
         conditions = [
-            (count < 16),  # covers 0..15
-            (count < 24),  # covers 16..23
-            (count < 40),  # covers 24..39
+            (count < 16),
+            (count < 24),
+            (count < 40),
         ]
         values = [
-            24,  # normal
-            15,  # small sprite
-            23,  # stretched
+            24,
+            15,
+            23,
         ]
         return jnp.select(conditions, values, default=24)
 
     candidate_height = jump_based_height(jump_counter)
     height_if_jumping = jnp.where(is_jumping, candidate_height, 24)
 
-    # Only allow crouching if pressing_down == True AND not jumping
     is_crouching = jnp.logical_and(pressing_down, jnp.logical_not(is_jumping))
 
-    # If can_crouch, override => 16; otherwise use jump-based or normal height
     new_height = jnp.where(is_crouching, 16, height_if_jumping)
     return new_height
 
 
+# -------- Main Function for Player Movement --------
 def player_step(state: State, action: chex.Array) -> Tuple[
     chex.Array,
     chex.Array,
@@ -347,10 +426,13 @@ def player_step(state: State, action: chex.Array) -> Tuple[
         player_jump_controller(state, press_up)
     )
 
+    # Check Orientation (Left/Right)
     new_orientation = jnp.sign(candidate_vel_x)
     stop_in_air = jnp.logical_and(
         new_is_jumping, state.jump_orientation != new_orientation
     )
+
+    # Stop Jump when orientation changes mid air
     vel_x = jnp.where(stop_in_air, 0, candidate_vel_x)
 
     # Height controller
@@ -383,6 +465,13 @@ def player_step(state: State, action: chex.Array) -> Tuple[
         on_p4, lambda y: jnp.clip(y, 0, L1P4.y - new_player_height), lambda _: _, y
     )
 
+    # Collisions
+    collide_l1 = player_on_ladder(state, L1L1)
+    collide_l2 = player_on_ladder(state, L1L2)
+    collide_l3 = player_on_ladder(state, L1L3)
+    is_climbing = jnp.logical_or(collide_l1, jnp.logical_or(collide_l2, collide_l3))
+    jax.debug.print("intersect with any ladder = {c}", c=is_climbing)
+
     return (
         x,
         y,
@@ -397,6 +486,7 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     )
 
 
+# -------- Game Interface for Reset and Step --------
 class Game:
     def __init__(self, frameskip: int = 1):
         self.frameskip = frameskip
@@ -458,6 +548,11 @@ class Game:
         )
 
 
+# ----------------------------------------------------------------
+# -------- Ad-Hoc Rendering (to be redone by other group) --------
+# ----------------------------------------------------------------
+
+
 class Renderer:
     def __init__(self):
         self.screen = pygame.display.set_mode(
@@ -501,6 +596,20 @@ class Renderer:
                         platform.y * RENDER_SCALE_FACTOR,
                         platform.w * RENDER_SCALE_FACTOR,
                         platform.h * RENDER_SCALE_FACTOR,
+                    ),
+                )
+
+        # Draw Ladders
+        if state.current_level == 1:
+            for ladder in (L1L1, L1L2, L1L3):
+                pygame.draw.rect(
+                    self.screen,
+                    LADDER_COLOR,
+                    (
+                        ladder.x * RENDER_SCALE_FACTOR,
+                        ladder.y * RENDER_SCALE_FACTOR,
+                        ladder.w * RENDER_SCALE_FACTOR,
+                        ladder.h * RENDER_SCALE_FACTOR,
                     ),
                 )
 
