@@ -94,6 +94,8 @@ class State(NamedTuple):
     climb_base_y: chex.Array
     jump_orientation: chex.Array
     player_height: chex.Array
+    punch_left: chex.Array
+    punch_right: chex.Array
 
 
 # -------- Keyboard Inputs --------
@@ -362,7 +364,7 @@ def player_climb_controller(
     state: State, y:chex.Array, press_up: chex.Array, press_down: chex.Array, ladder_intersect: chex.Array
 ) -> Tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
 
-    player_y = y
+    new_y = y
     is_climbing = state.is_climbing
 
     climb_counter = state.climb_counter
@@ -371,14 +373,14 @@ def player_climb_controller(
     is_climbing = is_climbing | climb_start
 
     climb_counter = jnp.where(climb_start, 0, climb_counter)
-    climb_base_y = jnp.where(climb_start, player_y, state.climb_base_y)
-    new_y = jnp.where(climb_start, player_y - 8, player_y)
+    climb_base_y = jnp.where(climb_start, new_y, state.climb_base_y)
+    new_y = jnp.where(climb_start, new_y - 8, new_y)
 
     climb_counter = jnp.where(is_climbing, climb_counter + 1, climb_counter)
     
     climb_up = jnp.logical_and(press_up, is_climbing)
     climb_down = jnp.logical_and(press_down, is_climbing)
-    
+
     new_y = jnp.where(jnp.logical_and(climb_up, jnp.equal(climb_counter, 19)), new_y - 8, new_y)
     new_y = jnp.where(jnp.logical_and(climb_down, jnp.equal(climb_counter, 19)), new_y + 8, new_y)
 
@@ -429,7 +431,6 @@ def player_height_controller(
     new_height = jnp.where(is_crouching, 16, height_if_jumping)
     return new_height
 
-
 # -------- Main Function for Player Movement --------
 @jax.jit
 def player_step(state: State, action: chex.Array) -> Tuple[
@@ -445,6 +446,7 @@ def player_step(state: State, action: chex.Array) -> Tuple[
 ]:
     x, y = state.player_x, state.player_y
     old_height = state.player_height
+    old_orientation = state.orientation
 
     # Get inputs
     press_right = jnp.any(
@@ -460,13 +462,27 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     press_down = jnp.any(
         jnp.array([action == DOWN, action == DOWNLEFT, action == DOWNRIGHT])
     )
+
+    press_fire = jnp.any(
+        jnp.array([action == FIRE, action == UPLEFTFIRE, action == UPRIGHTFIRE, action == DOWNLEFTFIRE, action == DOWNRIGHTFIRE])
+    )
+
     press_down = jnp.where(state.is_jumping, False, press_down)
+    press_fire = jnp.where(state.is_jumping, False, press_fire)
+    press_fire = jnp.where(state.is_climbing, False, press_fire)
+    press_fire = jnp.where(press_down, False, press_fire)
 
     # Forbid left/right movement while climbing
     press_right = jnp.where(state.is_climbing, False, press_right)
     press_left = jnp.where(state.is_climbing, False, press_left)
 
     is_crouching = jnp.logical_and(press_down, jnp.logical_and(~state.is_climbing,~state.is_jumping))
+    press_fire = jnp.where(is_crouching, False, press_fire)
+
+    is_looking_left = state.orientation == -1
+    is_looking_right = state.orientation == 1
+    is_punching_left = jnp.logical_and(press_fire, is_looking_left)
+    is_punching_right = jnp.logical_and(press_fire, is_looking_right)
 
     # Calculate horizontal velocity
     candidate_vel_x = jnp.where(
@@ -502,7 +518,10 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     )
 
     # Check Orientation (Left/Right)
+    standing_still = jnp.equal(candidate_vel_x, 0)
     new_orientation = jnp.sign(candidate_vel_x)
+    new_orientation = jnp.where(standing_still, old_orientation, new_orientation)
+    
     stop_in_air = jnp.logical_and(
         new_is_jumping, state.jump_orientation != new_orientation
     )
@@ -553,7 +572,9 @@ def player_step(state: State, action: chex.Array) -> Tuple[
         new_player_height,
         new_jump_orientation,
         new_jump_base_y,
-        new_climb_counter
+        new_climb_counter,
+        is_punching_left,
+        is_punching_right
     )
 
 
@@ -583,6 +604,8 @@ class Game:
             player_height=jnp.array(PLAYER_HEIGHT),
             climb_base_y=jnp.array(PLAYER_START_Y),
             climb_counter=jnp.array(0),
+            punch_left=jnp.array(False),
+            punch_right=jnp.array(False)
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -600,7 +623,9 @@ class Game:
             new_player_height,
             new_jump_orientation,
             climb_base_y,
-            climb_counter
+            climb_counter,
+            punch_left,
+            punch_right,
         ) = player_step(state, action)
 
         return State(
@@ -622,7 +647,9 @@ class Game:
             jump_base_y=jump_base_y,
             player_height=new_player_height,
             climb_base_y=state.climb_base_y,
-            climb_counter=climb_counter
+            climb_counter=climb_counter,
+            punch_left=punch_left,
+            punch_right=punch_right,
         )
 
 
@@ -702,6 +729,31 @@ class Renderer:
                 state.player_height * RENDER_SCALE_FACTOR,
             ),
         )
+
+        if state.punch_left:
+            pygame.draw.rect(
+                self.screen,
+                PLAYER_COLOR,
+                (
+                    int(state.player_x - 2) * RENDER_SCALE_FACTOR,
+                    (int(state.player_y) + 8)* RENDER_SCALE_FACTOR,
+                    2 * RENDER_SCALE_FACTOR,
+                    4 * RENDER_SCALE_FACTOR,
+                ),
+            )
+
+        if state.punch_right:
+            pygame.draw.rect(
+                self.screen,
+                PLAYER_COLOR,
+                (
+                    int(state.player_x + PLAYER_WIDTH) * RENDER_SCALE_FACTOR,
+                    (int(state.player_y) + 8)* RENDER_SCALE_FACTOR,
+                    2 * RENDER_SCALE_FACTOR,
+                    4 * RENDER_SCALE_FACTOR,
+                ),
+            )
+
 
         # Draw score
         font = pygame.font.Font(None, 36)
