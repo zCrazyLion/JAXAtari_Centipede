@@ -1235,20 +1235,24 @@ class Renderer_AtraJaxis:
         # initialize renderer
         self.window_width = 160
         self.window_height = 210
-        self.scaling_factor = 1
+        self.scaling_factor = 3
         pygame.init()
         self.win = pygame.display.set_mode((self.window_width*self.scaling_factor, self.window_height*self.scaling_factor))
 
-        self.screen = pygame.display.set_mode((self.window_width, self.window_height))
+        self.screen = pygame.display.set_mode((self.window_width*self.scaling_factor, self.window_height*self.scaling_factor))
         pygame.display.set_caption("Seaquest")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 36)
         running = True
         
         # initialize sprites
-        
-        # player submarine
         spriteLoader = SpriteLoader()
+        
+        # background
+        spriteLoader.loadFrame('sprites\seaquest\\bg\\1.npy', name='bg1')
+        spriteLoader.loadSprite('bg', [('bg1', 1)], RenderMode.LOOP)
+        # player submarine
+
         spriteLoader.loadFrame('sprites\seaquest\player_sub\\1.npy', name='pl_sub1')
         spriteLoader.loadFrame('sprites\seaquest\player_sub\\2.npy', name='pl_sub2')
         spriteLoader.loadFrame('sprites\seaquest\player_sub\\3.npy', name='pl_sub3')
@@ -1265,6 +1269,9 @@ class Renderer_AtraJaxis:
         self.canvas.addLayer(Layer('missiles', self.window_width, self.window_height))
         
         # initialize game objects
+        background = gameObject(0, 0, spriteLoader.getSprite('bg'))
+        self.canvas.getLayer('bg').addGameObject(background)
+        
         pl_sub = gameObject(0, 0, spriteLoader.getSprite('player_sub'))
         self.canvas.getLayer('player_sub').addGameObject(pl_sub)
 
@@ -1281,10 +1288,11 @@ class Renderer_AtraJaxis:
         pygame.display.flip()
         # Update display from state
         self.update(state)
+
         self.clock.tick(60)
     def update(self, state):
         # update according to state
-        self.canvas.getLayer('player_sub').gameObjects[0].displace(state.player_x.item(), state.player_y.item())
+        self.canvas.getLayer('player_sub').gameObjects[0].displace(state.player_y.item(), state.player_x.item())
         self.canvas.update()
     
 
