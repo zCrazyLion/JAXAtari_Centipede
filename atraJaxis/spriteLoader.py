@@ -63,4 +63,7 @@ class SpriteLoader:
         """
         if name not in self.sprites:
             raise ValueError("The sprite {} is not loaded.".format(name))
-        return self.sprites[name]
+        sprite = self.sprites[name]
+        # deep copy the sprite
+        return Sprite([(frame.copy(), duration) for frame, duration in sprite.key_frames], sprite.render_mode)
+        
