@@ -1251,13 +1251,44 @@ class Renderer_AtraJaxis:
         # background
         spriteLoader.loadFrame('sprites\seaquest\\bg\\1.npy', name='bg1')
         spriteLoader.loadSprite('bg', [('bg1', 1)], RenderMode.LOOP)
+        
         # player submarine
-
         spriteLoader.loadFrame('sprites\seaquest\player_sub\\1.npy', name='pl_sub1')
         spriteLoader.loadFrame('sprites\seaquest\player_sub\\2.npy', name='pl_sub2')
         spriteLoader.loadFrame('sprites\seaquest\player_sub\\3.npy', name='pl_sub3')
         spriteLoader.loadSprite('player_sub', [('pl_sub1', 4), ('pl_sub2', 4), ('pl_sub3', 4)], RenderMode.LOOP)
-
+        
+        # enemy submarine
+        spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\1.npy', name='en_sub1')
+        spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\2.npy', name='en_sub2')
+        spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\3.npy', name='en_sub3')
+        spriteLoader.loadSprite('enemy_sub', [('en_sub1', 4), ('en_sub2', 4), ('en_sub3', 4)], RenderMode.LOOP)
+        
+        # enemy shark
+        spriteLoader.loadFrame('sprites\seaquest\shark\\1.npy', name='shark1')
+        spriteLoader.loadFrame('sprites\seaquest\shark\\2.npy', name='shark2')
+        spriteLoader.loadSprite('shark', [('shark1', 16), ('shark2', 8)], RenderMode.LOOP)
+        
+        # diver
+        spriteLoader.loadFrame('sprites\seaquest\diver\\1.npy', name='diver1')
+        spriteLoader.loadFrame('sprites\seaquest\diver\\2.npy', name='diver2')
+        spriteLoader.loadSprite('diver', [('diver1', 16), ('diver2', 8)], RenderMode.LOOP)
+        
+        # player torpedo
+        spriteLoader.loadFrame('sprites\seaquest\player_torp\\1.npy', name='pl_torpedo1')
+        spriteLoader.loadSprite('player_torpedo', [('pl_torpedo1', 1)], RenderMode.LOOP)
+        
+        # enemy torpedo
+        spriteLoader.loadFrame('sprites\seaquest\enemy_torp\\1.npy', name='en_torpedo1')
+        spriteLoader.loadSprite('enemy_torpedo', [('en_torpedo1', 1)], RenderMode.LOOP)
+        
+        # life indicator
+        spriteLoader.loadFrame('sprites\seaquest\life_indicator\\1.npy', name='life1')
+        spriteLoader.loadSprite('life_indicator', [('life1', 1)], RenderMode.LOOP)
+        
+        # diver indicator
+        spriteLoader.loadFrame('sprites\seaquest\diver_indicator\\1.npy', name='diver_indicator1')
+        spriteLoader.loadSprite('diver_indicator', [('diver_indicator1', 1)], RenderMode.LOOP)
         
         # initialize canvas  
         self.canvas = Canvas(self.window_width, self.window_height)
@@ -1292,7 +1323,9 @@ class Renderer_AtraJaxis:
         self.clock.tick(60)
     def update(self, state):
         # update according to state
+        # update player submarine position
         self.canvas.getLayer('player_sub').gameObjects[0].displace(state.player_y.item(), state.player_x.item())
+        
         self.canvas.update()
     
 

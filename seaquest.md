@@ -19,3 +19,91 @@ death4: 4
 death5: 4
 death6: 4
 death7: 4
+
+## Game State
+This introduces the different fields of game state objects.
+
+Remember: while rendering, the order of x and y coordinates should be exchanged for reasons in JAX and PyGame.
+
+### Player Position
+`player_x` and `player_y` are JAX singleton arrays that can be converted to `int` type via `.item()` method.
+
+```
+player_x=Array(76, dtype=int32, weak_type=True), player_y=Array(46, dtype=int32, weak_type=True)
+```
+### Player Direction
+
+Player direction is [0] if left, [1] if right. We will omit [] notation for JAX singleton arrays since here.
+
+```
+player_direction=Array(0, dtype=int32, weak_type=True), oxygen=Array(1, dtype=int32, weak_type=True), 
+```
+
+### Collected Divers
+
+```
+divers_collected=Array(0, dtype=int32, weak_type=True), score=Array(0, dtype=int32, weak_type=True), 
+```
+
+### Lives
+
+```
+lives=Array(3, dtype=int32, weak_type=True)
+```
+
+### diver positions
+
+```
+ diver_positions=Array([[160.,  69.,  -1.],
+       [160.,  93.,  -1.],
+       [160., 117.,  -1.],
+       [160., 141.,  -1.]], dtype=float32), 
+```       
+
+```       
+shark_positions=Array([[0., 0., 0.],
+       [0., 0., 0.],
+       [0., 0., 0.],
+       [0., 0., 0.]], dtype=float32),
+```       
+
+```
+sub_positions=Array([[0., 0., 0.],
+       [0., 0., 0.],
+       [0., 0., 0.],
+       [0., 0., 0.]], dtype=float32), enemy_missile_positions=Array([[0., 0., 0.],
+       [0., 0., 0.],
+       [0., 0., 0.],
+       [0., 0., 0.]], dtype=float32),
+```
+
+```
+ surface_sub_position=Array([[0., 0., 0.]], dtype=float32),
+``` 
+  
+```  
+  player_missile_position=Array([0., 0., 0.], dtype=float32),
+```
+
+```
+   step_counter=Array(1, dtype=int32, weak_type=True),
+```
+
+```
+    just_surfaced=Array(-1, dtype=int32, weak_type=True)
+```
+
+
+
+### Unknown
+
+```
+ spawn_state=SpawnState(difficulty=Array(0, dtype=int32, weak_type=True), 
+
+ obstacle_pattern_indexes=Array([0, 1, 2, 3], dtype=int32), 
+ 
+ obstacle_attributes=Array([8, 0, 8, 0], dtype=int32), 
+ 
+ spawn_timers=Array([ 0, 30, 60, 90], dtype=int32)), 
+ 
+ ```

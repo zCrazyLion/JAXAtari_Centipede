@@ -23,9 +23,7 @@ class gameObject:
         
     def render(self, grid):
         # put the sprite on the layer on the position (x, y)
-        frame = self.sprite.get_current_frame()
-        idx = self.sprite.get_current_frame_idx()
-
+        frame = self.sprite.render()
         for i in range(frame.shape[0]):
             for j in range(frame.shape[1]):
                 # if the pixel is in the range of the grid, put the pixel on the grid
