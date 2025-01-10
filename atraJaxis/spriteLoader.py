@@ -1,7 +1,7 @@
 # A utility class to load and manage sprites.
 import numpy as np
 # import sprite class from sprite.py
-from sprite import sprite, renderMode
+from sprite import Sprite, RenderMode
 class spriteLoader:
     def __init__(self):
         self.frames = {}
@@ -46,10 +46,10 @@ class spriteLoader:
             if frame_name not in self.frames:
                 raise ValueError("The frame {} is not loaded.".format(frame_name))
         # check render_mode is a renderMode enum
-        if not isinstance(render_mode, renderMode):
+        if not isinstance(render_mode, RenderMode):
             raise ValueError("Invalid render mode. The render_mode must be a renderMode enum.")
         # store sprite
-        self.sprites[name] = sprite([(self.frames[frame_name], duration) for frame_name, duration in frames], render_mode)
+        self.sprites[name] = Sprite([(self.frames[frame_name], duration) for frame_name, duration in frames], render_mode)
         
     def getSprite(self, name):
         """

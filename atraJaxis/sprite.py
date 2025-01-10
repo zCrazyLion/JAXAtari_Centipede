@@ -1,16 +1,9 @@
-from enum import Enum
-
-# enum of render mode.
-# loop: loop through the frames.
-# once: play the frames once, then destroy the sprite.
-class renderMode(Enum):
-    LOOP = 1
-    ONCE = 2 
+from renderMode import RenderMode
 
 # class of sprites.
 # sprites are objects that can be drawn on the screen.
 # sprites are defined as a sequence of frames, where each frame is a np array of pixels.
-class sprite:
+class Sprite:
     def __init__(self, frames, render_mode):
         self.key_frames = frames # key_frames format: [(pixels: np.array, duration: int), ...]
         self.render_mode = render_mode # render_mode: renderMode enum
@@ -23,9 +16,9 @@ class sprite:
                 self.frames.append(frames[i][0])
         self.total_length = len(self.frames)
     def update(self):
-        if self.render_mode == renderMode.LOOP:
+        if self.render_mode == RenderMode.LOOP:
             self.current_frame_idx = (self.current_frame_idx + 1) % len(self.frames)
-        elif self.render_mode == renderMode.ONCE:
+        elif self.render_mode == RenderMode.ONCE:
             self.current_frame_idx += 1
             if self.current_frame_idx >= len(self.key_frames):
                 self.finished = True

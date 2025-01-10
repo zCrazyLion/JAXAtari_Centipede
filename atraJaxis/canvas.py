@@ -2,7 +2,7 @@
 # The layers are rendered in order, with the first layer rendered first.
 # Render each layer on top of the previous layer with alpha blending. The layers are rendered as RGB images.
 import numpy as np
-class canvas:
+class Canvas:
     def __init__(self, width, height):
         self.layers = []
         self.width = width

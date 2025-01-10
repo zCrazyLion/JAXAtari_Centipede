@@ -4,6 +4,9 @@ import jax
 import jax.numpy as jnp
 import chex
 import pygame
+import atraJaxis as aj
+from atraJaxis import spriteLoader, sprite, canvas, layer, gameObject
+
 
 # Game Constants
 WINDOW_WIDTH = 160 * 3
@@ -1220,6 +1223,34 @@ class Renderer:
         # Update display
         pygame.display.flip()
         self.clock.tick(60)
+    
+class Renderer_AtraJaxis:
+    def __init__(self):
+    # initialize renderer
+        self.window_width = 160
+        self.window_height = 210
+        self.scaling_factor = 3
+        pygame.init()
+        self.screen = pygame.display.set_mode((self.window_width, self.window_height))
+        pygame.display.set_caption("Seaquest")
+        self.clock = pygame.time.Clock()
+        self.font = pygame.font.Font(None, 36)
+        running = True
+        self.canvas = aj.Canvas.Canvas(self.window_width, self.window_height)
+        canvas.addLayer(layer('player_sub', windows_width, windows_height))
+
+
+        
+        
+    def render(self, state):
+        # Clear screen
+        self.screen.fill(BACKGROUND_COLOR)
+
+        # Update display
+        pygame.display.flip()
+        self.clock.tick(60)
+
+    
 
 
 def get_human_action() -> chex.Array:
@@ -1280,6 +1311,8 @@ if __name__ == "__main__":
     # Initialize game and renderer
     game = Game(frameskip=1)
     renderer = Renderer()
+    
+    renderer_AtraJaxis = Renderer_AtraJaxis()
 
     # Get jitted functions
     jitted_step = jax.jit(game.step)
@@ -1311,8 +1344,9 @@ if __name__ == "__main__":
                 action = get_human_action()
                 curr_state = jitted_step(curr_state, action)
 
-        renderer.render(curr_state)
+        renderer_AtraJaxis.render(curr_state)
+        # renderer.render(curr_state)
         counter += 1
-        renderer.clock.tick(256)
+        # renderer.clock.tick(256)
 
     pygame.quit()
