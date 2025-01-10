@@ -1246,49 +1246,49 @@ class Renderer_AtraJaxis:
         running = True
         
         # initialize sprites
-        spriteLoader = SpriteLoader()
+        self.spriteLoader = SpriteLoader()
         
         # background
-        spriteLoader.loadFrame('sprites\seaquest\\bg\\1.npy', name='bg1')
-        spriteLoader.loadSprite('bg', [('bg1', 1)], RenderMode.LOOP)
+        self.spriteLoader.loadFrame('sprites\seaquest\\bg\\1.npy', name='bg1')
+        self.spriteLoader.loadSprite('bg', [('bg1', 1)], RenderMode.LOOP)
         
         # player submarine
-        spriteLoader.loadFrame('sprites\seaquest\player_sub\\1.npy', name='pl_sub1')
-        spriteLoader.loadFrame('sprites\seaquest\player_sub\\2.npy', name='pl_sub2')
-        spriteLoader.loadFrame('sprites\seaquest\player_sub\\3.npy', name='pl_sub3')
-        spriteLoader.loadSprite('player_sub', [('pl_sub1', 4), ('pl_sub2', 4), ('pl_sub3', 4)], RenderMode.LOOP)
+        self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\1.npy', name='pl_sub1')
+        self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\2.npy', name='pl_sub2')
+        self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\3.npy', name='pl_sub3')
+        self.spriteLoader.loadSprite('player_sub', [('pl_sub1', 4), ('pl_sub2', 4), ('pl_sub3', 4)], RenderMode.LOOP)
         
         # enemy submarine
-        spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\1.npy', name='en_sub1')
-        spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\2.npy', name='en_sub2')
-        spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\3.npy', name='en_sub3')
-        spriteLoader.loadSprite('enemy_sub', [('en_sub1', 4), ('en_sub2', 4), ('en_sub3', 4)], RenderMode.LOOP)
+        self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\1.npy', name='en_sub1')
+        self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\2.npy', name='en_sub2')
+        self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\3.npy', name='en_sub3')
+        self.spriteLoader.loadSprite('enemy_sub', [('en_sub1', 4), ('en_sub2', 4), ('en_sub3', 4)], RenderMode.LOOP)
         
         # enemy shark
-        spriteLoader.loadFrame('sprites\seaquest\shark\\1.npy', name='shark1')
-        spriteLoader.loadFrame('sprites\seaquest\shark\\2.npy', name='shark2')
-        spriteLoader.loadSprite('shark', [('shark1', 16), ('shark2', 8)], RenderMode.LOOP)
+        self.spriteLoader.loadFrame('sprites\seaquest\shark\\1.npy', name='shark1')
+        self.spriteLoader.loadFrame('sprites\seaquest\shark\\2.npy', name='shark2')
+        self.spriteLoader.loadSprite('shark', [('shark1', 16), ('shark2', 8)], RenderMode.LOOP)
         
         # diver
-        spriteLoader.loadFrame('sprites\seaquest\diver\\1.npy', name='diver1')
-        spriteLoader.loadFrame('sprites\seaquest\diver\\2.npy', name='diver2')
-        spriteLoader.loadSprite('diver', [('diver1', 16), ('diver2', 8)], RenderMode.LOOP)
+        self.spriteLoader.loadFrame('sprites\seaquest\diver\\1.npy', name='diver1')
+        self.spriteLoader.loadFrame('sprites\seaquest\diver\\2.npy', name='diver2')
+        self.spriteLoader.loadSprite('diver', [('diver1', 16), ('diver2', 8)], RenderMode.LOOP)
         
         # player torpedo
-        spriteLoader.loadFrame('sprites\seaquest\player_torp\\1.npy', name='pl_torpedo1')
-        spriteLoader.loadSprite('player_torpedo', [('pl_torpedo1', 1)], RenderMode.LOOP)
+        self.spriteLoader.loadFrame('sprites\seaquest\player_torp\\1.npy', name='pl_torpedo1')
+        self.spriteLoader.loadSprite('player_torpedo', [('pl_torpedo1', 1)], RenderMode.LOOP)
         
         # enemy torpedo
-        spriteLoader.loadFrame('sprites\seaquest\enemy_torp\\1.npy', name='en_torpedo1')
-        spriteLoader.loadSprite('enemy_torpedo', [('en_torpedo1', 1)], RenderMode.LOOP)
+        self.spriteLoader.loadFrame('sprites\seaquest\enemy_torp\\1.npy', name='en_torpedo1')
+        self.spriteLoader.loadSprite('enemy_torpedo', [('en_torpedo1', 1)], RenderMode.LOOP)
         
         # life indicator
-        spriteLoader.loadFrame('sprites\seaquest\life_indicator\\1.npy', name='life1')
-        spriteLoader.loadSprite('life_indicator', [('life1', 1)], RenderMode.LOOP)
+        self.spriteLoader.loadFrame('sprites\seaquest\life_indicator\\1.npy', name='life1')
+        self.spriteLoader.loadSprite('life_indicator', [('life1', 1)], RenderMode.LOOP)
         
         # diver indicator
-        spriteLoader.loadFrame('sprites\seaquest\diver_indicator\\1.npy', name='diver_indicator1')
-        spriteLoader.loadSprite('diver_indicator', [('diver_indicator1', 1)], RenderMode.LOOP)
+        self.spriteLoader.loadFrame('sprites\seaquest\diver_indicator\\1.npy', name='diver_indicator1')
+        self.spriteLoader.loadSprite('diver_indicator', [('diver_indicator1', 1)], RenderMode.LOOP)
         
         # initialize canvas  
         self.canvas = Canvas(self.window_width, self.window_height)
@@ -1300,13 +1300,21 @@ class Renderer_AtraJaxis:
         self.canvas.addLayer(Layer('missiles', self.window_width, self.window_height))
         
         # initialize game objects
-        background = gameObject(0, 0, spriteLoader.getSprite('bg'))
+        background = gameObject(0, 0, self.spriteLoader.getSprite('bg'))
         self.canvas.getLayer('bg').addGameObject(background)
         
-        pl_sub = gameObject(0, 0, spriteLoader.getSprite('player_sub'))
+        pl_sub = gameObject(0, 0, self.spriteLoader.getSprite('player_sub'))
         self.canvas.getLayer('player_sub').addGameObject(pl_sub)
-
         
+        # initialize arrays that map indices to game objects
+        self.diver_objects = [None] * MAX_DIVERS 
+        self.shark_objects = [None] * MAX_SHARKS
+        self.sub_objects = [None] * MAX_SUBS
+        self.enemy_torpedo_objects = [None] * MAX_ENEMY_MISSILES
+        self.surface_sub_objects = [None] * MAX_SURFACE_SUBS
+        self.player_torpedo_object = None
+
+
         
     def render(self, state):
         grid = self.canvas.render()
@@ -1324,10 +1332,45 @@ class Renderer_AtraJaxis:
     def update(self, state):
         # update according to state
         # update player submarine position
+        # TBD: direction of player
         self.canvas.getLayer('player_sub').gameObjects[0].displace(state.player_y.item(), state.player_x.item())
+                
+        # update divers
+        # TBD: direction of diver
+        for idx in range(MAX_DIVERS):
+            if state.diver_positions[idx][0] > 0: # indicates existence
+                diver_x = int(state.diver_positions[idx][1].item())
+                diver_y = int(state.diver_positions[idx][0].item())
+                if self.diver_objects[idx] is None: # if object does not exist, create it
+                    self.diver_objects[idx] = gameObject(diver_x, diver_y, self.spriteLoader.getSprite('diver'))
+                    self.canvas.getLayer('divers').addGameObject(self.diver_objects[idx])
+                else: # if object exists, update its position
+                    self.diver_objects[idx].displace(diver_x, diver_y)
+            else: # the diver no longer exists
+                if self.diver_objects[idx] is not None:
+                    self.canvas.getLayer('divers').removeGameObject(self.diver_objects[idx])
+                    self.diver_objects[idx] = None
+                    
+        # update sharks
+        # TBD: direction of shark
+        for idx in range(MAX_SHARKS):
+            if state.shark_positions[idx][0] > 0: # indicates existence
+                shark_x = int(state.shark_positions[idx][1].item())
+                shark_y = int(state.shark_positions[idx][0].item())
+                if self.shark_objects[idx] is None: # if object does not exist, create it
+                    self.shark_objects[idx] = gameObject(shark_x, shark_y, self.spriteLoader.getSprite('shark'))
+                    self.canvas.getLayer('enemies').addGameObject(self.shark_objects[idx])
+                else: # if object exists, update its position
+                    self.shark_objects[idx].displace(shark_x, shark_y)
+            else: # the shark no longer exists
+                if self.shark_objects[idx] is not None:
+                    self.canvas.getLayer('enemies').removeGameObject(self.shark_objects[idx])
+                    self.shark_objects[idx] = None
+                    
         
+        # finally, update the canvas
         self.canvas.update()
-    
+
 
 
 def get_human_action() -> chex.Array:

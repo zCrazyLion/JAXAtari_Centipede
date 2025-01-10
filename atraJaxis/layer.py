@@ -17,7 +17,7 @@ class Layer:
     Methods
     -------
     addGameObject(gameObject):
-        Adds a game object to the layer.
+        Adds a game object to the layer. This only adds the reference to the game object, so the game object should be created before adding it to the layer.
     removeGameObject(gameObject):
         Removes a game object from the layer.
     update():
@@ -31,6 +31,7 @@ class Layer:
         self.width = width
         self.height = height
         
+
     def addGameObject(self, gameObject):
         self.gameObjects.append(gameObject)
     def removeGameObject(self, gameObject):
