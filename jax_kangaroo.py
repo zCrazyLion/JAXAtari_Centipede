@@ -382,6 +382,7 @@ def player_climb_controller(
     climb_stop = jnp.logical_and(is_climbing,jnp.greater_equal(new_y, climb_base_y))
 
     is_climbing = jnp.where(climb_stop, False, is_climbing)
+    is_climbing = jnp.where(ladder_intersect, is_climbing, False)
 
     clock_reset = climb_counter > 19
     climb_counter = jnp.where(clock_reset, 0, climb_counter)
