@@ -50,6 +50,10 @@ MAX_PLAYER_TORPS = 1
 MAX_SURFACE_SUBS = 1
 MAX_COLLECTED_DIVERS = 6
 
+# define object orientations
+FACE_LEFT = -1
+FACE_RIGHT = 1
+
 # Define action space
 NOOP = 0
 FIRE = 1
@@ -1293,11 +1297,11 @@ class Renderer_AtraJaxis:
         # initialize canvas  
         self.canvas = Canvas(self.window_width, self.window_height)
         self.canvas.addLayer(Layer('bg', self.window_width, self.window_height))
+        self.canvas.addLayer(Layer('torpedoes', self.window_width, self.window_height))
         self.canvas.addLayer(Layer('player_sub', self.window_width, self.window_height))
         self.canvas.addLayer(Layer('waves', self.window_width, self.window_height))
         self.canvas.addLayer(Layer('divers', self.window_width, self.window_height))
         self.canvas.addLayer(Layer('enemies', self.window_width, self.window_height))
-        self.canvas.addLayer(Layer('torpedoes', self.window_width, self.window_height))
         
         # initialize game objects
         background = gameObject(0, 0, self.spriteLoader.getSprite('bg'))
@@ -1332,20 +1336,25 @@ class Renderer_AtraJaxis:
     def update(self, state):
         # update according to state
         # update player submarine position
-        # TBD: direction of player
         self.canvas.getLayer('player_sub').gameObjects[0].displace(state.player_y.item(), state.player_x.item())
-                
+        self.canvas.getLayer('player_sub').gameObjects[0].sprite.transform["flip_horizontal"] = state.player_direction.item() == FACE_LEFT # flip sprite if facing left
+        
         # update divers
-        # TBD: direction of diver
         for idx in range(MAX_DIVERS):
             if state.diver_positions[idx][0] > 0: # indicates existence
                 diver_x = int(state.diver_positions[idx][1].item())
                 diver_y = int(state.diver_positions[idx][0].item())
+                diver_direction = state.diver_positions[idx][2].item()
                 if self.diver_objects[idx] is None: # if object does not exist, create it
                     self.diver_objects[idx] = gameObject(diver_x, diver_y, self.spriteLoader.getSprite('diver'))
                     self.canvas.getLayer('divers').addGameObject(self.diver_objects[idx])
+                    self.canvas.getLayer('divers').gameObjects[idx].sprite.transform["flip_horizontal"] = diver_direction == FACE_LEFT # flip sprite if facing left
+
                 else: # if object exists, update its position
                     self.diver_objects[idx].displace(diver_x, diver_y)
+                    if self.diver_objects[idx] is not None: # avoid error if diver object is killed on the same frame
+                        self.diver_objects[idx].sprite.transform["flip_horizontal"] = diver_direction == FACE_LEFT # flip sprite if facing left
+
             else: # the diver no longer exists
                 if self.diver_objects[idx] is not None:
                     self.canvas.getLayer('divers').removeGameObject(self.diver_objects[idx])
@@ -1357,27 +1366,37 @@ class Renderer_AtraJaxis:
             if state.shark_positions[idx][0] > 0: # indicates existence
                 shark_x = int(state.shark_positions[idx][1].item())
                 shark_y = int(state.shark_positions[idx][0].item())
+                shark_direction = state.shark_positions[idx][2].item()
                 if self.shark_objects[idx] is None: # if object does not exist, create it
                     self.shark_objects[idx] = gameObject(shark_x, shark_y, self.spriteLoader.getSprite('shark'))
                     self.canvas.getLayer('enemies').addGameObject(self.shark_objects[idx])
+                    self.shark_objects[idx].sprite.transform["flip_horizontal"] = shark_direction == FACE_LEFT # flip sprite if facing left
+
                 else: # if object exists, update its position
                     self.shark_objects[idx].displace(shark_x, shark_y)
+                    if self.shark_objects[idx] is not None: # avoid error if shark object is killed on the same frame
+                        self.shark_objects[idx].sprite.transform["flip_horizontal"] = shark_direction == FACE_LEFT # flip sprite if facing left
+
             else: # the shark no longer exists
                 if self.shark_objects[idx] is not None:
                     self.canvas.getLayer('enemies').removeGameObject(self.shark_objects[idx])
                     self.shark_objects[idx] = None
                     
         # update enemy submarines
-        # TBD: direction of enemy submarine
         for idx in range(MAX_SUBS):
             if state.sub_positions[idx][0] > 0: # indicates existence
                 sub_x = int(state.sub_positions[idx][1].item())
                 sub_y = int(state.sub_positions[idx][0].item())
+                sub_direction = state.sub_positions[idx][2].item()
                 if self.sub_objects[idx] is None:
                     self.sub_objects[idx] = gameObject(sub_x, sub_y, self.spriteLoader.getSprite('enemy_sub'))
                     self.canvas.getLayer('enemies').addGameObject(self.sub_objects[idx])
+                    # update direction of submarine
+                    self.sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
                 else:
                     self.sub_objects[idx].displace(sub_x, sub_y)
+                    if self.sub_objects[idx] is not None: # avoid error if submarine object is killed on the same frame
+                        self.sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
             else: # the submarine no longer exists
                 if self.sub_objects[idx] is not None:
                     self.canvas.getLayer('enemies').removeGameObject(self.sub_objects[idx])

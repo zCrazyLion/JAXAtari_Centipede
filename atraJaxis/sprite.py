@@ -37,9 +37,9 @@ class Sprite:
         # transpose x and y to match the format of Pygame
         rendered = original.transpose(1, 0, 2)
         # apply transformations
-        if self.transform["flip_horizontal"]:
-            rendered = rendered[:, ::-1, :]
         if self.transform["flip_vertical"]:
+            rendered = rendered[:, ::-1, :]
+        if self.transform["flip_horizontal"]:
             rendered = rendered[::-1, :, :]
         # rotation_ccw n: 90n degrees counter-clockwise
         for _ in range(self.transform["rotation_ccw"] % 4):
