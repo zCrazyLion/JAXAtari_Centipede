@@ -15,7 +15,9 @@ class textHUD(GameObject):
         # put self.frame on the grid at position (self.x, self.y)
         for i in range(self.width):
             for j in range(self.height):
-                grid[self.y + i][self.x + j] = frame_t[i][j]
+                if self.x + j < len(grid[0]) and self.y + i < len(grid) and self.x + j >= 0 and self.y + i >= 0:
+                    grid[self.y + i][self.x + j] = frame_t[i][j]
+
                 
     def update(self):
         self.width = 0
@@ -37,3 +39,32 @@ class textHUD(GameObject):
                     self.frame[i][currentX + j] = charFrame[i][j]
             currentX += charFrame.shape[1] + self.spaceBetweenChars
         return 
+
+class BarHUD(GameObject):
+    def __init__(self, x, y, width, height, max_value, current_value, color):
+        super().__init__(x, y, None)
+        self.width = width
+        self.height = height
+        self.max_value = max_value
+        self.current_value = current_value
+        self.color = color
+        self.frame = None
+        self.update()
+        
+    def render(self, grid):
+        frame_t = self.frame.transpose(1, 0, 2)
+        # put self.frame on the grid at position (self.x, self.y)
+        for i in range(self.height):
+            for j in range(self.width):
+                if self.y + i < len(grid) and self.x + j < len(grid[0]) and self.x + j >= 0 and self.y + i >= 0:
+                    grid[self.y + i][self.x + j] = frame_t[i][j]
+                    
+    def update(self):
+        self.frame = np.zeros((self.width, self.height, 4), dtype=np.uint8)
+        # Compute the current width of the bar
+        current_width = int(self.current_value / self.max_value * self.width)
+        # Fill the bar with the color
+        for i in range(current_width):
+            for j in range(self.height):
+                self.frame[i][j] = self.color
+        return

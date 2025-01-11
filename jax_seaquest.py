@@ -10,7 +10,7 @@ from atraJaxis.layer import Layer
 from atraJaxis.gameObject import GameObject
 from atraJaxis.spriteLoader import SpriteLoader
 from atraJaxis.renderMode import RenderMode
-from atraJaxis.hud import textHUD
+from atraJaxis.hud import textHUD, BarHUD
 
 
 
@@ -1337,6 +1337,10 @@ class Renderer_AtraJaxis:
         self.hud_divers = hud_divers
         self.canvas.getLayer('HUD').addGameObject(hud_divers)
         
+        hud_oxygen = BarHUD(20, 70, 180, 15, 64, 64, (255,255,255,255)) # oxygen bar
+        self.hud_oxygen = hud_oxygen
+        self.canvas.getLayer('HUD').addGameObject(hud_oxygen)
+        
         # initialize arrays that map indices to game objects
         self.diver_objects = [None] * MAX_DIVERS 
         self.shark_objects = [None] * MAX_SHARKS
@@ -1462,6 +1466,7 @@ class Renderer_AtraJaxis:
         self.hud_score.text = str(int(state.score.item()))
         self.hud_lives.text = "l" * int(state.lives.item())
         self.hud_divers.text = "d" * int(state.divers_collected.item() % 7)
+        self.hud_oxygen.current_value = state.oxygen.item()
         # finally, update the canvas
         self.canvas.update()
 

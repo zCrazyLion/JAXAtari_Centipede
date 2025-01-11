@@ -36,7 +36,12 @@ player_x=Array(76, dtype=int32, weak_type=True), player_y=Array(46, dtype=int32,
 Player direction is [0] if left, [1] if right. We will omit [] notation for JAX singleton arrays since here.
 
 ```
-player_direction=Array(0, dtype=int32, weak_type=True), oxygen=Array(1, dtype=int32, weak_type=True), 
+player_direction=Array(0, dtype=int32, weak_type=True), 
+```
+
+### Oxygen
+```
+oxygen=Array(1, dtype=int32, weak_type=True), 
 ```
 
 ### Collected Divers
@@ -128,3 +133,6 @@ Position: (10,10)
 Position: (WINDOW_WIDTH - 200, 10)
 ### Diver Indicator
 Position: (WINDOW_WIDTH - 100, 40)
+
+### Oxygen Bar
+Position: (49, 170)
