@@ -1323,13 +1323,19 @@ class Renderer_AtraJaxis:
         self.canvas.getLayer('player_sub').addGameObject(pl_sub)
         
         # HUD elements
-        # TBD: verify positioning and width between chars in the HUD
+        # TODO: verify positioning and width between chars in the HUD
 
         hud_score = textHUD("0", 10, 10, char_to_frame, 2) # score indicator
         self.hud_score = hud_score
         self.canvas.getLayer('HUD').addGameObject(hud_score)
-
         
+        hud_lives = textHUD("lll", 20, 10, char_to_frame, 2) # lives indicator
+        self.hud_lives = hud_lives
+        self.canvas.getLayer('HUD').addGameObject(hud_lives)
+        
+        hud_divers = textHUD("", 20, 40, char_to_frame, 2) # diver indicator
+        self.hud_divers = hud_divers
+        self.canvas.getLayer('HUD').addGameObject(hud_divers)
         
         # initialize arrays that map indices to game objects
         self.diver_objects = [None] * MAX_DIVERS 
@@ -1454,6 +1460,8 @@ class Renderer_AtraJaxis:
         
         # update HUD elements
         self.hud_score.text = str(int(state.score.item()))
+        self.hud_lives.text = "l" * int(state.lives.item())
+        self.hud_divers.text = "d" * int(state.divers_collected.item() % 7)
         # finally, update the canvas
         self.canvas.update()
 
