@@ -1,8 +1,15 @@
 from enum import Enum
 
-# enum of render mode.
-# loop: loop through the frames.
-# once: play the frames once, then destroy the sprite.
 class RenderMode(Enum):
+    """
+    An enumeration to define rendering modes for sprites.
+
+    Attributes
+    ----------
+    LOOP : int
+        Indicates the sprite should loop through the frames repeatedly.
+    ONCE : int
+        Indicates the sprite should play the frames once and then destroy itself.
+    """
     LOOP = 1
-    ONCE = 2 
+    ONCE = 2
