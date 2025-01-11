@@ -1,8 +1,8 @@
-import spriteLoader
-from renderMode import RenderMode
-from canvas import Canvas
-from layer import Layer
-from gameObject import GameObject
+import atraJaxis.spriteLoader
+from atraJaxis.renderMode import RenderMode
+from atraJaxis.canvas import Canvas
+from atraJaxis.layer import Layer
+from atraJaxis.gameObject import GameObject
 import pygame
 
 sl = spriteLoader.SpriteLoader()

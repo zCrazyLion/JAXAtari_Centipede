@@ -1,4 +1,4 @@
-from .gameObject import GameObject
+from atraJaxis.gameObject import GameObject
 import numpy as np
 
 class TextHUD(GameObject):

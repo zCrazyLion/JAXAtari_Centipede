@@ -1,4 +1,4 @@
-from .renderMode import RenderMode
+from atraJaxis.renderMode import RenderMode
 import numpy as np
 
 class Sprite:

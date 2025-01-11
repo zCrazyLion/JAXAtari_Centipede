@@ -1,6 +1,6 @@
 import numpy as np
-from .sprite import Sprite
-from .renderMode import RenderMode
+from atraJaxis.sprite import Sprite
+from atraJaxis.renderMode import RenderMode
 
 class SpriteLoader:
     """
