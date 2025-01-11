@@ -1310,9 +1310,9 @@ class Renderer_AtraJaxis:
         self.canvas.addLayer(Layer('bg', self.window_width, self.window_height))
         self.canvas.addLayer(Layer('torpedoes', self.window_width, self.window_height))
         self.canvas.addLayer(Layer('player_sub', self.window_width, self.window_height))
-        self.canvas.addLayer(Layer('waves', self.window_width, self.window_height))
         self.canvas.addLayer(Layer('divers', self.window_width, self.window_height))
         self.canvas.addLayer(Layer('enemies', self.window_width, self.window_height))
+        self.canvas.addLayer(Layer('waves', self.window_width, self.window_height))
         self.canvas.addLayer(Layer('HUD', self.window_width, self.window_height))
         
         # initialize game objects
@@ -1431,6 +1431,22 @@ class Renderer_AtraJaxis:
                 if self.sub_objects[idx] is not None:
                     self.canvas.getLayer('enemies').removeGameObject(self.sub_objects[idx])
                     self.sub_objects[idx] = None
+                    
+        # update surface submarine
+        if state.surface_sub_position[0] > 0: # indicates existence
+            surface_sub_x = int(state.surface_sub_position[1].item())
+            surface_sub_y = int(state.surface_sub_position[0].item())
+            sub_direction = state.surface_sub_position[2].item()
+            if self.surface_sub_objects[0] is None:
+                self.surface_sub_objects[0] = GameObject(surface_sub_x, surface_sub_y, self.spriteLoader.getSprite('enemy_sub'))
+                self.canvas.getLayer('enemies').addGameObject(self.surface_sub_objects[0])
+                # update direction of submarine
+                self.surface_sub_objects[0].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
+            else:
+                # if object exists, update its position
+                self.surface_sub_objects[0].displace(surface_sub_x, surface_sub_y)
+                # update direction of submarine
+                self.surface_sub_objects[0].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
             
                     
         # update player's torpedo
