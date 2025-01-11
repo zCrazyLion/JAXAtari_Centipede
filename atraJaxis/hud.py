@@ -1,7 +1,7 @@
 from .gameObject import GameObject
 import numpy as np
 
-class textHUD(GameObject):
+class TextHUD(GameObject):
     def __init__(self, text, x, y, charToFrame, spaceBetweenChars):
         super().__init__(x, y, None)
         self.text = text

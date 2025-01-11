@@ -10,7 +10,7 @@ from atraJaxis.layer import Layer
 from atraJaxis.gameObject import GameObject
 from atraJaxis.spriteLoader import SpriteLoader
 from atraJaxis.renderMode import RenderMode
-from atraJaxis.hud import textHUD, BarHUD
+from atraJaxis.hud import TextHUD, BarHUD
 
 
 
@@ -1325,19 +1325,19 @@ class Renderer_AtraJaxis:
         # HUD elements
         # TODO: verify positioning and width between chars in the HUD
 
-        hud_score = textHUD("0", 10, 10, char_to_frame, 2) # score indicator
+        hud_score = TextHUD("00", 10, 10, char_to_frame, 2) # score indicator
         self.hud_score = hud_score
         self.canvas.getLayer('HUD').addGameObject(hud_score)
         
-        hud_lives = textHUD("lll", 20, 10, char_to_frame, 2) # lives indicator
+        hud_lives = TextHUD("lll", 20, 10, char_to_frame, 2) # lives indicator
         self.hud_lives = hud_lives
         self.canvas.getLayer('HUD').addGameObject(hud_lives)
         
-        hud_divers = textHUD("", 20, 40, char_to_frame, 2) # diver indicator
+        hud_divers = TextHUD("", 20, 40, char_to_frame, 2) # diver indicator
         self.hud_divers = hud_divers
         self.canvas.getLayer('HUD').addGameObject(hud_divers)
         
-        hud_oxygen = BarHUD(20, 70, 60, 5, 64, 64, (255,255,255,255)) # oxygen bar
+        hud_oxygen = BarHUD(10, 60, 60, 5, 64, 64, (255,255,255,255)) # oxygen bar
         self.hud_oxygen = hud_oxygen
         self.canvas.getLayer('HUD').addGameObject(hud_oxygen)
         
