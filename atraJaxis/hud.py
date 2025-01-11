@@ -52,12 +52,11 @@ class BarHUD(GameObject):
         self.update()
         
     def render(self, grid):
-        frame_t = self.frame.transpose(1, 0, 2)
         # put self.frame on the grid at position (self.x, self.y)
-        for i in range(self.height):
-            for j in range(self.width):
+        for i in range(self.width):
+            for j in range(self.height):
                 if self.y + i < len(grid) and self.x + j < len(grid[0]) and self.x + j >= 0 and self.y + i >= 0:
-                    grid[self.y + i][self.x + j] = frame_t[i][j]
+                    grid[self.y + i][self.x + j] = self.frame[i][j]
                     
     def update(self):
         self.frame = np.zeros((self.width, self.height, 4), dtype=np.uint8)

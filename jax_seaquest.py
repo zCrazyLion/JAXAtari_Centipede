@@ -1337,7 +1337,7 @@ class Renderer_AtraJaxis:
         self.hud_divers = hud_divers
         self.canvas.getLayer('HUD').addGameObject(hud_divers)
         
-        hud_oxygen = BarHUD(20, 70, 180, 15, 64, 64, (255,255,255,255)) # oxygen bar
+        hud_oxygen = BarHUD(20, 70, 60, 5, 64, 64, (255,255,255,255)) # oxygen bar
         self.hud_oxygen = hud_oxygen
         self.canvas.getLayer('HUD').addGameObject(hud_oxygen)
         
