@@ -42,7 +42,12 @@ player_direction=Array(0, dtype=int32, weak_type=True), oxygen=Array(1, dtype=in
 ### Collected Divers
 
 ```
-divers_collected=Array(0, dtype=int32, weak_type=True), score=Array(0, dtype=int32, weak_type=True), 
+divers_collected=Array(0, dtype=int32, weak_type=True)
+```
+
+# Score
+```
+score=Array(0, dtype=int32, weak_type=True), 
 ```
 
 ### Lives
@@ -89,17 +94,20 @@ sub_positions=Array([[0., 0., 0.],
   player_missile_position=Array([0., 0., 0.], dtype=float32),
 ```
 
+### Step Counter
 ```
    step_counter=Array(1, dtype=int32, weak_type=True),
 ```
 
-```
-    just_surfaced=Array(-1, dtype=int32, weak_type=True)
-```
+
 
 
 
 ### Unknown
+
+```
+    just_surfaced=Array(-1, dtype=int32, weak_type=True)
+```
 
 ```
  spawn_state=SpawnState(difficulty=Array(0, dtype=int32, weak_type=True), 
@@ -111,3 +119,12 @@ sub_positions=Array([[0., 0., 0.],
  spawn_timers=Array([ 0, 30, 60, 90], dtype=int32)), 
  
  ```
+
+## HUD Elements (Needs Verification)
+### Score 
+Position: (10,10)
+
+### life Indicator
+Position: (WINDOW_WIDTH - 200, 10)
+### Diver Indicator
+Position: (WINDOW_WIDTH - 100, 40)

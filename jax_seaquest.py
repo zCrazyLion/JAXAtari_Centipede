@@ -7,10 +7,10 @@ import pygame
 from atraJaxis.canvas import Canvas
 from atraJaxis.sprite import Sprite
 from atraJaxis.layer import Layer
-from atraJaxis.gameObject import gameObject
+from atraJaxis.gameObject import GameObject
 from atraJaxis.spriteLoader import SpriteLoader
 from atraJaxis.renderMode import RenderMode
-
+from atraJaxis.hud import textHUD
 
 
 
@@ -1286,14 +1286,25 @@ class Renderer_AtraJaxis:
         self.spriteLoader.loadFrame('sprites\seaquest\enemy_torp\\1.npy', name='en_torpedo1')
         self.spriteLoader.loadSprite('enemy_torpedo', [('en_torpedo1', 1)], RenderMode.LOOP)
         
+
+        
+        # digits
+        char_to_frame = {}
+        for i in range(10):
+            self.spriteLoader.loadFrame(f'sprites\seaquest\digits\\{i}.npy', name=f'digit{i}')
+            char_to_frame[str(i)] = self.spriteLoader.frames[f'digit{i}']
+            
+
+            
         # life indicator
         self.spriteLoader.loadFrame('sprites\seaquest\life_indicator\\1.npy', name='life1')
-        self.spriteLoader.loadSprite('life_indicator', [('life1', 1)], RenderMode.LOOP)
+        char_to_frame['l'] = self.spriteLoader.frames['life1']
+
         
         # diver indicator
         self.spriteLoader.loadFrame('sprites\seaquest\diver_indicator\\1.npy', name='diver_indicator1')
-        self.spriteLoader.loadSprite('diver_indicator', [('diver_indicator1', 1)], RenderMode.LOOP)
-        
+        char_to_frame['d'] = self.spriteLoader.frames['diver_indicator1']
+
         # initialize canvas  
         self.canvas = Canvas(self.window_width, self.window_height)
         self.canvas.addLayer(Layer('bg', self.window_width, self.window_height))
@@ -1302,13 +1313,23 @@ class Renderer_AtraJaxis:
         self.canvas.addLayer(Layer('waves', self.window_width, self.window_height))
         self.canvas.addLayer(Layer('divers', self.window_width, self.window_height))
         self.canvas.addLayer(Layer('enemies', self.window_width, self.window_height))
+        self.canvas.addLayer(Layer('HUD', self.window_width, self.window_height))
         
         # initialize game objects
-        background = gameObject(0, 0, self.spriteLoader.getSprite('bg'))
+        background = GameObject(0, 0, self.spriteLoader.getSprite('bg'))
         self.canvas.getLayer('bg').addGameObject(background)
         
-        pl_sub = gameObject(0, 0, self.spriteLoader.getSprite('player_sub'))
+        pl_sub = GameObject(0, 0, self.spriteLoader.getSprite('player_sub'))
         self.canvas.getLayer('player_sub').addGameObject(pl_sub)
+        
+        # HUD elements
+        # TBD: verify positioning and width between chars in the HUD
+
+        hud_score = textHUD("0", 10, 10, char_to_frame, 2) # score indicator
+        self.hud_score = hud_score
+        self.canvas.getLayer('HUD').addGameObject(hud_score)
+
+        
         
         # initialize arrays that map indices to game objects
         self.diver_objects = [None] * MAX_DIVERS 
@@ -1346,7 +1367,7 @@ class Renderer_AtraJaxis:
                 diver_y = int(state.diver_positions[idx][0].item())
                 diver_direction = state.diver_positions[idx][2].item()
                 if self.diver_objects[idx] is None: # if object does not exist, create it
-                    self.diver_objects[idx] = gameObject(diver_x, diver_y, self.spriteLoader.getSprite('diver'))
+                    self.diver_objects[idx] = GameObject(diver_x, diver_y, self.spriteLoader.getSprite('diver'))
                     self.canvas.getLayer('divers').addGameObject(self.diver_objects[idx])
                     self.canvas.getLayer('divers').gameObjects[idx].sprite.transform["flip_horizontal"] = diver_direction == FACE_LEFT # flip sprite if facing left
 
@@ -1361,14 +1382,13 @@ class Renderer_AtraJaxis:
                     self.diver_objects[idx] = None
                     
         # update sharks
-        # TBD: direction of shark
         for idx in range(MAX_SHARKS):
             if state.shark_positions[idx][0] > 0: # indicates existence
                 shark_x = int(state.shark_positions[idx][1].item())
                 shark_y = int(state.shark_positions[idx][0].item())
                 shark_direction = state.shark_positions[idx][2].item()
                 if self.shark_objects[idx] is None: # if object does not exist, create it
-                    self.shark_objects[idx] = gameObject(shark_x, shark_y, self.spriteLoader.getSprite('shark'))
+                    self.shark_objects[idx] = GameObject(shark_x, shark_y, self.spriteLoader.getSprite('shark'))
                     self.canvas.getLayer('enemies').addGameObject(self.shark_objects[idx])
                     self.shark_objects[idx].sprite.transform["flip_horizontal"] = shark_direction == FACE_LEFT # flip sprite if facing left
 
@@ -1389,7 +1409,7 @@ class Renderer_AtraJaxis:
                 sub_y = int(state.sub_positions[idx][0].item())
                 sub_direction = state.sub_positions[idx][2].item()
                 if self.sub_objects[idx] is None:
-                    self.sub_objects[idx] = gameObject(sub_x, sub_y, self.spriteLoader.getSprite('enemy_sub'))
+                    self.sub_objects[idx] = GameObject(sub_x, sub_y, self.spriteLoader.getSprite('enemy_sub'))
                     self.canvas.getLayer('enemies').addGameObject(self.sub_objects[idx])
                     # update direction of submarine
                     self.sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
@@ -1408,7 +1428,7 @@ class Renderer_AtraJaxis:
             pltorp_x = int(state.player_missile_position[1].item())
             pltorp_y = int(state.player_missile_position[0].item())
             if self.player_torpedo_object is None: # if object does not exist, create it
-                self.player_torpedo_object = gameObject(pltorp_x, pltorp_y, self.spriteLoader.getSprite('player_torpedo'))
+                self.player_torpedo_object = GameObject(pltorp_x, pltorp_y, self.spriteLoader.getSprite('player_torpedo'))
                 self.canvas.getLayer('torpedoes').addGameObject(self.player_torpedo_object)
             else: # if object exists, update its position
                 self.player_torpedo_object.displace(pltorp_x, pltorp_y)   
@@ -1423,7 +1443,7 @@ class Renderer_AtraJaxis:
                 entorp_x = int(state.enemy_missile_positions[idx][1].item())
                 entorp_y = int(state.enemy_missile_positions[idx][0].item())
                 if self.enemy_torpedo_objects[idx] is None: # if object does not exist, create it
-                    self.enemy_torpedo_objects[idx] = gameObject(entorp_x, entorp_y, self.spriteLoader.getSprite('enemy_torpedo'))
+                    self.enemy_torpedo_objects[idx] = GameObject(entorp_x, entorp_y, self.spriteLoader.getSprite('enemy_torpedo'))
                     self.canvas.getLayer('torpedoes').addGameObject(self.enemy_torpedo_objects[idx])
                 else: # if object exists, update its position
                     self.enemy_torpedo_objects[idx].displace(entorp_x, entorp_y)
@@ -1432,7 +1452,8 @@ class Renderer_AtraJaxis:
                     self.canvas.getLayer('torpedoes').removeGameObject(self.enemy_torpedo_objects[idx])
                     self.enemy_torpedo_objects[idx] = None
         
-        
+        # update HUD elements
+        self.hud_score.text = str(int(state.score.item()))
         # finally, update the canvas
         self.canvas.update()
 
