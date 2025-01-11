@@ -1433,20 +1433,21 @@ class Renderer_AtraJaxis:
                     self.sub_objects[idx] = None
                     
         # update surface submarine
-        if state.surface_sub_position[0] > 0: # indicates existence
-            surface_sub_x = int(state.surface_sub_position[1].item())
-            surface_sub_y = int(state.surface_sub_position[0].item())
-            sub_direction = state.surface_sub_position[2].item()
-            if self.surface_sub_objects[0] is None:
-                self.surface_sub_objects[0] = GameObject(surface_sub_x, surface_sub_y, self.spriteLoader.getSprite('enemy_sub'))
-                self.canvas.getLayer('enemies').addGameObject(self.surface_sub_objects[0])
-                # update direction of submarine
-                self.surface_sub_objects[0].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
-            else:
-                # if object exists, update its position
-                self.surface_sub_objects[0].displace(surface_sub_x, surface_sub_y)
-                # update direction of submarine
-                self.surface_sub_objects[0].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
+        for idx in range(MAX_SURFACE_SUBS):
+            if state.surface_sub_position[idx][0] > 0: # indicates existence
+                surface_sub_x = int(state.surface_sub_position[idx][1].item())
+                surface_sub_y = int(state.surface_sub_position[idx][0].item())
+                sub_direction = state.surface_sub_position[idx][2].item()
+                if self.surface_sub_objects[idx] is None:
+                    self.surface_sub_objects[idx] = GameObject(surface_sub_x, surface_sub_y, self.spriteLoader.getSprite('enemy_sub'))
+                    self.canvas.getLayer('enemies').addGameObject(self.surface_sub_objects[idx])
+                    # update direction of submarine
+                    self.surface_sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
+                else:
+                    # if object exists, update its position
+                    self.surface_sub_objects[idx].displace(surface_sub_x, surface_sub_y)
+                    # update direction of submarine
+                    self.surface_sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
             
                     
         # update player's torpedo
