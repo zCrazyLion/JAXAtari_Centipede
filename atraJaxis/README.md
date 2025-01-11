@@ -1,0 +1,2 @@
+# AtraJaxis
+AtraJaxis is a lightweight rendering toolset that is designed to render Atari games with JAX reinforcement learning environments on PyGame front end. It has high modularity and extensibility, which allows 
