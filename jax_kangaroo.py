@@ -35,8 +35,6 @@ PLATFORM_COLOR = (130, 74, 0)
 LADDER_COLOR = (199, 148, 97)
 
 PLAYER_START_X, PLAYER_START_Y = 23, 148
-GRAVITY = 0.5
-JUMP_VELOCITY = -8
 MOVEMENT_SPEED = 1
 
 LEFT_CLIP = 16
@@ -49,6 +47,12 @@ class Entity(NamedTuple):
     y: chex.Array
     w: chex.Array
     h: chex.Array
+
+
+class Level(NamedTuple):
+    id: int
+    ladders: chex.Array
+    platforms: chex.Array
 
 
 # -------- Entity Inits --------
@@ -65,6 +69,15 @@ LADDER_WIDTH = 8
 L1L1 = Entity(x=132, y=132, w=LADDER_WIDTH, h=LADDER_HEIGHT)
 L1L2 = Entity(x=20, y=84, w=LADDER_WIDTH, h=LADDER_HEIGHT)
 L1L3 = Entity(x=132, y=36, w=LADDER_WIDTH, h=LADDER_HEIGHT)
+
+
+levels = [
+    Level(
+        id=1,
+        ladders=[L1L1, L1L2, L1L3],
+        platforms=[L1P1, L1P2, L1P3, L1P4],
+    )
+]
 
 
 # -------- Game State --------
@@ -557,16 +570,12 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     collide_l1_thresh = player_is_on_ladder(state, L1L1)
     collide_l2_thresh = player_is_on_ladder(state, L1L2)
     collide_l3_thresh = player_is_on_ladder(state, L1L3)
-    ladder_intersect_thresh = jnp.logical_or(
-        collide_l1_thresh, jnp.logical_or(collide_l2_thresh, collide_l3_thresh)
-    )
+    ladder_intersect_thresh = collide_l1_thresh | collide_l2_thresh | collide_l3_thresh
 
     collide_l1 = player_is_on_ladder_no_thresh(state, L1L1)
     collide_l2 = player_is_on_ladder_no_thresh(state, L1L2)
     collide_l3 = player_is_on_ladder_no_thresh(state, L1L3)
-    ladder_intersect_no_thresh = jnp.logical_or(
-        collide_l1, jnp.logical_or(collide_l2, collide_l3)
-    )
+    ladder_intersect_no_thresh = collide_l1 | collide_l2 | collide_l3
 
     ladder_intersect = jnp.where(
         state.is_climbing, ladder_intersect_no_thresh, ladder_intersect_thresh
@@ -806,23 +815,10 @@ class Renderer:
             ),
         )
 
-        # Draw platforms
-        if state.current_level == 1:
-            for platform in (L1P1, L1P2, L1P3, L1P4):
-                pygame.draw.rect(
-                    self.screen,
-                    PLATFORM_COLOR,
-                    (
-                        platform.x * RENDER_SCALE_FACTOR,
-                        platform.y * RENDER_SCALE_FACTOR,
-                        platform.w * RENDER_SCALE_FACTOR,
-                        platform.h * RENDER_SCALE_FACTOR,
-                    ),
-                )
-
-        # Draw Ladders
-        if state.current_level == 1:
-            for ladder in (L1L1, L1L2, L1L3):
+        # Draw level objects
+        level = next((l for l in levels if l.id == state.current_level), None)
+        if level is not None:
+            for ladder in level.ladders:
                 pygame.draw.rect(
                     self.screen,
                     LADDER_COLOR,
@@ -831,6 +827,17 @@ class Renderer:
                         ladder.y * RENDER_SCALE_FACTOR,
                         ladder.w * RENDER_SCALE_FACTOR,
                         ladder.h * RENDER_SCALE_FACTOR,
+                    ),
+                )
+            for platform in level.platforms:
+                pygame.draw.rect(
+                    self.screen,
+                    PLATFORM_COLOR,
+                    (
+                        platform.x * RENDER_SCALE_FACTOR,
+                        platform.y * RENDER_SCALE_FACTOR,
+                        platform.w * RENDER_SCALE_FACTOR,
+                        platform.h * RENDER_SCALE_FACTOR,
                     ),
                 )
 
