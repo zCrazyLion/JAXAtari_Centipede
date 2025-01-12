@@ -3,7 +3,6 @@ from typing import NamedTuple, Tuple
 import jax
 import jax.numpy as jnp
 import chex
-import numpy as np
 import pygame
 
 # -------- Action constants --------
@@ -276,7 +275,7 @@ def virtual_hitbox_collision(
 ) -> chex.Array:
     return do_collide_with_threshold(
         e1_x=state.player.x,
-        e1_y=state.player.y + entity.h,
+        e1_y=state.player.y + entity.h + 1,
         e1_w=PLAYER_WIDTH,
         e1_h=virtual_hitbox_height,
         e2_x=entity.x,
@@ -374,9 +373,7 @@ def player_climb_controller(
     collide_l1_below = virtual_hitbox_collision(state, L1L1)
     collide_l2_below = virtual_hitbox_collision(state, L1L2)
     collide_l3_below = virtual_hitbox_collision(state, L1L3)
-    ladder_intersect_below = jnp.logical_or(
-        collide_l1_below, jnp.logical_or(collide_l2_below, collide_l3_below)
-    )
+    ladder_intersect_below = collide_l1_below | collide_l2_below | collide_l3_below
 
     new_y = y
     is_climbing = state.player.is_climbing
@@ -391,10 +388,28 @@ def player_climb_controller(
 
     is_climbing = is_climbing | climb_start | climb_start_downward
 
-    climb_counter = jnp.where(climb_start, 0, climb_counter)
-    climb_counter = jnp.where(climb_start_downward, 0, climb_counter)
+    climb_counter = jnp.where(climb_start | climb_start_downward, 0, climb_counter)
 
+    climb_base_y = state.player.climb_base_y
     climb_base_y = jnp.where(climb_start, new_y, state.player.climb_base_y)
+
+    def get_next_platform_below_player():
+        on1, on2, on3, on4 = get_player_platform(state)
+        return jnp.where(
+            on2,
+            L1P1.y,
+            jnp.where(
+                on3,
+                L1P2.y,
+                jnp.where(on4, L1P3.y, 0),
+            ),
+        )
+
+    climb_base_y = jnp.where(
+        climb_start_downward,
+        get_next_platform_below_player() - state.player.height,
+        climb_base_y,
+    )
     new_y = jnp.where(climb_start, new_y - 8, new_y)
     new_y = jnp.where(climb_start_downward, new_y + 8, new_y)
 
@@ -413,15 +428,18 @@ def player_climb_controller(
     # Check if not climbing anymore -> bottom of ladder
     climb_stop = jnp.logical_and(is_climbing, jnp.greater_equal(new_y, climb_base_y))
 
-    jax.debug.print("is_climbing: {x}", x=is_climbing)
     is_climbing = jnp.where(climb_stop, False, is_climbing)
 
     # Check if not climbing anymore -> top of ladder
-    is_climbing = jnp.where(ladder_intersect, is_climbing, False)
+    is_climbing = jnp.where(ladder_intersect | climb_start_downward, is_climbing, False)
 
     clock_reset = climb_counter >= 19
     climb_counter = jnp.where(clock_reset, 0, climb_counter)
-    cooldown_counter = jnp.where(clock_reset, 15, state.player.cooldown_counter - 1)
+    cooldown_counter = jnp.where(
+        clock_reset,
+        15,
+        state.player.cooldown_counter - 1,
+    )
 
     # jax.debug.print(
     #     "isclimbing={c}, counter={co}, climb_start={cs}, climb_base={y}, climb_up={u}, climb_down={d}, climb_stop={s}, ladder_intersect={li}",
@@ -615,36 +633,40 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     # y-axis movement
     on_p1, on_p2, on_p3, on_p4 = get_player_platform(state)
 
-    y = jax.lax.cond(
+    y = jnp.where(
         on_p1,
-        lambda y: jnp.where(
-            ~new_is_climbing, jnp.clip(y, 0, L1P1.y - new_player_height), y
+        jnp.where(
+            ~state.player.is_climbing & new_is_climbing & press_down,
+            y,
+            jnp.clip(y, 0, L1P1.y - new_player_height),
         ),
-        lambda _: _,
         y,
     )
-    y = jax.lax.cond(
+    y = jnp.where(
         on_p2,
-        lambda y: jnp.where(
-            ~new_is_climbing, jnp.clip(y, 0, L1P2.y - new_player_height), y
+        jnp.where(
+            ~state.player.is_climbing & new_is_climbing & press_down,
+            y,
+            jnp.clip(y, 0, L1P2.y - new_player_height),
         ),
-        lambda _: _,
         y,
     )
-    y = jax.lax.cond(
+    y = jnp.where(
         on_p3,
-        lambda y: jnp.where(
-            ~new_is_climbing, jnp.clip(y, 0, L1P3.y - new_player_height), y
+        jnp.where(
+            ~state.player.is_climbing & new_is_climbing & press_down,
+            y,
+            jnp.clip(y, 0, L1P3.y - new_player_height),
         ),
-        lambda _: _,
         y,
     )
-    y = jax.lax.cond(
+    y = jnp.where(
         on_p4,
-        lambda y: jnp.where(
-            ~new_is_climbing, jnp.clip(y, 0, L1P4.y - new_player_height), y
+        jnp.where(
+            ~state.player.is_climbing & new_is_climbing & press_down,
+            y,
+            jnp.clip(y, 0, L1P4.y - new_player_height),
         ),
-        lambda _: _,
         y,
     )
 
