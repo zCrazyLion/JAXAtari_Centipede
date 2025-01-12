@@ -72,7 +72,7 @@ class State(NamedTuple):
     player_x: chex.Array
     player_y: chex.Array
     player_vel_x: chex.Array
-    player_vel_y: chex.Array
+    player_vel_y: chex.Array  # TODO: This is unused. Remove?
     is_crouching: chex.Array
     player_score: chex.Array
     player_lives: chex.Array
@@ -155,63 +155,40 @@ def get_human_action() -> chex.Array:
 # -------- Functions for Clipping / Clamping and Platforms --------
 def get_player_platform(state: State) -> Tuple[chex.Array]:
     """
-    Returns booleans for which platform "band" the player's top is in,
-    using top-based y logic:  y <= (platform.y - height).
+    Returns array of booleans indicating if player is on a platform.
     """
     player_y = state.player_y
     ph = state.player_height
 
-    on_p1 = jnp.where(
-        jnp.logical_and(player_y <= (L1P1.y - ph), player_y > (L1P2.y - ph)),
-        True,
-        False,
-    )
-
-    on_p2 = jnp.where(
-        jnp.logical_and(player_y <= (L1P2.y - ph), player_y > (L1P3.y - ph)),
-        True,
-        False,
-    )
-
-    on_p3 = jnp.where(
-        jnp.logical_and(player_y <= (L1P3.y - ph), player_y > (L1P4.y - ph)),
-        True,
-        False,
-    )
-
-    on_p4 = jnp.where(
-        player_y <= (L1P4.y - ph),
-        True,
-        False,
-    )
+    on_p1 = jnp.logical_and(player_y <= (L1P1.y - ph), player_y > (L1P2.y - ph))
+    on_p2 = jnp.logical_and(player_y <= (L1P2.y - ph), player_y > (L1P3.y - ph))
+    on_p3 = jnp.logical_and(player_y <= (L1P3.y - ph), player_y > (L1P4.y - ph))
+    on_p4 = player_y <= (L1P4.y - ph)
 
     return jnp.array([on_p1, on_p2, on_p3, on_p4])
 
 
 def player_on_ground(state: State) -> Tuple[chex.Array]:
+    """
+    Returns array of booleans indicating if player is on the ground.
+    """
     player_y = state.player_y
+    ph = state.player_height
 
     on_p1, on_p2, on_p3, on_p4 = get_player_platform(state)
 
-    on_p1_ground = jnp.where(
-        on_p1, jnp.where(player_y == (L1P1.y - state.player_height), True, False), False
-    )
-    on_p2_ground = jnp.where(
-        on_p2, jnp.where(player_y == (L1P2.y - state.player_height), True, False), False
-    )
-    on_p3_ground = jnp.where(
-        on_p3, jnp.where(player_y == (L1P3.y - state.player_height), True, False), False
-    )
-    on_p4_ground = jnp.where(
-        on_p4, jnp.where(player_y == (L1P4.y - state.player_height), True, False), False
-    )
+    on_p1_ground = jnp.where(on_p1, player_y == (L1P1.y - ph), False)
+    on_p2_ground = jnp.where(on_p2, player_y == (L1P2.y - ph), False)
+    on_p3_ground = jnp.where(on_p3, player_y == (L1P3.y - ph), False)
+    on_p4_ground = jnp.where(on_p4, player_y == (L1P4.y - ph), False)
 
-    return jnp.any(jnp.array([on_p1_ground, on_p2_ground, on_p3_ground, on_p4_ground]))
+    return jnp.array([on_p1_ground, on_p2_ground, on_p3_ground, on_p4_ground])
 
 
 # -------- Collision with entities --------
-@jax.jit
-def check_collision(
+
+
+def do_collide(
     e1_x: chex.Array,
     e1_y: chex.Array,
     e1_w: chex.Array,
@@ -245,8 +222,7 @@ def check_collision(
     return jnp.logical_not(no_overlap)
 
 
-@jax.jit
-def check_collision_with_threshold(
+def do_collide_with_threshold(
     e1_x: chex.Array,
     e1_y: chex.Array,
     e1_w: chex.Array,
@@ -257,24 +233,40 @@ def check_collision_with_threshold(
     e2_h: chex.Array,
     threshold: float,
 ) -> chex.Array:
+    """
+    Returns True if the two rectangles overlap by at least the threshold, False otherwise.
+    The threshold is a fraction of the area of the first rectangle ranging between (0, 1].
+    """
 
-    inter_left = jnp.maximum(e1_x, e2_x)
-    inter_right = jnp.minimum(e1_x + e1_w, e2_x + e2_w)
-    inter_top = jnp.maximum(e1_y, e2_y)
-    inter_bottom = jnp.minimum(e1_y + e1_h, e2_y + e2_h)
+    # assertions
+    chex.assert_tree_all_finite(
+        jnp.array([e1_x, e1_y, e1_w, e1_h, e2_x, e2_y, e2_w, e2_h])
+    )
+    chex.assert_scalar_in(threshold, 0, 1)
 
-    inter_width = jnp.maximum(inter_right - inter_left, 0)
-    inter_height = jnp.maximum(inter_bottom - inter_top, 0)
+    # Find the boundaries of the overlapping region
+    overlap_start_x = jnp.maximum(e1_x, e2_x)
+    overlap_end_x = jnp.minimum(e1_x + e1_w, e2_x + e2_w)
+    overlap_start_y = jnp.maximum(e1_y, e2_y)
+    overlap_end_y = jnp.minimum(e1_y + e1_h, e2_y + e2_h)
 
-    intersection_area = inter_width * inter_height
+    # Calculate dimensions of overlap region (clamp to 0 if no overlap)
+    overlap_width = jnp.maximum(overlap_end_x - overlap_start_x, 0)
+    overlap_height = jnp.maximum(overlap_end_y - overlap_start_y, 0)
 
-    e1_area = e1_w * e1_h
+    # Calculate area of overlap
+    overlap_area = overlap_width * overlap_height
 
-    required_overlap = e1_area * threshold
+    # Calculate area of first rectangle
+    rect1_area = e1_w * e1_h
 
-    overlap_exceeds = intersection_area >= required_overlap
+    # Calculate minimum required overlap area based on threshold
+    min_required_overlap = rect1_area * threshold
 
-    return overlap_exceeds
+    # Check if overlap exceeds required threshold
+    meets_threshold = overlap_area >= min_required_overlap
+
+    return meets_threshold
 
 
 def virtual_hitbox_collision(
@@ -283,7 +275,7 @@ def virtual_hitbox_collision(
     threshold: float = 0.3,
     virtual_hitbox_height: float = 12.0,
 ) -> chex.Array:
-    return check_collision_with_threshold(
+    return do_collide_with_threshold(
         e1_x=state.player_x,
         e1_y=state.player_y + entity.h,
         e1_w=PLAYER_WIDTH,
@@ -296,10 +288,10 @@ def virtual_hitbox_collision(
     )
 
 
-def player_on_ladder(
+def player_is_on_ladder(
     state: State, ladder: Entity, threshold: float = 0.3
 ) -> chex.Array:
-    return check_collision_with_threshold(
+    return do_collide_with_threshold(
         e1_x=state.player_x,
         e1_y=state.player_y,
         e1_w=PLAYER_WIDTH,
@@ -312,8 +304,8 @@ def player_on_ladder(
     )
 
 
-def player_on_ladder_no_thresh(state: State, ladder: Entity) -> chex.Array:
-    return check_collision(
+def player_is_on_ladder_no_thresh(state: State, ladder: Entity) -> chex.Array:
+    return do_collide(
         e1_x=state.player_x,
         e1_y=state.player_y,
         e1_w=PLAYER_WIDTH,
@@ -326,7 +318,6 @@ def player_on_ladder_no_thresh(state: State, ladder: Entity) -> chex.Array:
 
 
 # -------- Jumping and Climbing --------
-@jax.jit
 def player_jump_controller(
     state: State, jump_pressed: chex.Array, ladder_intersect: chex.Array
 ) -> Tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
@@ -380,7 +371,6 @@ def player_jump_controller(
     return new_y, jump_counter, is_jumping, jump_base_y, jump_orientation
 
 
-@jax.jit
 def player_climb_controller(
     state: State,
     y: chex.Array,
@@ -432,7 +422,7 @@ def player_climb_controller(
     # Check if not climbing anymore -> bottom of ladder
     climb_stop = jnp.logical_and(is_climbing, jnp.greater_equal(new_y, climb_base_y))
 
-    jax.debug.print("{x}", x=is_climbing)
+    jax.debug.print("is_climbing: {x}", x=is_climbing)
     is_climbing = jnp.where(climb_stop, False, is_climbing)
 
     # Check if not climbing anymore -> top of ladder
@@ -457,7 +447,6 @@ def player_climb_controller(
 
 
 # -------- Player Height --------
-@jax.jit
 def player_height_controller(
     is_jumping: chex.Array,
     jump_counter: chex.Array,
@@ -496,7 +485,6 @@ def player_height_controller(
 
 
 # -------- Main Function for Player Movement --------
-@jax.jit
 def player_step(state: State, action: chex.Array) -> Tuple[
     chex.Array,
     chex.Array,
@@ -542,6 +530,12 @@ def player_step(state: State, action: chex.Array) -> Tuple[
         jnp.array([action == DOWN, action == DOWNLEFT, action == DOWNRIGHT])
     )
 
+    # TODO: Change inputs based on state or better keep inputs but set local constants based on state for use in controllers
+    # e.g. instead of:
+    # press_down = jnp.where(state.is_jumping, False, press_down)
+    # use:
+    # IS_JUMPING = state.is_jumping
+    # in the fire/climbing controller: if IS_JUMPING -> do nothing
     press_down = jnp.where(state.is_jumping, False, press_down)
     press_fire = jnp.where(state.is_jumping, False, press_fire)
     press_fire = jnp.where(state.is_climbing, False, press_fire)
@@ -560,16 +554,16 @@ def player_step(state: State, action: chex.Array) -> Tuple[
 
     # Ladder Collision
     # Hardcoded Approach
-    collide_l1_thresh = player_on_ladder(state, L1L1)
-    collide_l2_thresh = player_on_ladder(state, L1L2)
-    collide_l3_thresh = player_on_ladder(state, L1L3)
+    collide_l1_thresh = player_is_on_ladder(state, L1L1)
+    collide_l2_thresh = player_is_on_ladder(state, L1L2)
+    collide_l3_thresh = player_is_on_ladder(state, L1L3)
     ladder_intersect_thresh = jnp.logical_or(
         collide_l1_thresh, jnp.logical_or(collide_l2_thresh, collide_l3_thresh)
     )
 
-    collide_l1 = player_on_ladder_no_thresh(state, L1L1)
-    collide_l2 = player_on_ladder_no_thresh(state, L1L2)
-    collide_l3 = player_on_ladder_no_thresh(state, L1L3)
+    collide_l1 = player_is_on_ladder_no_thresh(state, L1L1)
+    collide_l2 = player_is_on_ladder_no_thresh(state, L1L2)
+    collide_l3 = player_is_on_ladder_no_thresh(state, L1L3)
     ladder_intersect_no_thresh = jnp.logical_or(
         collide_l1, jnp.logical_or(collide_l2, collide_l3)
     )
@@ -719,6 +713,7 @@ class Game:
             cooldown_counter=jnp.array(0),
         )
 
+    @chex.chexify
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: State, action: chex.Array) -> State:
         reset_cond = jnp.any(jnp.array([action == RESET]))
@@ -894,7 +889,7 @@ if __name__ == "__main__":
     pygame.init()
     game = Game()
     renderer = Renderer()
-    jitted_step = jax.jit(game.step)
+    jitted_step = game.step
     jitted_reset = jax.jit(game.reset)
     curr_state = jitted_reset()
     running = True
