@@ -29,7 +29,7 @@ FRUIT_SIZE = 8
 BACKGROUND_COLOR = (66, 72, 200)
 PLAYER_COLOR = (255, 145, 0)
 ENEMY_COLOR = (236, 200, 96)
-FRUIT_COLOR = (92, 186, 92)
+FRUIT_COLOR = (255, 0, 0)
 PLATFORM_COLOR = (130, 74, 0)
 LADDER_COLOR = (199, 148, 97)
 
@@ -48,10 +48,20 @@ class Entity(NamedTuple):
     h: chex.Array
 
 
+class Fruit(NamedTuple):
+    x: chex.Array
+    y: chex.Array
+    w: chex.Array
+    h: chex.Array
+    active: chex.Array
+    stage: chex.Array
+
+
 class Level(NamedTuple):
     id: chex.Array
     ladders: chex.Array
     platforms: chex.Array
+    fruits: chex.Array
 
 
 class Player(NamedTuple):
@@ -88,20 +98,23 @@ L1L1 = Entity(x=132, y=132, w=LADDER_WIDTH, h=LADDER_HEIGHT)
 L1L2 = Entity(x=20, y=84, w=LADDER_WIDTH, h=LADDER_HEIGHT)
 L1L3 = Entity(x=132, y=36, w=LADDER_WIDTH, h=LADDER_HEIGHT)
 
+L1F1 = Fruit(x=50, y=100, w=FRUIT_SIZE, h=FRUIT_SIZE, active=True, stage=1)
+L1F2 = Fruit(x=70, y=60, w=FRUIT_SIZE, h=FRUIT_SIZE, active=True, stage=1)
+L1F3 = Fruit(x=90, y=140, w=FRUIT_SIZE, h=FRUIT_SIZE, active=True, stage=1)
 
 levels = [
     Level(
         id=1,
         ladders=[L1L1, L1L2, L1L3],
         platforms=[L1P1, L1P2, L1P3, L1P4],
+        fruits=[L1F1, L1F2, L1F3],
     )
 ]
-
-
 # -------- Game State --------
 class State(NamedTuple):
     player: Player
     score: chex.Array
+    fruits: chex.Array
     player_lives: chex.Array
     current_level: chex.Array
     step_counter: chex.Array
@@ -455,7 +468,6 @@ def player_climb_controller(
 
     return new_y, is_climbing, climb_base_y, climb_counter, cooldown_counter
 
-
 # -------- Player Height --------
 def player_height_controller(
     is_jumping: chex.Array,
@@ -493,6 +505,47 @@ def player_height_controller(
     new_height = jnp.where(is_crouching, 16, height_if_jumping)
     return new_height
 
+
+# -------- Handle Fruits --------
+@jax.jit
+def fruits_step(state:State):
+
+    f1 = state.fruits[0]
+    f2 = state.fruits[1]
+    f3 = state.fruits[2]
+    
+    score_addition = 0
+
+    # Fruit at Slot 1
+    fruit1_collision = do_collide(state.player.x, state.player.y, PLAYER_WIDTH, state.player.height, f1.x, f1.y, f1.w, f1.h)
+    f1_collision_condition = jnp.logical_and(fruit1_collision, f1.active)
+
+    score_addition = jnp.where(f1_collision_condition, 100, score_addition)
+    
+    new_active = jnp.where(f1_collision_condition, False, f1.active)
+    new_f1 = Fruit(x=f1.x, y=f1.y, w=f1.w, h=f1.h, active=new_active, stage=f1.stage)
+
+    # Fruit at Slot 2
+    fruit2_collision = do_collide(state.player.x, state.player.y, PLAYER_WIDTH, state.player.height, f2.x, f2.y, f2.w, f2.h)
+    f2_collision_condition = jnp.logical_and(fruit2_collision, f2.active)
+
+    score_addition = jnp.where(f2_collision_condition, 100, score_addition)
+    
+    new_active = jnp.where(f2_collision_condition, False, f2.active)
+    new_f2 = Fruit(x=f2.x, y=f2.y, w=f2.w, h=f2.h, active=new_active, stage=f2.stage)
+
+    # Fruit at Slot 3
+    fruit3_collision = do_collide(state.player.x, state.player.y, PLAYER_WIDTH, state.player.height, f3.x, f3.y, f3.w, f3.h)
+    f3_collision_condition = jnp.logical_and(fruit3_collision, f3.active)
+
+    score_addition = jnp.where(f3_collision_condition, 100, score_addition)
+    
+    new_active = jnp.where(f3_collision_condition, False, f3.active)
+    new_f3 = Fruit(x=f3.x, y=f3.y, w=f3.w, h=f3.h, active=new_active, stage=f3.stage)
+
+    # Return Values
+    new_fruits = [new_f1, new_f2, new_f3]
+    return score_addition, new_fruits 
 
 # -------- Main Function for Player Movement --------
 def player_step(state: State, action: chex.Array) -> Tuple[
@@ -716,6 +769,7 @@ class Game:
                 cooldown_counter=0,
             ),
             score=0,
+            fruits = [L1F1, L1F2, L1F3],
             player_lives=3,
             current_level=1,
             step_counter=0,
@@ -745,6 +799,11 @@ class Game:
             cooldown_counter,
         ) = player_step(state, action)
 
+        (
+            fruit_score,
+            new_fruits
+        ) = fruits_step(state)
+
         return jax.lax.cond(
             reset_cond,
             lambda: self.reset(),
@@ -767,7 +826,8 @@ class Game:
                     punch_right=punch_right,
                     cooldown_counter=cooldown_counter,
                 ),
-                score=state.score,
+                score=state.score + fruit_score,
+                fruits=new_fruits,
                 player_lives=state.player_lives,
                 current_level=state.current_level,
                 step_counter=state.step_counter + 1,
@@ -837,6 +897,18 @@ class Renderer:
                         platform.h * RENDER_SCALE_FACTOR,
                     ),
                 )
+            for fruit in state.fruits:
+                if fruit.active:
+                    pygame.draw.rect(
+                        self.screen,
+                        FRUIT_COLOR,
+                        (
+                            fruit.x * RENDER_SCALE_FACTOR,
+                            fruit.y * RENDER_SCALE_FACTOR,
+                            fruit.w * RENDER_SCALE_FACTOR,
+                            fruit.h * RENDER_SCALE_FACTOR,
+                        ),
+                    )
 
         # Draw player
         pygame.draw.rect(
