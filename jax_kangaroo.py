@@ -35,7 +35,10 @@ BELL_HEIGHT = 11
 BACKGROUND_COLOR = (80,0,132)
 PLAYER_COLOR = (223,183,85)
 ENEMY_COLOR = (227,151,89)
-FRUIT_COLOR = (214,92,92)
+FRUIT_COLOR_STATE_1 = (214,92,92)
+FRUIT_COLOR_STATE_2 = (230,250,92)
+FRUIT_COLOR_STATE_3 = (255,92,250)
+FRUIT_COLOR = [FRUIT_COLOR_STATE_1, FRUIT_COLOR_STATE_2, FRUIT_COLOR_STATE_3]
 PLATFORM_COLOR = (162,98,33)
 LADDER_COLOR = (129,78,26)
 BELL_COLOR = (210,164,74)
@@ -641,7 +644,7 @@ def fruits_step(state: State) -> Tuple[chex.Array, chex.Array]:
         )
 
         collision_condition = jnp.logical_and(fruit_collision, actives[i])
-        new_score = jnp.where(collision_condition, score + 100, score)
+        new_score = jnp.where(collision_condition, score + (100 * state.fruit_stages[i] + 100), score)
         new_actives = actives.at[i].set(
             jnp.where(collision_condition, False, actives[i])
         )
@@ -666,13 +669,19 @@ def fruits_step(state: State) -> Tuple[chex.Array, chex.Array]:
         BELL_HEIGHT,
     )
 
+    stage_fruit_1 = jnp.where(bell_collision & (state.fruit_actives[0] == False), state.fruit_stages[0] + 1,state.fruit_stages[0])
+    stage_fruit_2 = jnp.where(bell_collision & (state.fruit_actives[1] == False), state.fruit_stages[1] + 1,state.fruit_stages[1])
+    stage_fruit_3 = jnp.where(bell_collision & (state.fruit_actives[2] == False), state.fruit_stages[2] + 1,state.fruit_stages[2])
+
     activations = jax.lax.cond(
         bell_collision,
         lambda: jnp.array([True, True, True]),
         lambda: jnp.array([new_activations[0], new_activations[1], new_activations[2]]),
     )
 
-    return new_score, activations
+    new_stages = jnp.array([stage_fruit_1,stage_fruit_2,stage_fruit_3])
+
+    return new_score, activations, new_stages
 
 
 def pad_array(arr, target_size):
@@ -929,7 +938,7 @@ class Game:
             fruit_positions_x=jnp.array([119, 39, 59]),
             fruit_positions_y=jnp.array([108, 84, 60]),
             fruit_actives=jnp.ones(3, dtype=jnp.bool_),
-            fruit_stages=jnp.ones(3, dtype=jnp.int32),
+            fruit_stages=jnp.zeros(3, dtype=jnp.int32),
             bell_position_x=93,
             bell_position_y=36,
             player_lives=jnp.array(3),
@@ -962,7 +971,7 @@ class Game:
         ) = player_step(state, action)
 
         # Handle fruit collection
-        score_addition, new_actives = fruits_step(state)
+        score_addition, new_actives, new_fruit_stages = fruits_step(state)
 
         return jax.lax.cond(
             reset_cond,
@@ -992,7 +1001,7 @@ class Game:
                 fruit_positions_y=state.fruit_positions_y,
                 bell_position_x=state.bell_position_x,
                 bell_position_y=state.bell_position_y,
-                fruit_stages=state.fruit_stages,
+                fruit_stages=new_fruit_stages,
                 player_lives=state.player_lives,
                 current_level=state.current_level,
                 step_counter=state.step_counter + 1,
@@ -1076,7 +1085,7 @@ class Renderer:
             if state.fruit_actives[i]:
                 pygame.draw.rect(
                     self.screen,
-                    FRUIT_COLOR,
+                    FRUIT_COLOR[state.fruit_stages[i]],
                     (
                         int(state.fruit_positions_x[i]) * RENDER_SCALE_FACTOR,
                         int(state.fruit_positions_y[i]) * RENDER_SCALE_FACTOR,
