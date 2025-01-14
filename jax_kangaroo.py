@@ -29,12 +29,16 @@ PLAYER_WIDTH, PLAYER_HEIGHT = 8, 24
 ENEMY_WIDTH, ENEMY_HEIGHT = 8, 24
 FRUIT_SIZE = 8
 
-BACKGROUND_COLOR = (66, 72, 200)
-PLAYER_COLOR = (255, 145, 0)
-ENEMY_COLOR = (236, 200, 96)
-FRUIT_COLOR = (255, 0, 0)
-PLATFORM_COLOR = (130, 74, 0)
-LADDER_COLOR = (199, 148, 97)
+BELL_WIDTH = 6
+BELL_HEIGHT = 11
+
+BACKGROUND_COLOR = (80,0,132)
+PLAYER_COLOR = (223,183,85)
+ENEMY_COLOR = (227,151,89)
+FRUIT_COLOR = (214,92,92)
+PLATFORM_COLOR = (162,98,33)
+LADDER_COLOR = (129,78,26)
+BELL_COLOR = (210,164,74)
 
 PLAYER_START_X, PLAYER_START_Y = 23, 148
 MOVEMENT_SPEED = 1
@@ -77,6 +81,8 @@ class State(NamedTuple):
     fruit_positions_y: chex.Array
     fruit_actives: chex.Array
     fruit_stages: chex.Array
+    bell_position_x: chex.Array
+    bell_position_y: chex.Array
     player_lives: chex.Array
     current_level: chex.Array
     step_counter: chex.Array
@@ -645,9 +651,28 @@ def fruits_step(state: State) -> Tuple[chex.Array, chex.Array]:
     initial_score = jnp.array(0)
     initial_actives = state.fruit_actives
 
-    return jax.lax.fori_loop(
+    new_score, new_activations = jax.lax.fori_loop(
         0, len(state.fruit_actives), check_fruit, (initial_score, initial_actives)
     )
+
+    bell_collision = entities_collide(
+        state.player.x,
+        state.player.y,
+        PLAYER_WIDTH,
+        state.player.height,
+        state.bell_position_x,
+        state.bell_position_y,
+        BELL_WIDTH,
+        BELL_HEIGHT,
+    )
+
+    activations = jax.lax.cond(
+        bell_collision,
+        lambda: jnp.array([True, True, True]),
+        lambda: jnp.array([new_activations[0], new_activations[1], new_activations[2]]),
+    )
+
+    return new_score, activations
 
 
 def pad_array(arr, target_size):
@@ -905,8 +930,10 @@ class Game:
             fruit_positions_y=jnp.array([108, 84, 60]),
             fruit_actives=jnp.ones(3, dtype=jnp.bool_),
             fruit_stages=jnp.ones(3, dtype=jnp.int32),
+            bell_position_x=93,
+            bell_position_y=36,
             player_lives=jnp.array(3),
-            current_level=jnp.array(2),
+            current_level=jnp.array(1),
             step_counter=jnp.array(0),
         )
 
@@ -963,6 +990,8 @@ class Game:
                 fruit_actives=new_actives,
                 fruit_positions_x=state.fruit_positions_x,
                 fruit_positions_y=state.fruit_positions_y,
+                bell_position_x=state.bell_position_x,
+                bell_position_y=state.bell_position_y,
                 fruit_stages=state.fruit_stages,
                 player_lives=state.player_lives,
                 current_level=state.current_level,
@@ -1053,6 +1082,18 @@ class Renderer:
                         int(state.fruit_positions_y[i]) * RENDER_SCALE_FACTOR,
                         int(FRUIT_SIZE) * RENDER_SCALE_FACTOR,
                         int(FRUIT_SIZE) * RENDER_SCALE_FACTOR,
+                    ),
+                )
+
+        # Draw Bell
+        pygame.draw.rect(
+                    self.screen,
+                    BELL_COLOR,
+                    (
+                        int(state.bell_position_x) * RENDER_SCALE_FACTOR,
+                        int(state.bell_position_y) * RENDER_SCALE_FACTOR,
+                        int(BELL_WIDTH) * RENDER_SCALE_FACTOR,
+                        int(BELL_HEIGHT) * RENDER_SCALE_FACTOR,
                     ),
                 )
 
