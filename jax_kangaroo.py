@@ -299,7 +299,7 @@ def entities_collide_with_threshold(
     e2_h: chex.Array,
     threshold: chex.Array,
 ) -> chex.Array:
-    """Returns True if rectangles overlap by at least threshold fraction."""
+    """Returns True if rectangles overlap by at least threshold fraction. This only Checks for overlap in the x dimension."""
     overlap_start_x = jnp.maximum(e1_x, e2_x)
     overlap_end_x = jnp.minimum(e1_x + e1_w, e2_x + e2_w)
     overlap_start_y = jnp.maximum(e1_y, e2_y)
@@ -312,14 +312,11 @@ def entities_collide_with_threshold(
     # Calculate area of overlap
     overlap_area = overlap_width * overlap_height
 
-    # Calculate area of first rectangle
-    rect1_area = e1_w * e1_h
-
     # Calculate minimum required overlap area based on threshold
-    min_required_overlap = rect1_area * threshold
+    min_required_overlap = e1_w * threshold
 
     # Check if overlap exceeds required threshold
-    meets_threshold = overlap_area >= min_required_overlap
+    meets_threshold = overlap_width >= min_required_overlap
 
     return jax.lax.cond(
         jnp.any(jnp.array([overlap_width, overlap_height]) < 0),
@@ -694,6 +691,7 @@ def get_level_constants(current_level):
         ),
         operand=None
     )
+
 
 @partial(jax.jit, static_argnums=())
 def player_step(state: State, action: chex.Array) -> Tuple[
