@@ -95,31 +95,39 @@ class LevelConstants(NamedTuple):
 
 # TODO: pull out to different file?
 # Level 1 Constants
-LEVEL_1_LADDERS_POS = jnp.array([
-    [132, 132],  # L1L1
-    [20, 84],  # L1L2
-    [132, 36],  # L1L3
-])
+LEVEL_1_LADDERS_POS = jnp.array(
+    [
+        [132, 132],  # L1L1
+        [20, 84],  # L1L2
+        [132, 36],  # L1L3
+    ]
+)
 
-LEVEL_1_LADDERS_SIZE = jnp.array([
-    [LADDER_WIDTH, LADDER_HEIGHT],
-    [LADDER_WIDTH, LADDER_HEIGHT],
-    [LADDER_WIDTH, LADDER_HEIGHT],
-])
+LEVEL_1_LADDERS_SIZE = jnp.array(
+    [
+        [LADDER_WIDTH, LADDER_HEIGHT],
+        [LADDER_WIDTH, LADDER_HEIGHT],
+        [LADDER_WIDTH, LADDER_HEIGHT],
+    ]
+)
 
-LEVEL_1_PLATFORMS_POS = jnp.array([
-    [16, 172],  # L1P1
-    [16, 124],  # L1P2
-    [16, 76],  # L1P3
-    [16, 28],  # L1P4
-])
+LEVEL_1_PLATFORMS_POS = jnp.array(
+    [
+        [16, 172],  # L1P1
+        [16, 124],  # L1P2
+        [16, 76],  # L1P3
+        [16, 28],  # L1P4
+    ]
+)
 
-LEVEL_1_PLATFORMS_SIZE = jnp.array([
-    [128, P_HEIGHT],
-    [128, P_HEIGHT],
-    [128, P_HEIGHT],
-    [128, P_HEIGHT],
-])
+LEVEL_1_PLATFORMS_SIZE = jnp.array(
+    [
+        [128, P_HEIGHT],
+        [128, P_HEIGHT],
+        [128, P_HEIGHT],
+        [128, P_HEIGHT],
+    ]
+)
 
 LEVEL_1 = LevelConstants(
     ladder_positions=LEVEL_1_LADDERS_POS,
@@ -127,6 +135,7 @@ LEVEL_1 = LevelConstants(
     platform_positions=LEVEL_1_PLATFORMS_POS,
     platform_sizes=LEVEL_1_PLATFORMS_SIZE,
 )
+
 
 # -------- Keyboard Inputs --------
 def get_human_action() -> chex.Array:
@@ -185,6 +194,7 @@ def get_human_action() -> chex.Array:
 
     return jnp.array(NOOP)
 
+
 @partial(jax.jit, static_argnums=())
 # -------- Functions for Clipping / Clamping and Platforms --------
 def get_player_platform(state: State, level_constants: LevelConstants) -> chex.Array:
@@ -202,34 +212,32 @@ def get_player_platform(state: State, level_constants: LevelConstants) -> chex.A
     platform_ys = level_constants.platform_positions[:, 1]
 
     def check_platform(i, platform_bands):
-        platform_y = platform_ys[i]
-        next_y = jnp.where(
-            i < platform_ys.shape[0] - 1,
-            platform_ys[i + 1],
-            jnp.array(float('-inf'))
+        lower_platform_y = platform_ys[i]
+        upper_platform_y = jnp.where(
+            i < platform_ys.shape[0] - 1, platform_ys[i + 1], jnp.array(float("-inf"))
         )
 
-        in_band = jnp.logical_and(
-            player_y <= (platform_y - ph),
-            player_y > (next_y - ph)
+        is_between_platforms = jnp.logical_and(
+            player_y <= (lower_platform_y - ph), player_y > (upper_platform_y - ph)
         )
 
-        return platform_bands.at[i].set(in_band)
+        return platform_bands.at[i].set(is_between_platforms)
 
     initial_bands = jnp.zeros(platform_ys.shape[0], dtype=bool)
     return jax.lax.fori_loop(0, platform_ys.shape[0], check_platform, initial_bands)
 
+
 @partial(jax.jit, static_argnums=())
-def do_collide_with_threshold(
-        e1_x: chex.Array,
-        e1_y: chex.Array,
-        e1_w: chex.Array,
-        e1_h: chex.Array,
-        e2_x: chex.Array,
-        e2_y: chex.Array,
-        e2_w: chex.Array,
-        e2_h: chex.Array,
-        threshold: chex.Array,
+def entities_collide_with_threshold(
+    e1_x: chex.Array,
+    e1_y: chex.Array,
+    e1_w: chex.Array,
+    e1_h: chex.Array,
+    e2_x: chex.Array,
+    e2_y: chex.Array,
+    e2_w: chex.Array,
+    e2_h: chex.Array,
+    threshold: chex.Array,
 ) -> chex.Array:
     """Returns True if rectangles overlap by at least threshold fraction."""
     overlap_start_x = jnp.maximum(e1_x, e2_x)
@@ -260,8 +268,9 @@ def do_collide_with_threshold(
         meets_threshold,
     )
 
+
 @partial(jax.jit, static_argnums=())
-def do_collide(
+def entities_collide(
     e1_x: chex.Array,
     e1_y: chex.Array,
     e1_w: chex.Array,
@@ -274,14 +283,17 @@ def do_collide(
     """
     Calls do_collide_with_threshold with a threshold of 0 and checks if two rectangles overlap.
     """
-    return do_collide_with_threshold(e1_x, e1_y, e1_w, e1_h, e2_x, e2_y, e2_w, e2_h, 0)
+    return entities_collide_with_threshold(
+        e1_x, e1_y, e1_w, e1_h, e2_x, e2_y, e2_w, e2_h, 0
+    )
+
 
 @partial(jax.jit, static_argnums=())
-def check_virtual_hitbox_collision(
-        state: State,
-        level_constants: LevelConstants,
-        threshold: float = 0.3,
-        virtual_hitbox_height: float = 12.0,
+def player_is_above_ladder(
+    state: State,
+    level_constants: LevelConstants,
+    threshold: float = 0.3,
+    virtual_hitbox_height: float = 12.0,
 ) -> chex.Array:
     """Checks collision between a virtual hitbox below player and ladders."""
 
@@ -289,7 +301,7 @@ def check_virtual_hitbox_collision(
         ladder_pos = level_constants.ladder_positions[i]
         ladder_size = level_constants.ladder_sizes[i]
 
-        collision = do_collide_with_threshold(
+        collision = entities_collide_with_threshold(
             state.player.x,
             state.player.y + ladder_size[1] + 1,
             PLAYER_WIDTH,
@@ -298,7 +310,7 @@ def check_virtual_hitbox_collision(
             ladder_pos[1],
             ladder_size[0],
             ladder_size[1],
-            threshold
+            threshold,
         )
 
         return collisions.at[i].set(collision)
@@ -307,11 +319,10 @@ def check_virtual_hitbox_collision(
     initial_collisions = jnp.zeros(num_ladders, dtype=bool)
     return jax.lax.fori_loop(0, num_ladders, check_single_collision, initial_collisions)
 
+
 @partial(jax.jit, static_argnums=())
 def check_ladder_collisions(
-        state: State,
-        level_constants: LevelConstants,
-        threshold: float = 0.3
+    state: State, level_constants: LevelConstants, threshold: float = 0.3
 ) -> chex.Array:
     """Vectorized ladder collision checking."""
 
@@ -319,7 +330,7 @@ def check_ladder_collisions(
         ladder_pos = level_constants.ladder_positions[i]
         ladder_size = level_constants.ladder_sizes[i]
 
-        collision = do_collide_with_threshold(
+        collision = entities_collide_with_threshold(
             state.player.x,
             state.player.y,
             PLAYER_WIDTH,
@@ -328,7 +339,7 @@ def check_ladder_collisions(
             ladder_pos[1],
             ladder_size[0],
             ladder_size[1],
-            threshold
+            threshold,
         )
 
         return collisions.at[i].set(collision)
@@ -339,12 +350,15 @@ def check_ladder_collisions(
 
 
 def player_is_on_ladder(
-    state: State, ladder_pos: chex.Array, ladder_size: chex.Array, threshold: float = 0.3
+    state: State,
+    ladder_pos: chex.Array,
+    ladder_size: chex.Array,
+    threshold: float = 0.3,
 ) -> chex.Array:
     """
     Checks the collision of the player with a ladder. <threshold>% of the players surface area have to overlap with the ladder.
     """
-    return do_collide_with_threshold(
+    return entities_collide_with_threshold(
         state.player.x,
         state.player.y,
         PLAYER_WIDTH,
@@ -353,15 +367,14 @@ def player_is_on_ladder(
         ladder_pos[1],
         ladder_size[0],
         ladder_size[1],
-        threshold
+        threshold,
     )
+
 
 @partial(jax.jit, static_argnums=())
 # -------- Jumping and Climbing --------
 def player_jump_controller(
-        state: State,
-        jump_pressed: chex.Array,
-        ladder_intersect: chex.Array
+    state: State, jump_pressed: chex.Array, ladder_intersect: chex.Array
 ) -> Tuple[chex.Array, chex.Array, chex.Array, chex.Array, chex.Array]:
     """
     Schedule:
@@ -381,7 +394,9 @@ def player_jump_controller(
 
     # Update jump state on start
     jump_counter = jnp.where(jump_start, 0, jump_counter)
-    jump_orientation = jnp.where(jump_start, state.player.orientation, state.player.jump_orientation)
+    jump_orientation = jnp.where(
+        jump_start, state.player.orientation, state.player.jump_orientation
+    )
     jump_base_y = jnp.where(jump_start, player_y, jump_base_y)
     is_jumping = is_jumping | jump_start
 
@@ -428,7 +443,7 @@ def player_climb_controller(
 
     # Ladder Below Collision
     level_constants = get_level_constants(state.current_level)
-    ladder_intersect_below = jnp.any(check_virtual_hitbox_collision(state, level_constants))
+    ladder_intersect_below = jnp.any(player_is_above_ladder(state, level_constants))
 
     new_y = y
     is_climbing = state.player.is_climbing
@@ -485,7 +500,7 @@ def player_climb_controller(
         state.player.cooldown_counter - 1,
     )
 
-    #jax.debug.print(
+    # jax.debug.print(
     #     "isclimbing={c}, counter={co}, climb_start={cs}, climb_base={y}, climb_up={u}, climb_down={d}, climb_stop={s}, ladder_intersect={li}",
     #     c=is_climbing,
     #     co=climb_counter,
@@ -495,16 +510,17 @@ def player_climb_controller(
     #     d=climb_down,
     #     s=climb_stop,
     #     li=ladder_intersect,
-    #)
+    # )
 
     return new_y, is_climbing, climb_base_y, climb_counter, cooldown_counter
+
 
 # -------- Player Height --------
 @partial(jax.jit, static_argnums=())
 def player_height_controller(
-        is_jumping: chex.Array,
-        jump_counter: chex.Array,
-        is_crouching: chex.Array,
+    is_jumping: chex.Array,
+    jump_counter: chex.Array,
+    is_crouching: chex.Array,
 ) -> chex.Array:
     """
     Jump-based height changes:
@@ -539,16 +555,18 @@ def player_height_controller(
 
 
 @partial(jax.jit, static_argnums=())
-def get_next_platform_below_player(state: State, level_constants: LevelConstants) -> chex.Array:
+def get_next_platform_below_player(
+    state: State, level_constants: LevelConstants
+) -> chex.Array:
     """Gets the y-position of the next platform below the player."""
     platform_bands = get_player_platform(state, level_constants)
     platform_ys = level_constants.platform_positions[:, 1]
 
     def find_next_platform(i, current_platform_y):
         is_in_band = platform_bands[i]
-        return jnp.where(is_in_band, platform_ys[i-1], current_platform_y)
+        return jnp.where(is_in_band, platform_ys[i - 1], current_platform_y)
 
-    initial_y = platform_ys[0] # Start with platform at 0
+    initial_y = platform_ys[0]  # Start with platform at 0
     return jax.lax.fori_loop(0, platform_ys.shape[0], find_next_platform, initial_y)
 
 
@@ -559,7 +577,7 @@ def fruits_step(state: State) -> Tuple[chex.Array, chex.Array]:
     def check_fruit(i, carry):
         score, actives = carry
 
-        fruit_collision = do_collide(
+        fruit_collision = entities_collide(
             state.player.x,
             state.player.y,
             PLAYER_WIDTH,
@@ -567,7 +585,7 @@ def fruits_step(state: State) -> Tuple[chex.Array, chex.Array]:
             state.fruit_positions_x[i],
             state.fruit_positions_y[i],
             FRUIT_SIZE,
-            FRUIT_SIZE
+            FRUIT_SIZE,
         )
 
         collision_condition = jnp.logical_and(fruit_collision, actives[i])
@@ -582,10 +600,7 @@ def fruits_step(state: State) -> Tuple[chex.Array, chex.Array]:
     initial_actives = state.fruit_actives
 
     return jax.lax.fori_loop(
-        0,
-        len(state.fruit_actives),
-        check_fruit,
-        (initial_score, initial_actives)
+        0, len(state.fruit_actives), check_fruit, (initial_score, initial_actives)
     )
 
 
@@ -594,18 +609,29 @@ def get_level_constants(current_level: chex.Array) -> LevelConstants:
     """Returns constants for the current level."""
     return jax.lax.cond(
         current_level == 1,
-        lambda _: LEVEL_1,
-        lambda _: LEVEL_1,  # For now, return level 1 for all levels
-        operand=None
+        lambda: LEVEL_1,
+        lambda: LEVEL_1,  # For now, return level 1 for all levels
     )
 
 
 @partial(jax.jit, static_argnums=())
 def player_step(state: State, action: chex.Array) -> Tuple[
-    chex.Array, chex.Array, chex.Array, chex.Array, chex.Array,
-    chex.Array, chex.Array, chex.Array, chex.Array, chex.Array,
-    chex.Array, chex.Array, chex.Array, chex.Array, chex.Array,
-    chex.Array
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
 ]:
     """Main player movement and state update function."""
     level_constants = get_level_constants(state.current_level)
@@ -668,7 +694,9 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     # check for any collision with standard threshold
     ladder_intersect_thresh = jnp.any(check_ladder_collisions(state, level_constants))
 
-    ladder_intersect_no_thresh = jnp.any(check_ladder_collisions(state, level_constants, 0))
+    ladder_intersect_no_thresh = jnp.any(
+        check_ladder_collisions(state, level_constants, 0)
+    )
 
     ladder_intersect = jnp.where(
         state.player.is_climbing, ladder_intersect_no_thresh, ladder_intersect_thresh
@@ -738,7 +766,7 @@ def player_step(state: State, action: chex.Array) -> Tuple[
                 y,
                 jnp.clip(y, 0, platform_ys[i] - new_player_height),
             ),
-            curr_y
+            curr_y,
         )
         return platform_y
 
@@ -798,7 +826,7 @@ class Game:
             fruit_stages=jnp.ones(3, dtype=jnp.int32),
             player_lives=jnp.array(3),
             current_level=jnp.array(1),
-            step_counter=jnp.array(0)
+            step_counter=jnp.array(0),
         )
 
     @chex.chexify
