@@ -158,36 +158,133 @@ def get_human_action() -> chex.Array:
     return jnp.array(NOOP)
 
 
+# TODO: used due to the JAX JIT requirement for same size arrays in conditional branches (see padding functions)
+def is_valid_platform(platform_position: chex.Array) -> chex.Array:
+    """Check if a platform position is valid (not padding)."""
+    return platform_position[0] != -1
+
 @partial(jax.jit, static_argnums=())
-# -------- Functions for Clipping / Clamping and Platforms --------
 def get_player_platform(state: State, level_constants: LevelConstants) -> chex.Array:
-    """
-    Returns array of booleans indicating if player is on a platform.
-
-    on_p1 = jnp.logical_and(player_y <= (L1P1.y - ph), player_y > (L1P2.y - ph))
-    on_p2 = jnp.logical_and(player_y <= (L1P2.y - ph), player_y > (L1P3.y - ph))
-    on_p3 = jnp.logical_and(player_y <= (L1P3.y - ph), player_y > (L1P4.y - ph))
-    on_p4 = player_y <= (L1P4.y - ph)
-
-    """
+    """Returns array of booleans indicating if player is on a platform."""
+    player_x = state.player.x
     player_y = state.player.y
     ph = state.player.height
-    platform_ys = level_constants.platform_positions[:, 1]
+    pw = PLAYER_WIDTH
+
+    platform_positions = level_constants.platform_positions  # [N, 2] array of (x, y)
+    platform_sizes = level_constants.platform_sizes  # [N, 2] array of (width, height)
+
+    def calculate_upper_platform_index(i, carry):
+        # Unpack the carry tuple
+        prev_lowest_diff, best_index = carry
+
+        platform_x = platform_positions[i, 0]
+        platform_width = platform_sizes[i, 0]
+        platform_y = platform_positions[i, 1]
+
+        is_within_x = jnp.logical_and(
+            player_x + pw > platform_x,
+            player_x < platform_x + platform_width
+        )
+
+        is_above_player = player_y > platform_y
+
+        diff = jnp.where(is_above_player, player_y - platform_y, jnp.inf)
+
+        # Update both the lowest difference and the corresponding index
+        new_diff = jnp.where(
+            jnp.logical_and(is_within_x, is_above_player),
+            jnp.minimum(prev_lowest_diff, diff),
+            prev_lowest_diff
+        )
+
+        new_index = jnp.where(
+            jnp.logical_and(is_within_x, jnp.logical_and(is_above_player, diff < prev_lowest_diff)),
+            i,
+            best_index
+        )
+
+        return new_diff, new_index
+
+    # Initialize with (difference, index)
+    _, platform_over_player_index = jax.lax.fori_loop(
+        0,
+        platform_positions.shape[0],
+        calculate_upper_platform_index,
+        (jnp.inf, -1)
+    )
+
+    def calculate_lower_platform_index(i, carry):
+        # Unpack the carry tuple
+        prev_lowest_diff, best_index = carry
+
+        platform_x = platform_positions[i, 0]
+        platform_width = platform_sizes[i, 0]
+        platform_y = platform_positions[i, 1]
+
+        is_within_x = jnp.logical_and(
+            player_x + pw > platform_x,
+            player_x < platform_x + platform_width
+        )
+
+        is_below_player = player_y < platform_y
+
+        diff = jnp.where(is_below_player, platform_y - player_y, jnp.inf)
+
+        # Update both the lowest difference and the corresponding index
+        new_diff = jnp.where(
+            jnp.logical_and(is_within_x, is_below_player),
+            jnp.minimum(prev_lowest_diff, diff),
+            prev_lowest_diff
+        )
+
+        new_index = jnp.where(
+            jnp.logical_and(is_within_x, jnp.logical_and(is_below_player, diff < prev_lowest_diff)),
+            i,
+            best_index
+        )
+
+        return new_diff, new_index
+
+    # Initialize with (difference, index)
+    _, platform_under_player_index = jax.lax.fori_loop(
+        0,
+        platform_positions.shape[0],
+        calculate_lower_platform_index,
+        (jnp.inf, -1)
+    )
 
     def check_platform(i, platform_bands):
-        lower_platform_y = platform_ys[i]
-        upper_platform_y = jnp.where(
-            i < platform_ys.shape[0] - 1, platform_ys[i + 1], jnp.array(float("-inf"))
-        )
+        platform_x = platform_positions[i, 0]
+        platform_width = platform_sizes[i, 0]
+
+        lower_platform_y = platform_positions[i, 1]
 
         is_between_platforms = jnp.logical_and(
-            player_y <= (lower_platform_y - ph), player_y > (upper_platform_y - ph)
+            # TODO: the 0 does not belong here, but this function should be replaced anyway
+            player_y <= (lower_platform_y - ph), player_y > (0 - ph)
         )
 
-        return platform_bands.at[i].set(is_between_platforms)
+        # X-axis overlap check
+        is_within_x = jnp.logical_and(
+            player_x + pw > platform_x,
+            player_x < platform_x + platform_width
+        )
 
-    initial_bands = jnp.zeros(platform_ys.shape[0], dtype=bool)
-    return jax.lax.fori_loop(0, platform_ys.shape[0], check_platform, initial_bands)
+        # Combine x and y checks
+        is_on_platform = jnp.logical_and(is_within_x, is_between_platforms)
+
+        is_valid = is_valid_platform(platform_positions[i])
+
+        return platform_bands.at[i].set(is_on_platform & is_valid)
+
+    print("upper", platform_over_player_index)
+    print("lower", platform_under_player_index)
+
+    initial_bands = jnp.zeros(platform_positions.shape[0], dtype=bool)
+
+    # TODO: this is legacy, use the new method with the calculated lower and upper platforms
+    return jax.lax.fori_loop(0, platform_positions.shape[0], check_platform, initial_bands)
 
 
 @partial(jax.jit, static_argnums=())
@@ -514,7 +611,8 @@ def get_next_platform_below_player(
     platform_ys = level_constants.platform_positions[:, 1]
 
     def find_next_platform(i, current_platform_y):
-        is_in_band = platform_bands[i]
+        is_valid = is_valid_platform(level_constants.platform_positions[i])
+        is_in_band = jnp.logical_and(platform_bands[i], is_valid)
         return jnp.where(is_in_band, platform_ys[i - 1], current_platform_y)
 
     initial_y = platform_ys[0]  # Start with platform at 0
@@ -555,15 +653,47 @@ def fruits_step(state: State) -> Tuple[chex.Array, chex.Array]:
     )
 
 
-@partial(jax.jit, static_argnums=())
-def get_level_constants(current_level: chex.Array) -> LevelConstants:
-    """Returns constants for the current level."""
-    return jax.lax.cond(
-        current_level == 1,
-        lambda: LEVEL_1,
-        lambda: LEVEL_1,  # For now, return level 1 for all levels
+def pad_array(arr, target_size):
+    """Pads a 2D array with -1s to reach target size in first dimension."""
+    current_size = arr.shape[0]
+    if current_size >= target_size:
+        return arr
+
+    pad_size = target_size - current_size
+    return jnp.pad(arr, ((0, pad_size), (0, 0)), mode='constant', constant_values=-1)
+
+
+def pad_to_size(level_constants, max_platforms):
+    """Pads all arrays in level constants to specified size."""
+    return LevelConstants(
+        ladder_positions=pad_array(level_constants.ladder_positions, max_platforms),
+        ladder_sizes=pad_array(level_constants.ladder_sizes, max_platforms),
+        platform_positions=pad_array(level_constants.platform_positions, max_platforms),
+        platform_sizes=pad_array(level_constants.platform_sizes, max_platforms)
     )
 
+@partial(jax.jit, static_argnums=())
+def get_level_constants(current_level):
+    """Returns constants for the current level."""
+    # TODO: this is necessary due to JAX JIT compatibility (it forces the same length for all arrays). Fun isn't it?
+    max_platforms = 20  # Maximum across all levels
+
+    # Pad each level's arrays to max size
+    level1_padded = pad_to_size(LEVEL_1, max_platforms)
+    level2_padded = pad_to_size(LEVEL_2, max_platforms)
+    level3_padded = pad_to_size(LEVEL_3, max_platforms)
+
+    return jax.lax.cond(
+        current_level == 1,
+        lambda _: level1_padded,
+        lambda _: jax.lax.cond(
+            current_level == 2,
+            lambda _: level2_padded,
+            lambda _: level3_padded,
+            operand=None
+        ),
+        operand=None
+    )
 
 @partial(jax.jit, static_argnums=())
 def player_step(state: State, action: chex.Array) -> Tuple[
@@ -710,8 +840,9 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     platform_ys = level_constants.platform_positions[:, 1]
 
     def get_platform_dependent_y(i, curr_y):
+        is_valid = is_valid_platform(level_constants.platform_positions[i])
         platform_y = jnp.where(
-            platform_bools[i],
+            jnp.logical_and(platform_bools[i], is_valid),
             jnp.where(
                 ~state.player.is_climbing & new_is_climbing & press_down,
                 y,
@@ -777,11 +908,10 @@ class Game:
             fruit_actives=jnp.ones(3, dtype=jnp.bool_),
             fruit_stages=jnp.ones(3, dtype=jnp.int32),
             player_lives=jnp.array(3),
-            current_level=jnp.array(1),
+            current_level=jnp.array(2),
             step_counter=jnp.array(0),
         )
 
-    @chex.chexify
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: State, action: chex.Array) -> State:
         reset_cond = jnp.any(jnp.array([action == RESET]))
@@ -901,17 +1031,18 @@ class Renderer:
         # Draw platforms
         for i in range(level_constants.platform_positions.shape[0]):
             pos = level_constants.platform_positions[i]
-            size = level_constants.platform_sizes[i]
-            pygame.draw.rect(
-                self.screen,
-                PLATFORM_COLOR,
-                (
-                    int(pos[0]) * RENDER_SCALE_FACTOR,
-                    int(pos[1]) * RENDER_SCALE_FACTOR,
-                    int(size[0]) * RENDER_SCALE_FACTOR,
-                    int(size[1]) * RENDER_SCALE_FACTOR,
-                ),
-            )
+            # Only draw valid platforms
+            if pos[0] != -1:
+                pygame.draw.rect(
+                    self.screen,
+                    PLATFORM_COLOR,
+                    (
+                        int(pos[0]) * RENDER_SCALE_FACTOR,
+                        int(pos[1]) * RENDER_SCALE_FACTOR,
+                        int(level_constants.platform_sizes[i, 0]) * RENDER_SCALE_FACTOR,
+                        int(level_constants.platform_sizes[i, 1]) * RENDER_SCALE_FACTOR,
+                    ),
+                )
 
         # Draw fruits
         for i in range(len(state.fruit_actives)):
@@ -983,7 +1114,7 @@ if __name__ == "__main__":
     pygame.init()
     game = Game()
     renderer = Renderer()
-    jitted_step = game.step
+    jitted_step = jax.jit(game.step)
     jitted_reset = jax.jit(game.reset)
     curr_state = jitted_reset()
     running = True
