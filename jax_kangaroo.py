@@ -136,6 +136,76 @@ LEVEL_1 = LevelConstants(
     platform_sizes=LEVEL_1_PLATFORMS_SIZE,
 )
 
+# Level 2 Constant
+LEVEL_2_LADDERS_POS = jnp.array(
+    [
+        [120, 132],  # L2L1
+        [24, 116],  # L2L2
+        [128, 36],  # L2L3
+    ]
+)
+
+LEVEL_2_LADDERS_SIZE = jnp.array(
+    [
+        [LADDER_WIDTH, 4],
+        [LADDER_WIDTH, 4],
+        [LADDER_WIDTH, 4],
+    ]
+)
+
+LEVEL_2_PLATFORMS_POS = jnp.array(
+    [
+        [16, 172],  # L2P1
+        [16, 28],  # L2P2
+        [16, 124],  # L2P3
+        [52, 124],  # L2P4
+        [16, 76],  # L2P5
+        [84, 76],  # L2P6
+        [28, 167],  # L2P7
+        [112, 84],  # L2P8
+        [120, 44],  # L2P9
+        [48, 156],  # L2P10
+        [76, 148],  # L2P11
+        [104, 140],  # L2P12
+        [16, 108],  # L2P13
+        [56, 100],  # L2P14
+        [84, 92],  # L2P15
+        [64, 60],  # L2P16
+        [92, 52],  # L2P17
+        [28, 68],  # L2P18
+    ]
+)
+
+LEVEL_2_PLATFORMS_SIZE = jnp.array(
+    [
+        [128, P_HEIGHT],  # L2P1
+        [128, P_HEIGHT],  # L2P2
+        [28, P_HEIGHT],  # L2P3
+        [92, P_HEIGHT],  # L2P4
+        [60, P_HEIGHT],  # L2P5
+        [60, P_HEIGHT],  # L2P6
+        [24, P_HEIGHT],  # L2P7
+        [24, P_HEIGHT],  # L2P8
+        [24, P_HEIGHT],  # L2P9
+        [32, P_HEIGHT],  # L2P10
+        [32, P_HEIGHT],  # L2P11
+        [32, P_HEIGHT],  # L2P12
+        [32, P_HEIGHT],  # L2P13
+        [20, P_HEIGHT],  # L2P14
+        [20, P_HEIGHT],  # L2P15
+        [20, P_HEIGHT],  # L2P16
+        [20, P_HEIGHT],  # L2P17
+        [28, P_HEIGHT],  # L2P18
+    ]
+)
+
+LEVEL_2 = LevelConstants(
+    ladder_positions=LEVEL_2_LADDERS_POS,
+    ladder_sizes=LEVEL_2_LADDERS_SIZE,
+    platform_positions=LEVEL_2_PLATFORMS_POS,
+    platform_sizes=LEVEL_2_PLATFORMS_SIZE,
+)
+
 
 # -------- Keyboard Inputs --------
 def get_human_action() -> chex.Array:
@@ -500,18 +570,6 @@ def player_climb_controller(
         state.player.cooldown_counter - 1,
     )
 
-    # jax.debug.print(
-    #     "isclimbing={c}, counter={co}, climb_start={cs}, climb_base={y}, climb_up={u}, climb_down={d}, climb_stop={s}, ladder_intersect={li}",
-    #     c=is_climbing,
-    #     co=climb_counter,
-    #     cs=climb_start,
-    #     y=climb_base_y,
-    #     u=climb_up,
-    #     d=climb_down,
-    #     s=climb_stop,
-    #     li=ladder_intersect,
-    # )
-
     return new_y, is_climbing, climb_base_y, climb_counter, cooldown_counter
 
 
@@ -820,8 +878,9 @@ class Game:
             ),
             score=jnp.array(0),
             # TODO: pull these in the levels as well, right?
-            fruit_positions_x=jnp.array([50, 70, 90]),
-            fruit_positions_y=jnp.array([100, 60, 140]),
+            # Answer: yes but we have to put the whole level in the state (so the agent knows where the platforms and the ladders etc are)
+            fruit_positions_x=jnp.array([119, 39, 59]),
+            fruit_positions_y=jnp.array([108, 84, 60]),
             fruit_actives=jnp.ones(3, dtype=jnp.bool_),
             fruit_stages=jnp.ones(3, dtype=jnp.int32),
             player_lives=jnp.array(3),
