@@ -38,7 +38,8 @@ ENEMY_COLOR = (227, 151, 89)
 FRUIT_COLOR_STATE_1 = (214, 92, 92)
 FRUIT_COLOR_STATE_2 = (230, 250, 92)
 FRUIT_COLOR_STATE_3 = (255, 92, 250)
-FRUIT_COLOR = [FRUIT_COLOR_STATE_1, FRUIT_COLOR_STATE_2, FRUIT_COLOR_STATE_3]
+FRUIT_COLOR_STATE_4 = (0, 92, 250)
+FRUIT_COLOR = [FRUIT_COLOR_STATE_1, FRUIT_COLOR_STATE_2, FRUIT_COLOR_STATE_3, FRUIT_COLOR_STATE_4]
 PLATFORM_COLOR = (162, 98, 33)
 LADDER_COLOR = (129, 78, 26)
 BELL_COLOR = (210, 164, 74)
@@ -86,6 +87,7 @@ class State(NamedTuple):
     fruit_stages: chex.Array
     bell_position_x: chex.Array
     bell_position_y: chex.Array
+    bell_timer: chex.Array
     player_lives: chex.Array
     current_level: chex.Array
     step_counter: chex.Array
@@ -643,21 +645,15 @@ def fruits_step(state: State) -> Tuple[chex.Array, chex.Array]:
         )
 
         collision_condition = jnp.logical_and(fruit_collision, actives[i])
+
         new_score = jnp.where(
-            collision_condition, score + (100 * state.fruit_stages[i] + 100), score
+            collision_condition, score + (200 * state.fruit_stages[i] + 200), score
         )
         new_actives = actives.at[i].set(
             jnp.where(collision_condition, False, actives[i])
         )
 
         return new_score, new_actives
-
-    initial_score = jnp.array(0)
-    initial_actives = state.fruit_actives
-
-    new_score, new_activations = jax.lax.fori_loop(
-        0, len(state.fruit_actives), check_fruit, (initial_score, initial_actives)
-    )
 
     bell_collision = entities_collide(
         state.player.x,
@@ -670,31 +666,47 @@ def fruits_step(state: State) -> Tuple[chex.Array, chex.Array]:
         BELL_HEIGHT,
     )
 
+    RESPAWN_AFTER_TICKS = 40
+
+    counter = state.bell_timer
+    counter_start = bell_collision & (counter == 0)
+    counter = jnp.where(counter_start, 1, counter)
+    counter = jnp.where(counter > 0, counter + 1, counter)
+    counter = jnp.where(counter == RESPAWN_AFTER_TICKS+1, 0, counter)
+    respawn_timer_done = (counter == RESPAWN_AFTER_TICKS)
+
+    initial_score = jnp.array(0)
+    initial_actives = state.fruit_actives
+
+    new_score, new_activations = jax.lax.fori_loop(
+        0, len(state.fruit_actives), check_fruit, (initial_score, initial_actives)
+    )
+
     stage_fruit_1 = jnp.where(
-        bell_collision & (state.fruit_actives[0] == False),
-        state.fruit_stages[0] + 1,
+        respawn_timer_done & (state.fruit_actives[0] == False),
+        jnp.clip(state.fruit_stages[0] + 1, 0, 4),
         state.fruit_stages[0],
     )
     stage_fruit_2 = jnp.where(
-        bell_collision & (state.fruit_actives[1] == False),
-        state.fruit_stages[1] + 1,
+        respawn_timer_done & (state.fruit_actives[1] == False),
+        jnp.clip(state.fruit_stages[1] + 1, 0, 4),
         state.fruit_stages[1],
     )
     stage_fruit_3 = jnp.where(
-        bell_collision & (state.fruit_actives[2] == False),
-        state.fruit_stages[2] + 1,
+        respawn_timer_done & (state.fruit_actives[2] == False),
+        jnp.clip(state.fruit_stages[2] + 1, 0, 4),
         state.fruit_stages[2],
-    )
-
-    activations = jax.lax.cond(
-        bell_collision,
-        lambda: jnp.array([True, True, True]),
-        lambda: jnp.array([new_activations[0], new_activations[1], new_activations[2]]),
     )
 
     new_stages = jnp.array([stage_fruit_1, stage_fruit_2, stage_fruit_3])
 
-    return new_score, activations, new_stages
+    activations = jax.lax.cond(
+        respawn_timer_done,
+        lambda: jnp.less_equal(new_stages,jnp.array([3,3,3])),
+        lambda: jnp.array([new_activations[0], new_activations[1], new_activations[2]]),
+    )
+
+    return new_score, activations, new_stages, counter
 
 
 def pad_array(arr, target_size):
@@ -955,6 +967,7 @@ class Game:
             fruit_stages=jnp.zeros(3, dtype=jnp.int32),
             bell_position_x=93,
             bell_position_y=36,
+            bell_timer=0,
             player_lives=jnp.array(3),
             current_level=jnp.array(1),
             step_counter=jnp.array(0),
@@ -985,7 +998,7 @@ class Game:
         ) = player_step(state, action)
 
         # Handle fruit collection
-        score_addition, new_actives, new_fruit_stages = fruits_step(state)
+        score_addition, new_actives, new_fruit_stages, bell_timer = fruits_step(state)
 
         return jax.lax.cond(
             reset_cond,
@@ -1015,6 +1028,7 @@ class Game:
                 fruit_positions_y=state.fruit_positions_y,
                 bell_position_x=state.bell_position_x,
                 bell_position_y=state.bell_position_y,
+                bell_timer=bell_timer,
                 fruit_stages=new_fruit_stages,
                 player_lives=state.player_lives,
                 current_level=state.current_level,
