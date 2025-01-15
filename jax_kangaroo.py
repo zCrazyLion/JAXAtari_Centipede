@@ -194,119 +194,65 @@ def get_player_platform(state: State, level_constants: LevelConstants) -> chex.A
     player_y = state.player.y
     ph = state.player.height
     pw = PLAYER_WIDTH
+    player_bottom_y = player_y + ph
 
     platform_positions = level_constants.platform_positions  # [N, 2] array of (x, y)
     platform_sizes = level_constants.platform_sizes  # [N, 2] array of (width, height)
 
-    def calculate_upper_platform_index(i, carry):
-        # Unpack the carry tuple
-        prev_lowest_diff, best_index = carry
-
-        platform_x = platform_positions[i, 0]
-        platform_width = platform_sizes[i, 0]
-        platform_y = platform_positions[i, 1]
-
-        is_within_x = jnp.logical_and(
-            player_x + pw > platform_x, player_x < platform_x + platform_width
-        )
-
-        is_above_player = player_y > platform_y
-
-        diff = jnp.where(is_above_player, player_y - platform_y, jnp.inf)
-
-        # Update both the lowest difference and the corresponding index
-        new_diff = jnp.where(
-            jnp.logical_and(is_within_x, is_above_player),
-            jnp.minimum(prev_lowest_diff, diff),
-            prev_lowest_diff,
-        )
-
-        new_index = jnp.where(
-            jnp.logical_and(
-                is_within_x, jnp.logical_and(is_above_player, diff < prev_lowest_diff)
-            ),
-            i,
-            best_index,
-        )
-
-        return new_diff, new_index
-
-    # Initialize with (difference, index)
-    _, platform_over_player_index = jax.lax.fori_loop(
-        0, platform_positions.shape[0], calculate_upper_platform_index, (jnp.inf, -1)
-    )
-
     def calculate_lower_platform_index(i, carry):
         # Unpack the carry tuple
-        prev_lowest_diff, best_index = carry
+        prev_lowest_diff = carry[0]
+        best_index = carry[1]
 
         platform_x = platform_positions[i, 0]
         platform_width = platform_sizes[i, 0]
         platform_y = platform_positions[i, 1]
 
-        is_within_x = jnp.logical_and(
-            player_x + pw > platform_x, player_x < platform_x + platform_width
+        player_is_within_platform_x = jnp.logical_and(
+            (player_x + pw) >= platform_x, player_x <= (platform_x + platform_width)
         )
 
-        is_below_player = player_y < platform_y
-
-        diff = jnp.where(is_below_player, platform_y - player_y, jnp.inf)
+        platform_is_below_player = player_bottom_y <= platform_y
+        diff_to_platform_i = jnp.where(
+            platform_is_below_player, platform_y - player_bottom_y, 1000
+        )
 
         # Update both the lowest difference and the corresponding index
-        new_diff = jnp.where(
-            jnp.logical_and(is_within_x, is_below_player),
-            jnp.minimum(prev_lowest_diff, diff),
+        new_best_diff = jnp.where(
+            player_is_within_platform_x
+            & platform_is_below_player
+            & (diff_to_platform_i < prev_lowest_diff),
+            diff_to_platform_i,
             prev_lowest_diff,
         )
 
         new_index = jnp.where(
-            jnp.logical_and(
-                is_within_x, jnp.logical_and(is_below_player, diff < prev_lowest_diff)
-            ),
+            player_is_within_platform_x
+            & platform_is_below_player
+            & (diff_to_platform_i < prev_lowest_diff),
             i,
             best_index,
         )
 
-        return new_diff, new_index
+        is_valid = is_valid_platform(platform_positions[i])
+        return jnp.where(
+            is_valid,
+            jnp.array([new_best_diff.astype(int), new_index.astype(int)]),
+            carry,
+        )
 
     # Initialize with (difference, index)
-    _, platform_under_player_index = jax.lax.fori_loop(
-        0, platform_positions.shape[0], calculate_lower_platform_index, (jnp.inf, -1)
+    y_diffs_and_indices_array = jax.lax.fori_loop(
+        0,
+        platform_positions.shape[0],
+        calculate_lower_platform_index,
+        jnp.array([int(1000), int(-1)]),
     )
 
-    def check_platform(i: int, platform_bands: jax.Array):
-        platform_x = platform_positions[i, 0]
-        platform_width = platform_sizes[i, 0]
+    platform_under_player_index = y_diffs_and_indices_array[1].astype(int)
+    return_value = jnp.zeros(platform_positions.shape[0], dtype=bool)
 
-        lower_platform_y = platform_positions[i, 1]
-
-        is_between_platforms = jnp.logical_and(
-            # TODO: the 0 does not belong here, but this function should be replaced anyway
-            player_y <= (lower_platform_y - ph),
-            player_y > (0 - ph),
-        )
-
-        # X-axis overlap check
-        is_within_x = jnp.logical_and(
-            player_x + pw > platform_x, player_x < platform_x + platform_width
-        )
-
-        # Combine x and y checks
-        is_on_platform = jnp.logical_and(is_within_x, is_between_platforms)
-
-        is_valid = is_valid_platform(platform_positions[i])
-
-        return platform_bands.at[i].set(is_on_platform & is_valid)
-
-    print("upper", platform_over_player_index)
-    print("lower", platform_under_player_index)
-
-    initial_bands = jnp.zeros(platform_positions.shape[0], dtype=bool)
-
-    # TODO: this is legacy, use the new method with the calculated lower and upper platforms
-    return jax.lax.fori_loop(
-        0, platform_positions.shape[0], check_platform, initial_bands
-    )
+    return return_value.at[platform_under_player_index].set(True)
 
 
 @partial(jax.jit, static_argnums=())
@@ -477,6 +423,18 @@ def player_jump_controller(
         jump_start, state.player.orientation, state.player.jump_orientation
     )
     jump_base_y = jnp.where(jump_start, player_y, jump_base_y)
+    # check if player is on/above a new platform and change jump_base_y accordingly
+
+    platform_y_below_player = get_y_of_platform_below_player(state)
+
+    jump_base_y = jnp.where(
+        is_jumping
+        & ((platform_y_below_player - PLAYER_HEIGHT) < jump_base_y)
+        & ~jump_start,
+        platform_y_below_player - PLAYER_HEIGHT,
+        jump_base_y,
+    )
+
     is_jumping = is_jumping | jump_start
 
     # Update counter if jumping
@@ -544,7 +502,7 @@ def player_climb_controller(
 
     climb_base_y = jnp.where(
         climb_start_downward,
-        get_next_platform_below_player(state, level_constants) - state.player.height,
+        get_y_of_platform_below_player(state) - state.player.height,
         climb_base_y,
     )
 
@@ -622,19 +580,24 @@ def player_height_controller(
 
 
 @partial(jax.jit, static_argnums=())
-def get_next_platform_below_player(
-    state: State, level_constants: LevelConstants
-) -> chex.Array:
+def get_y_of_platform_below_player(state: State) -> chex.Array:
     """Gets the y-position of the next platform below the player."""
-    platform_bands = get_player_platform(state, level_constants)
+
+    level_constants = get_level_constants(state.current_level)
+
+    platform_bands: jax.Array = get_player_platform(state, level_constants)
     platform_ys = level_constants.platform_positions[:, 1]
 
     def find_next_platform(i, current_platform_y):
         is_valid = is_valid_platform(level_constants.platform_positions[i])
         is_in_band = jnp.logical_and(platform_bands[i], is_valid)
-        return jnp.where(is_in_band, platform_ys[i - 1], current_platform_y)
+        return jnp.where(
+            is_in_band & (platform_ys[i] < current_platform_y),
+            platform_ys[i],
+            current_platform_y,
+        )
 
-    initial_y = platform_ys[0]  # Start with platform at 0
+    initial_y = platform_ys[0]
     return jax.lax.fori_loop(0, platform_ys.shape[0], find_next_platform, initial_y)
 
 
@@ -732,9 +695,13 @@ def child_step(state: State) -> Tuple[chex.Array]:
     reset = counter == RESET_TIMER_AFTER
 
     child_velocity = state.child_velocity
-    new_child_velocity = jnp.where(reset, child_velocity*-1, child_velocity)
+    new_child_velocity = jnp.where(reset, child_velocity * -1, child_velocity)
 
-    new_child_x = jnp.where((counter%5) == 0,state.child_position_x + new_child_velocity, state.child_position_x)
+    new_child_x = jnp.where(
+        (counter % 5) == 0,
+        state.child_position_x + new_child_velocity,
+        state.child_position_x,
+    )
     new_child_y = state.child_position_y
     new_child_timer = counter
 
@@ -1005,7 +972,7 @@ class Game:
             child_position_y=13,
             child_velocity=1,
             player_lives=jnp.array(3),
-            current_level=jnp.array(1),
+            current_level=jnp.array(2),
             step_counter=jnp.array(0),
         )
 
@@ -1146,6 +1113,16 @@ class Renderer:
                         int(pos[1]) * RENDER_SCALE_FACTOR,
                         int(level_constants.platform_sizes[i, 0]) * RENDER_SCALE_FACTOR,
                         int(level_constants.platform_sizes[i, 1]) * RENDER_SCALE_FACTOR,
+                    ),
+                )
+                # label platforms
+                font = pygame.font.Font(None, 20)
+                plat_text = font.render(f"{i}", True, (255, 255, 255))
+                self.screen.blit(
+                    plat_text,
+                    (
+                        int(pos[0] + 1) * RENDER_SCALE_FACTOR,
+                        int(pos[1] + 1) * RENDER_SCALE_FACTOR,
                     ),
                 )
 
