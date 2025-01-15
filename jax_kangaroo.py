@@ -32,6 +32,9 @@ FRUIT_SIZE = 8
 BELL_WIDTH = 6
 BELL_HEIGHT = 11
 
+CHILD_WIDTH = 8
+CHILD_HEIGHT = 15
+
 BACKGROUND_COLOR = (80, 0, 132)
 PLAYER_COLOR = (223, 183, 85)
 ENEMY_COLOR = (227, 151, 89)
@@ -39,7 +42,12 @@ FRUIT_COLOR_STATE_1 = (214, 92, 92)
 FRUIT_COLOR_STATE_2 = (230, 250, 92)
 FRUIT_COLOR_STATE_3 = (255, 92, 250)
 FRUIT_COLOR_STATE_4 = (0, 92, 250)
-FRUIT_COLOR = [FRUIT_COLOR_STATE_1, FRUIT_COLOR_STATE_2, FRUIT_COLOR_STATE_3, FRUIT_COLOR_STATE_4]
+FRUIT_COLOR = [
+    FRUIT_COLOR_STATE_1,
+    FRUIT_COLOR_STATE_2,
+    FRUIT_COLOR_STATE_3,
+    FRUIT_COLOR_STATE_4,
+]
 PLATFORM_COLOR = (162, 98, 33)
 LADDER_COLOR = (129, 78, 26)
 BELL_COLOR = (210, 164, 74)
@@ -88,6 +96,10 @@ class State(NamedTuple):
     bell_position_x: chex.Array
     bell_position_y: chex.Array
     bell_timer: chex.Array
+    child_position_x: chex.Array
+    child_position_y: chex.Array
+    child_velocity: chex.Array
+    child_timer: chex.Array
     player_lives: chex.Array
     current_level: chex.Array
     step_counter: chex.Array
@@ -672,8 +684,8 @@ def fruits_step(state: State) -> Tuple[chex.Array, chex.Array]:
     counter_start = bell_collision & (counter == 0)
     counter = jnp.where(counter_start, 1, counter)
     counter = jnp.where(counter > 0, counter + 1, counter)
-    counter = jnp.where(counter == RESPAWN_AFTER_TICKS+1, 0, counter)
-    respawn_timer_done = (counter == RESPAWN_AFTER_TICKS)
+    counter = jnp.where(counter == RESPAWN_AFTER_TICKS + 1, 0, counter)
+    respawn_timer_done = counter == RESPAWN_AFTER_TICKS
 
     initial_score = jnp.array(0)
     initial_actives = state.fruit_actives
@@ -702,11 +714,31 @@ def fruits_step(state: State) -> Tuple[chex.Array, chex.Array]:
 
     activations = jax.lax.cond(
         respawn_timer_done,
-        lambda: jnp.less_equal(new_stages,jnp.array([3,3,3])),
+        lambda: jnp.less_equal(new_stages, jnp.array([3, 3, 3])),
         lambda: jnp.array([new_activations[0], new_activations[1], new_activations[2]]),
     )
 
     return new_score, activations, new_stages, counter
+
+
+@partial(jax.jit, static_argnums=())
+def child_step(state: State) -> Tuple[chex.Array]:
+
+    RESET_TIMER_AFTER = 50
+
+    counter = state.child_timer
+    counter = jnp.where(True, counter + 1, counter)
+    counter = jnp.where(counter == RESET_TIMER_AFTER + 1, 0, counter)
+    reset = counter == RESET_TIMER_AFTER
+
+    child_velocity = state.child_velocity
+    new_child_velocity = jnp.where(reset, child_velocity*-1, child_velocity)
+
+    new_child_x = jnp.where((counter%5) == 0,state.child_position_x + new_child_velocity, state.child_position_x)
+    new_child_y = state.child_position_y
+    new_child_timer = counter
+
+    return new_child_timer, new_child_x, new_child_y, new_child_velocity
 
 
 def pad_array(arr, target_size):
@@ -968,6 +1000,10 @@ class Game:
             bell_position_x=93,
             bell_position_y=36,
             bell_timer=0,
+            child_timer=0,
+            child_position_x=121,
+            child_position_y=13,
+            child_velocity=1,
             player_lives=jnp.array(3),
             current_level=jnp.array(1),
             step_counter=jnp.array(0),
@@ -999,6 +1035,7 @@ class Game:
 
         # Handle fruit collection
         score_addition, new_actives, new_fruit_stages, bell_timer = fruits_step(state)
+        child_timer, new_child_x, new_child_y, new_child_velocity = child_step(state)
 
         return jax.lax.cond(
             reset_cond,
@@ -1029,6 +1066,10 @@ class Game:
                 bell_position_x=state.bell_position_x,
                 bell_position_y=state.bell_position_y,
                 bell_timer=bell_timer,
+                child_timer=child_timer,
+                child_position_x=new_child_x,
+                child_position_y=new_child_y,
+                child_velocity=new_child_velocity,
                 fruit_stages=new_fruit_stages,
                 player_lives=state.player_lives,
                 current_level=state.current_level,
@@ -1143,6 +1184,18 @@ class Renderer:
                 int(state.player.y) * RENDER_SCALE_FACTOR,
                 int(PLAYER_WIDTH) * RENDER_SCALE_FACTOR,
                 int(state.player.height) * RENDER_SCALE_FACTOR,
+            ),
+        )
+
+        # Draw Child
+        pygame.draw.rect(
+            self.screen,
+            PLAYER_COLOR,
+            (
+                int(state.child_position_x) * RENDER_SCALE_FACTOR,
+                int(state.child_position_y) * RENDER_SCALE_FACTOR,
+                int(CHILD_WIDTH) * RENDER_SCALE_FACTOR,
+                int(CHILD_HEIGHT) * RENDER_SCALE_FACTOR,
             ),
         )
 
