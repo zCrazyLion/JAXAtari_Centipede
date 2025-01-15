@@ -1,61 +1,96 @@
 import jax
 import jax.numpy as jnp
 import time
+import numpy as np
 from functools import partial
-from jax_pong import Game as JaxPong, State
-from jax_seaquest import Game as JaxSeaquest
+import multiprocessing as mp
+from typing import Tuple, List, Dict
+import psutil
+import subprocess
+import matplotlib.pyplot as plt
+from datetime import datetime
+import threading
+from jax_pong import Game as JaxPong
+from ocatari import OCAtari
 
 
-def run_parallel_envs(num_steps: int = 1_000_000, num_envs: int = 2000):
-    # Set device to GPU if available
-    jax.default_device = jax.devices("gpu")[0] if len(jax.devices("gpu")) > 0 else jax.devices("cpu")[0]
+class ResourceMonitor:
+    def __init__(self, interval=0.1):
+        self.interval = interval
+        self.cpu_percentages = []
+        self.memory_percentages = []
+        self.gpu_utilization = []
+        self.gpu_memory = []
+        self._stop = False
 
-    # Initialize environment
+    def _get_gpu_info(self):
+        try:
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=utilization.gpu,memory.used', '--format=csv,nounits,noheader'],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                util, mem = map(float, result.stdout.strip().split(','))
+                return util, mem
+            return 0.0, 0.0
+        except:
+            return 0.0, 0.0
+
+    def monitor(self):
+        while not self._stop:
+            self.cpu_percentages.append(psutil.cpu_percent(interval=None))
+            self.memory_percentages.append(psutil.virtual_memory().percent)
+            gpu_util, gpu_mem = self._get_gpu_info()
+            self.gpu_utilization.append(gpu_util)
+            self.gpu_memory.append(gpu_mem)
+            time.sleep(self.interval)
+
+    def start(self):
+        self._stop = False
+        self.monitor_thread = threading.Thread(target=self.monitor)
+        self.monitor_thread.start()
+
+    def stop(self):
+        self._stop = True
+        self.monitor_thread.join()
+
+    def get_averages(self):
+        return {
+            'cpu_avg': np.mean(self.cpu_percentages),
+            'memory_avg': np.mean(self.memory_percentages),
+            'gpu_util_avg': np.mean(self.gpu_utilization),
+            'gpu_memory_avg': np.mean(self.gpu_memory)
+        }
+
+
+def run_parallel_jax(num_steps: int = 1_000_000, num_envs: int = 2000) -> Tuple[float, float, int, Dict]:
+    monitor = ResourceMonitor()
+    monitor.start()
+
     env = JaxPong(frameskip=1)
-
-    # Create a single environment reset for reference
     reset_fn = jax.jit(env.reset)
-
-    # Create batched state from broadcasting a single reset
     init_state = reset_fn()
     states = jax.tree_util.tree_map(lambda x: jnp.stack([x] * num_envs), init_state)
 
-    # Vectorize the step function across environments
     @partial(jax.vmap, in_axes=(0, 0))
     def parallel_step(states, actions):
         return env.step(states, actions)
 
-    # JIT compile the parallel step
     jit_parallel_step = jax.jit(parallel_step)
-
-    # Initialize random key for action sampling
     rng_key = jax.random.PRNGKey(0)
 
     @jax.jit
     def run_one_step(carry, _):
         states, rng_key = carry
-
-        # Split RNG key for action sampling
         rng_key, action_key = jax.random.split(rng_key)
-
-        # Sample random actions for all environments
-        actions = jax.random.randint(action_key,
-                                     shape=(num_envs,),
-                                     minval=0,
-                                     maxval=6)  # 6 possible actions in Pong
-
-        # Step all environments forward
+        actions = jax.random.randint(action_key, shape=(num_envs,), minval=0, maxval=6)
         next_states = jit_parallel_step(states, actions)
-
         return (next_states, rng_key), None
 
-    # Calculate number of steps per environment to reach total steps
     steps_per_env = num_steps // num_envs
-
-    # Start timing
     start_time = time.time()
 
-    # Run parallel simulation using scan
     (final_states, _), _ = jax.lax.scan(
         run_one_step,
         (states, rng_key),
@@ -63,26 +98,227 @@ def run_parallel_envs(num_steps: int = 1_000_000, num_envs: int = 2000):
         length=steps_per_env
     )
 
-    # Calculate metrics
     total_time = time.time() - start_time
     total_steps = steps_per_env * num_envs
     steps_per_second = total_steps / total_time
 
-    return total_time, steps_per_second, steps_per_env * num_envs
+    monitor.stop()
+    resource_usage = monitor.get_averages()
+
+    return total_time, steps_per_second, total_steps, resource_usage
 
 
-if __name__ == "__main__":
-    # Print device information
-    print("\nDevice Information:")
-    print("Available devices:", jax.devices())
-    print("Default device:", jax.default_device())
+def run_ocatari_worker(steps_per_env: int) -> int:
+    env = OCAtari("Pong-v4", frameskip=1, mode="ram")
+    env.reset()
+    completed_steps = 0
+    for _ in range(steps_per_env):
+        action = np.random.randint(0, 6)
+        env.step(action)
+        completed_steps += 1
+    return completed_steps
 
-    # Run benchmark
-    print("\nRunning parallel environment simulation...")
-    total_time, steps_per_second, total_steps = run_parallel_envs()
 
-    print(f"\nBenchmark Results:")
+def run_parallel_ocatari(num_steps: int = 1_000_000, num_envs: int = None) -> Tuple[float, float, int, Dict]:
+    if num_envs is None:
+        num_envs = mp.cpu_count()
+
+    steps_per_env = num_steps // num_envs
+    monitor = ResourceMonitor()
+    monitor.start()
+    start_time = time.time()
+
+    with mp.Pool(processes=num_envs) as pool:
+        results = pool.map(run_ocatari_worker, [steps_per_env] * num_envs)
+
+    total_time = time.time() - start_time
+    total_steps = sum(results)
+    steps_per_second = total_steps / total_time
+
+    monitor.stop()
+    resource_usage = monitor.get_averages()
+
+    return total_time, steps_per_second, total_steps, resource_usage
+
+
+def run_scaling_benchmarks(num_steps: int = 1_000_000):
+    # CPU scaling (OCAtari)
+    cpu_workers = [1, 2, 4, 8, 16]
+    cpu_results = []
+    print("\nRunning OCAtari scaling tests...")
+    for workers in cpu_workers:
+        if workers <= mp.cpu_count():
+            print(f"Testing with {workers} workers...")
+            results = run_parallel_ocatari(num_steps=num_steps, num_envs=workers)
+            cpu_results.append(results)
+
+    # GPU scaling (JAX)
+    gpu_workers = [1, 10, 100, 1000, 5000]
+    gpu_results = []
+    print("\nRunning JAX scaling tests...")
+    for workers in gpu_workers:
+        print(f"Testing with {workers} parallel environments...")
+        results = run_parallel_jax(num_steps=num_steps, num_envs=workers)
+        gpu_results.append(results)
+
+    return cpu_workers, cpu_results, gpu_workers, gpu_results
+
+
+def plot_benchmark_comparison(jax_results, ocatari_results, timestamp):
+    metrics = {
+        'Time (s)': (0, 'Time (seconds)'),
+        'Steps/Second': (1, 'Steps per Second'),
+        'CPU Usage (%)': (lambda x: x[3]['cpu_avg'], 'Percentage'),
+        'Memory Usage (%)': (lambda x: x[3]['memory_avg'], 'Percentage'),
+        'GPU Utilization (%)': (lambda x: x[3]['gpu_util_avg'], 'Percentage'),
+        'GPU Memory (MB)': (lambda x: x[3]['gpu_memory_avg'], 'Memory (MB)')
+    }
+
+    # Create individual plots
+    for metric_name, (metric_idx, ylabel) in metrics.items():
+        plt.figure(figsize=(8, 6))
+        data = []
+        for impl, results in [('JAX', jax_results), ('OCAtari', ocatari_results)]:
+            if callable(metric_idx):
+                value = metric_idx(results)
+            else:
+                value = results[metric_idx]
+            data.append(value)
+
+        plt.bar(['JAX', 'OCAtari'], data)
+        plt.title(f'{metric_name} Comparison')
+        plt.ylabel(ylabel)
+        plt.savefig(f'benchmark_{metric_name.lower().replace(" ", "_")}_{timestamp}.png')
+        plt.close()
+
+    # Combined plot
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    axes = axes.flatten()
+
+    for i, (metric_name, (metric_idx, ylabel)) in enumerate(metrics.items()):
+        data = []
+        for impl, results in [('JAX', jax_results), ('OCAtari', ocatari_results)]:
+            if callable(metric_idx):
+                value = metric_idx(results)
+            else:
+                value = results[metric_idx]
+            data.append(value)
+
+        axes[i].bar(['JAX', 'OCAtari'], data)
+        axes[i].set_title(metric_name)
+        axes[i].set_ylabel(ylabel)
+
+    plt.tight_layout()
+    plt.savefig(f'benchmark_combined_{timestamp}.png')
+    plt.close()
+
+
+def plot_scaling_results(cpu_workers, cpu_results, gpu_workers, gpu_results, timestamp):
+    metrics = {
+        'Time': (0, 'Time (seconds)'),
+        'Throughput': (1, 'Steps per Second')
+    }
+
+    # Create individual scaling plots
+    for metric_name, (metric_idx, ylabel) in metrics.items():
+        plt.figure(figsize=(10, 6))
+
+        # Plot CPU scaling (OCAtari)
+        cpu_values = [results[metric_idx] for results in cpu_results]
+        plt.plot(cpu_workers, cpu_values, 'b-o', label='OCAtari (CPU)')
+
+        # Plot GPU scaling (JAX)
+        gpu_values = [results[metric_idx] for results in gpu_results]
+        plt.plot(gpu_workers, gpu_values, 'r-o', label='JAX (GPU)')
+
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.xlabel('Number of Workers/Environments')
+        plt.ylabel(ylabel)
+        plt.title(f'{metric_name} Scaling Comparison')
+        plt.legend()
+        plt.grid(True)
+
+        # Add value annotations
+        for x, y in zip(cpu_workers, cpu_values):
+            plt.annotate(f'{y:.1f}', (x, y), textcoords="offset points", xytext=(0, 10), ha='center')
+        for x, y in zip(gpu_workers, gpu_values):
+            plt.annotate(f'{y:.1f}', (x, y), textcoords="offset points", xytext=(0, -15), ha='center')
+
+        plt.savefig(f'scaling_{metric_name.lower()}_{timestamp}.png')
+        plt.close()
+
+    # Combined scaling plot
+    fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+
+    for i, (metric_name, (metric_idx, ylabel)) in enumerate(metrics.items()):
+        # Plot CPU scaling
+        cpu_values = [results[metric_idx] for results in cpu_results]
+        axes[i].plot(cpu_workers, cpu_values, 'b-o', label='OCAtari (CPU)')
+
+        # Plot GPU scaling
+        gpu_values = [results[metric_idx] for results in gpu_results]
+        axes[i].plot(gpu_workers, gpu_values, 'r-o', label='JAX (GPU)')
+
+        axes[i].set_xscale('log')
+        axes[i].set_yscale('log')
+        axes[i].set_xlabel('Number of Workers/Environments')
+        axes[i].set_ylabel(ylabel)
+        axes[i].set_title(f'{metric_name} Scaling')
+        axes[i].legend()
+        axes[i].grid(True)
+
+        # Add value annotations
+        for x, y in zip(cpu_workers, cpu_values):
+            axes[i].annotate(f'{y:.1f}', (x, y), textcoords="offset points", xytext=(0, 10), ha='center')
+        for x, y in zip(gpu_workers, gpu_values):
+            axes[i].annotate(f'{y:.1f}', (x, y), textcoords="offset points", xytext=(0, -15), ha='center')
+
+    plt.tight_layout()
+    plt.savefig(f'scaling_combined_{timestamp}.png')
+    plt.close()
+
+
+def print_benchmark_results(name: str, total_time: float, steps_per_second: float,
+                            total_steps: int, resource_usage: Dict):
+    print(f"\n{name} Benchmark Results:")
     print(f"Total steps completed: {total_steps:,}")
     print(f"Total time: {total_time:.2f} seconds")
     print(f"Average steps per second: {steps_per_second:,.2f}")
     print(f"Microseconds per step: {(total_time * 1_000_000 / total_steps):.2f}")
+    print("\nResource Usage:")
+    print(f"Average CPU Usage: {resource_usage['cpu_avg']:.1f}%")
+    print(f"Average Memory Usage: {resource_usage['memory_avg']:.1f}%")
+    print(f"Average GPU Utilization: {resource_usage['gpu_util_avg']:.1f}%")
+    print(f"Average GPU Memory Usage: {resource_usage['gpu_memory_avg']:.1f} MB")
+
+
+if __name__ == "__main__":
+    print("\nSystem Information:")
+    print(f"CPU cores available: {mp.cpu_count()}")
+    print("Available devices:", jax.devices())
+    print("Default device:", jax.default_device())
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Run scaling benchmarks
+    print("\nRunning scaling benchmarks...")
+    cpu_workers, cpu_results, gpu_workers, gpu_results = run_scaling_benchmarks()
+
+    # Plot scaling results
+    print("\nGenerating scaling plots...")
+    plot_scaling_results(cpu_workers, cpu_results, gpu_workers, gpu_results, timestamp)
+
+    # Run standard benchmarks for detailed comparison
+    print("\nRunning standard benchmarks...")
+    jax_results = run_parallel_jax()
+    print_benchmark_results("JAX", *jax_results)
+
+    ocatari_results = run_parallel_ocatari()
+    print_benchmark_results("OCAtari", *ocatari_results)
+
+    # Plot comparison results
+    print("\nGenerating comparison plots...")
+    plot_benchmark_comparison(jax_results, ocatari_results, timestamp)
+
+    print("\nBenchmark complete! Check the generated plot files for visualizations.")
