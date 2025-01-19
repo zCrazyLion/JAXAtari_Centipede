@@ -11,6 +11,10 @@ NOOP = 0
 LEFT = 1
 RIGHT = 2
 
+BOTTOM_BORDER = 176
+TOP_BORDER = 23
+
+
 @dataclass
 class GameConfig:
     """Game configuration parameters"""
@@ -18,7 +22,7 @@ class GameConfig:
     screen_height: int = 210
     skier_width: int = 10
     skier_height: int = 18
-    skier_y:int = 20
+    skier_y:int = 40
     flag_width: int = 5
     flag_height: int = 14
     flag_distance: int = 20
@@ -26,9 +30,9 @@ class GameConfig:
     tree_height: int = 30
     rock_width: int = 16
     rock_height: int = 7
-    num_flags: int = 2
-    num_trees: int = 5
-    num_rocks: int = 5
+    max_num_flags: int = 2
+    max_num_trees: int = 4
+    max_num_rocks: int = 3
     speed: float = 1.0
 
 
@@ -52,29 +56,27 @@ class SkiingGameLogic:
 
     def reset(self) -> GameState:
         """Initialize a new game state"""
-        skier_x = self.config.screen_width / 2
-
         flags = []
-        y_spacing = (self.config.screen_height - 4 * self.config.flag_height) / self.config.num_flags
-        for i in range(self.config.num_flags):
+        y_spacing = (self.config.screen_height - 4 * self.config.flag_height) / self.config.max_num_flags
+        for i in range(self.config.max_num_flags):
             x = random.uniform(self.config.flag_width, self.config.screen_width - self.config.flag_width - self.config.flag_distance)
             y = (i + 1) * y_spacing + self.config.flag_height
             flags.append((x, y))
 
         trees = []
-        for _ in range(self.config.num_trees):
+        for _ in range(self.config.max_num_trees):
             x = random.uniform(self.config.tree_width, self.config.screen_width - self.config.tree_width)
             y = random.uniform(self.config.tree_height, self.config.screen_height - self.config.tree_height)
             trees.append((x, y))
 
         rocks = []
-        for _ in range(self.config.num_rocks):
+        for _ in range(self.config.max_num_rocks):
             x = random.uniform(self.config.rock_width, self.config.screen_width - self.config.rock_width)
             y = random.uniform(self.config.rock_height, self.config.screen_height - self.config.rock_height)
             rocks.append((x, y))
 
         return GameState(
-            skier_x=jnp.array(skier_x),
+            skier_x=jnp.array(76.0),
             skier_pos=jnp.array(4),
             skier_fell=jnp.array(0),
             flags=jnp.array(flags),
@@ -91,18 +93,30 @@ class SkiingGameLogic:
         rocks = []
 
         x = random.uniform(self.config.flag_width, self.config.screen_width - self.config.flag_width - self.config.flag_distance)
-        flags.append((x, self.config.screen_height-5))
+        flags.append((x, BOTTOM_BORDER))
 
         x = random.uniform(self.config.tree_width, self.config.screen_width - self.config.tree_width)
-        trees.append((x, self.config.screen_height-5))
+        trees.append((x, BOTTOM_BORDER))
 
         x = random.uniform(self.config.rock_width, self.config.screen_width - self.config.rock_width)
-        rocks.append((x, self.config.screen_height-5))
+        rocks.append((x, BOTTOM_BORDER))
 
         return jnp.array(flags), jnp.array(trees), jnp.array(rocks)
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: GameState, action: int) -> GameState:
+        SPEED_DICT = jnp.array([
+            0.5,
+            0.8,
+            0.9,
+            1.0,
+            1.0,
+            0.9,
+            0.8,
+            0.5
+        ], jnp.float32)
+
+
         """Take a step in the game given an action"""
         dx = jnp.where(action == LEFT, -self.config.speed,
                        jnp.where(action == RIGHT, self.config.speed, 0.0))
@@ -111,6 +125,7 @@ class SkiingGameLogic:
         skier_pos = jax.lax.cond(jnp.equal(action, RIGHT), lambda _: state.skier_pos + 1, lambda _: skier_pos,
                                  operand=None)
         skier_pos = jnp.clip(skier_pos, 0, 7)
+        dy = self.config.speed * SPEED_DICT.at[skier_pos].get()
 
         new_x = jnp.clip(state.skier_x + dx,
                          self.config.skier_width / 2,
@@ -118,15 +133,15 @@ class SkiingGameLogic:
 
         new_trees = self.state.trees
         for i in range(len(self.state.trees)):
-            new_trees = new_trees.at[i, 1].set(state.trees[i][1] - self.config.speed)
+            new_trees = new_trees.at[i, 1].set(state.trees[i][1] - dy)
 
         new_rocks = self.state.rocks
         for i in range(len(self.state.rocks)):
-            new_rocks = new_rocks.at[i, 1].set(state.rocks[i][1] - self.config.speed)
+            new_rocks = new_rocks.at[i, 1].set(state.rocks[i][1] - dy)
 
         new_flags = self.state.flags
         for i in range(len(self.state.flags)):
-            new_flags = new_flags.at[i, 1].set(state.flags[i][1] - self.config.speed)
+            new_flags = new_flags.at[i, 1].set(state.flags[i][1] - dy)
 
 
         def check_collision_flag(flag_pos):
@@ -135,26 +150,21 @@ class SkiingGameLogic:
             dy_0 = jnp.abs(self.config.skier_y - fy)
             return (dx_0 > 0) &(dx_0 < self.config.flag_distance) & (dy_0 < 1)
 
-        def check_collision_tree(tree_pos):
-            tx, ty = tree_pos
-            dx_1 = jnp.abs(new_x - tx)
-            dy_1 = jnp.abs(self.config.skier_y - ty)
-            return jnp.logical_and(dx_1 < 3, dy_1 < 1)
+        def check_collision(obj_pos, x_distance=3, y_distance=1):
+            x, y = obj_pos
+            dx = jnp.abs(new_x - x)
+            dy = jnp.abs(self.config.skier_y - y)
+            return jnp.logical_and(dx < x_distance, dy < y_distance)
 
-        def check_collision_rock(rock_pos):
-            rx, ry = rock_pos
-            dx = jnp.abs(new_x - rx)
-            dy = jnp.abs(self.config.skier_y - ry)
-            return jnp.logical_and(dx < 3, dy < 1)
 
         f, t, r = self._create_new_objs()
-        new_flags = jnp.where(new_flags < 0, f, new_flags)
-        new_trees = jnp.where(new_trees < 0, t, new_trees)
-        new_rocks = jnp.where(new_rocks < 0, r, new_rocks)
+        new_flags = jnp.where(new_flags < TOP_BORDER, f, new_flags)
+        new_trees = jnp.where(new_trees < TOP_BORDER, t, new_trees)
+        new_rocks = jnp.where(new_rocks < TOP_BORDER, r, new_rocks)
 
-        passed_flages = jax.vmap(check_collision_flag)(jnp.array(new_flags))
-        collisions_tree = jax.vmap(check_collision_tree)(jnp.array(new_trees))
-        collisions_rocks = jax.vmap(check_collision_rock)(jnp.array(new_rocks))
+        passed_flags = jax.vmap(check_collision_flag)(jnp.array(new_flags))
+        collisions_tree = jax.vmap(check_collision)(jnp.array(new_trees))
+        collisions_rocks = jax.vmap(check_collision)(jnp.array(new_rocks))
 
         num_colls = jnp.sum(collisions_tree) + jnp.sum(collisions_rocks)
 
@@ -166,7 +176,7 @@ class SkiingGameLogic:
 
         skier_fell = jax.lax.cond(jnp.logical_and(jnp.greater(num_colls, 0), jnp.equal(skier_fell, 0)), lambda _: jnp.array(60), lambda _: skier_fell, operand=None)
 
-        new_score = state.score - jnp.sum(passed_flages)
+        new_score = state.score - jnp.sum(passed_flags)
         game_over = jax.lax.cond(jnp.equal(new_score, 0), lambda _: jnp.array(True), lambda _: jnp.array(False), operand=None)
         new_time = state.time + 1.0 / 60
 
@@ -189,7 +199,7 @@ class RenderConfig:
     """Configuration for rendering"""
     scale_factor: int = 4
     background_color: Tuple[int, int, int] = (255, 255, 255)
-    skier_color: Tuple[int, int, int] = (0, 0, 255)
+    skier_color = [(0, 0, 255), (0, 0, 100), (0, 255, 0), (255, 0, 0), (255, 0, 255), (0, 255, 255), (255, 255, 0), (100, 0, 255)]
     flag_color: Tuple[int, int, int] = (255, 0, 0)
     text_color: Tuple[int, int, int] = (0, 0, 0)
     tree_color: Tuple[int, int, int] = (0, 100, 0)
@@ -217,25 +227,29 @@ class GameRenderer:
         self.tree_sprite = self._create_tree_sprite()
         self.font = pygame.font.Font(None, 36)
 
-    def _create_skier_sprite(self) -> pygame.Surface:
-        size = (self.game_config.skier_width * self.render_config.scale_factor,
-                self.game_config.skier_height * self.render_config.scale_factor)
-        sprite = pygame.Surface(size, pygame.SRCALPHA)
+    def _create_skier_sprite(self) -> list[pygame.Surface]:
+        sprites = []
+        for i in range(8):
+            size = (self.game_config.skier_width * self.render_config.scale_factor,
+                    self.game_config.skier_height * self.render_config.scale_factor)
+            sprite = pygame.Surface(size, pygame.SRCALPHA)
 
-        scaled_width = size[0]
-        scaled_height = size[1]
+            scaled_width = size[0]
+            scaled_height = size[1]
 
-        pygame.draw.polygon(sprite, self.render_config.skier_color, [
-            (scaled_width // 2, 0),
-            (0, scaled_height),
-            (scaled_width, scaled_height)
-        ])
+            pygame.draw.polygon(sprite, self.render_config.skier_color[i], [
+                (scaled_width // 2, 0),
+                (0, scaled_height),
+                (scaled_width, scaled_height)
+            ])
 
-        pygame.draw.line(sprite, self.render_config.text_color,
-                         (0, scaled_height),
-                         (scaled_width, scaled_height), 2)
+            pygame.draw.line(sprite, self.render_config.text_color,
+                             (0, scaled_height),
+                             (scaled_width, scaled_height), 2)
 
-        return sprite
+            sprites.append(sprite)
+
+        return sprites
 
     def _create_flag_sprite(self) -> pygame.Surface:
         size = (self.game_config.flag_width * self.render_config.scale_factor,
@@ -318,7 +332,7 @@ class GameRenderer:
             int((state.skier_x - self.game_config.skier_width / 2) * self.render_config.scale_factor),
             int((self.game_config.skier_y - self.game_config.skier_height / 2) * self.render_config.scale_factor)
         )
-        self.screen.blit(self.skier_sprite, skier_pos)
+        self.screen.blit(self.skier_sprite[state.skier_pos], skier_pos)
 
         # Draw flags
         for fx, fy in state.flags:

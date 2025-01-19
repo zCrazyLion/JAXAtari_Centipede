@@ -29,18 +29,18 @@ class GameConfig:
     def __post_init__(self):
         if self.car_speeds is None:
             # Upper 5 lanes move left (-), lower 5 lanes move right (+)
-            # Each lane has a different speed
-            self.car_speeds = [
-                -1.0,   # Lane 0
-                -1.5,   # Lane 1
-                -2.2,   # Lane 2
-                -2.8,   # Lane 3
-                -3.5,   # Lane 4
-                3.0,    # Lane 5
-                2.8,    # Lane 6
-                1.8,    # Lane 7
-                1.2,    # Lane 8
-                1.0     # Lane 9
+            # Value at i is the frequency in which car at lane i moves one pixel
+            self.car_update = [
+                -5,  # Lane 0
+                -4,  # Lane 1
+                -3,  # Lane 2
+                -2,  # Lane 3
+                -1,  # Lane 4
+                1,  # Lane 5
+                2,  # Lane 6
+                3,  # Lane 7
+                4,  # Lane 8
+                5  # Lane 9
             ]
 
 
@@ -62,7 +62,7 @@ class FreewayGameLogic:
     def reset(self) -> GameState:
         """Initialize a new game state"""
         # Start chicken at bottom
-        chicken_y = self.config.screen_height - self.config.chicken_height - 20
+        chicken_y = self.config.screen_height - self.config.chicken_height - 6
 
         # Initialize one car per lane
         cars = []
@@ -70,16 +70,16 @@ class FreewayGameLogic:
             lane_y = self.config.lane_spacing * (lane + 1) + int(self.config.lane_spacing / 2)
             # Upper 5 lanes start from right, lower 5 lanes start from left
             if lane < 5:
-                x = self.config.screen_width  # Start from right
+                x = self.config.screen_width - self.config.car_width + 0  # Start from right
             else:
-                x = -self.config.car_width  # Start from left
+                x = 0 # Start from left
             cars.append([x, lane_y])
 
         return GameState(
             chicken_y=jnp.array(chicken_y),
             cars=jnp.array(cars),
             score=jnp.array(0),
-            time=jnp.array(0.0),
+            time=jnp.array(0),
             cooldown=jnp.array(0),
             game_over=jnp.array(False)
         )
@@ -88,23 +88,26 @@ class FreewayGameLogic:
     def step(self, state: GameState, action: int) -> GameState:
         """Take a step in the game given an action"""
         # Update chicken position if not in cooldown
-        dy = jnp.where(state.cooldown > 0, 0.0,
-                       jnp.where(action == UP, -2.0,
-                                 jnp.where(action == DOWN, 2.0, 0.0)))
+        dy = jnp.where(state.cooldown > 0, 1.0,
+                       jnp.where(action == UP, -1.0,
+                                 jnp.where(action == DOWN, 1.0, 0.0)))
 
         new_y = jnp.clip(state.chicken_y + dy,
                          0,
-                         self.config.screen_height - self.config.chicken_height)
+                         self.config.screen_height - self.config.chicken_height) # 6 to 177
 
         # Update car positions
         new_cars = state.cars
         for lane in range(self.config.num_lanes):
             # Update x position based on lane speed
-            new_x = state.cars[lane, 0] + self.config.car_speeds[lane]
+            dir = (self.config.car_update[lane]/jnp.abs(self.config.car_update[lane])).astype(jnp.int32)
+            new_x = jax.lax.cond(jnp.equal(jnp.mod(state.time, self.config.car_update[lane]),0),
+                         lambda: state.cars[lane, 0] + dir,
+                         lambda: state.cars[lane, 0])
 
             # Wrap around screen
             new_x = jnp.where(
-                self.config.car_speeds[lane] > 0,
+                self.config.car_update[lane] > 0,
                 jnp.where(new_x > self.config.screen_width,
                           -self.config.car_width,
                           new_x),
@@ -118,12 +121,10 @@ class FreewayGameLogic:
         # Check for collisions
         def check_collision(car_pos):
             car_x, car_y = car_pos
-            dx = jnp.abs(self.config.chicken_x - car_x)
-            dy = jnp.abs(new_y - car_y)
-            return jnp.logical_and(
-                dx < (self.config.chicken_width + self.config.car_width) / 2,
-                dy < (self.config.chicken_height + self.config.car_height) / 2
-            )
+            return jnp.logical_and(self.config.chicken_x < car_x+self.config.car_width,
+                                   jnp.logical_and(self.config.chicken_x + self.config.chicken_width > car_x,
+                                                   jnp.logical_and(state.chicken_y-self.config.chicken_height < car_y,
+                                                                   state.chicken_y > car_y-self.config.car_height)))
 
         # Check collisions for all cars
         collisions = jax.vmap(check_collision)(new_cars)
@@ -131,7 +132,7 @@ class FreewayGameLogic:
 
         # Update cooldown
         new_cooldown = jnp.where(any_collision,
-                                 30,  # Set cooldown frames after collision
+                                 10,  # Set cooldown frames after collision
                                  jnp.maximum(0, state.cooldown - 1))
 
         # Update score if chicken reaches top
@@ -145,10 +146,10 @@ class FreewayGameLogic:
                           new_y)
 
         # Update time
-        new_time = state.time + 1.0 / 60
+        new_time = state.time + 1
 
         # Check game over (optional: could be based on time or score limit)
-        game_over = jnp.where(new_time >= 120.0,  # 2 minute time limit
+        game_over = jnp.where(new_time >= 255*32,  # 2 minute time limit
                               jnp.array(True),
                               state.game_over)
 
@@ -264,8 +265,6 @@ class GameRenderer:
         # Draw cars
         for lane in range(self.game_config.num_lanes):
             car_sprite = self.car_sprites[lane]
-            if self.game_config.car_speeds[lane] < 0:  # Flip sprite if moving left
-                car_sprite = pygame.transform.flip(car_sprite, True, False)
 
             car_pos = (
                 int(state.cars[lane][0] * self.render_config.scale_factor),
@@ -286,11 +285,7 @@ class GameRenderer:
         score_text = self.font.render(f"Score: {state.score}",
                                       True,
                                       self.render_config.text_color)
-        time_text = self.font.render(f"Time: {state.time:.1f}",
-                                     True,
-                                     self.render_config.text_color)
         self.screen.blit(score_text, (10, 10))
-        self.screen.blit(time_text, (10, 40))
 
         if state.game_over:
             game_over_text = self.font.render(
