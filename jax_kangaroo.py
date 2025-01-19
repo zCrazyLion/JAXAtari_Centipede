@@ -77,6 +77,7 @@ class Player(NamedTuple):
     jump_counter: chex.Array
     orientation: chex.Array
     jump_base_y: chex.Array
+    landing_base_y: chex.Array
     height: chex.Array
     jump_orientation: chex.Array
     climb_base_y: chex.Array
@@ -403,7 +404,7 @@ def player_is_on_ladder(
 # -------- Jumping and Climbing --------
 def player_jump_controller(
     state: State, jump_pressed: chex.Array, ladder_intersect: chex.Array
-) -> Tuple[chex.Array, chex.Array, chex.Array, chex.Array, chex.Array]:
+):
     """
     Schedule:
       tick  8: total offset = -12
@@ -415,7 +416,6 @@ def player_jump_controller(
     player_y = state.player.y
     jump_counter = state.player.jump_counter
     is_jumping = state.player.is_jumping
-    jump_base_y = state.player.jump_base_y
 
     cooldown_condition = state.player.cooldown_counter > 0
     jump_start = jump_pressed & ~is_jumping & ~ladder_intersect & ~cooldown_condition
@@ -425,17 +425,19 @@ def player_jump_controller(
     jump_orientation = jnp.where(
         jump_start, state.player.orientation, state.player.jump_orientation
     )
-    jump_base_y = jnp.where(jump_start, player_y, jump_base_y)
+    jump_base_y = jnp.where(jump_start, player_y, state.player.jump_base_y)
+    new_landing_base_y = jnp.where(jump_start, jump_base_y, state.player.landing_base_y)
     # check if player is on/above a new platform and change jump_base_y accordingly
 
     platform_y_below_player = get_y_of_platform_below_player(state)
 
-    jump_base_y = jnp.where(
+    # find a new potential landing_base if player is above a higher platform
+    new_landing_base_y = jnp.where(
         is_jumping
         & ((platform_y_below_player - PLAYER_HEIGHT) < jump_base_y)
         & ~jump_start,
         platform_y_below_player - PLAYER_HEIGHT,
-        jump_base_y,
+        new_landing_base_y,
     )
 
     is_jumping = is_jumping | jump_start
@@ -461,15 +463,35 @@ def player_jump_controller(
         ]
         return jnp.select(conditions, values, default=0)
 
+    # check if player is on a new platform and cancel jump if so
+    jump_cancel = (
+        is_jumping
+        & (player_y >= new_landing_base_y)
+        & (new_landing_base_y < jump_base_y)
+        & (jump_counter > 32)
+    )
+    jump_counter = jnp.where(jump_cancel, 40, jump_counter)
+    jump_base_y = jnp.where(jump_cancel, new_landing_base_y, jump_base_y)
+    new_y = jnp.where(jump_cancel, new_landing_base_y, player_y)
+    new_cooldown_counter = jnp.where(jump_cancel, 8, state.player.cooldown_counter)
+
     total_offset = offset_for(jump_counter)
-    new_y = jnp.where(is_jumping, jump_base_y + total_offset, player_y)
+    new_y = jnp.where(is_jumping & ~jump_cancel, jump_base_y + total_offset, new_y)
 
     # Check for jump completion
     jump_complete = jump_counter >= 41
     is_jumping = jnp.where(jump_complete, False, is_jumping)
     jump_counter = jnp.where(jump_complete, 0, jump_counter)
 
-    return new_y, jump_counter, is_jumping, jump_base_y, jump_orientation
+    return (
+        new_y,
+        jump_counter,
+        is_jumping,
+        jump_base_y,
+        new_landing_base_y,
+        jump_orientation,
+        new_cooldown_counter,
+    )
 
 
 @partial(jax.jit, static_argnums=())
@@ -843,9 +865,15 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     )
 
     # Jump controller
-    new_y, new_jump_counter, new_is_jumping, new_jump_base_y, new_jump_orientation = (
-        player_jump_controller(state, press_up, ladder_intersect)
-    )
+    (
+        new_y,
+        new_jump_counter,
+        new_is_jumping,
+        new_jump_base_y,
+        new_landing_base_y,
+        new_jump_orientation,
+        new_cooldown_counter,
+    ) = player_jump_controller(state, press_up, ladder_intersect)
 
     # Climb controller
     (
@@ -923,6 +951,7 @@ def player_step(state: State, action: chex.Array) -> Tuple[
         new_jump_counter,
         new_orientation,
         new_jump_base_y,
+        new_landing_base_y,
         new_player_height,
         new_jump_orientation,
         new_climb_base_y,
@@ -950,6 +979,7 @@ class Game:
                 jump_counter=jnp.array(0),
                 orientation=jnp.array(1),
                 jump_base_y=jnp.array(PLAYER_START_Y),
+                landing_base_y=jnp.array(PLAYER_START_Y),
                 height=jnp.array(PLAYER_HEIGHT),
                 jump_orientation=jnp.array(0),
                 climb_base_y=jnp.array(PLAYER_START_Y),
@@ -992,6 +1022,7 @@ class Game:
             jump_counter,
             orientation,
             jump_base_y,
+            landing_base_y,
             new_player_height,
             new_jump_orientation,
             climb_base_y,
@@ -1019,6 +1050,7 @@ class Game:
                     jump_counter=jump_counter,
                     orientation=orientation,
                     jump_base_y=jump_base_y,
+                    landing_base_y=landing_base_y,
                     height=new_player_height,
                     jump_orientation=new_jump_orientation,
                     climb_base_y=climb_base_y,
