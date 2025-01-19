@@ -188,13 +188,15 @@ def is_valid_platform(platform_position: chex.Array) -> chex.Array:
 
 
 @partial(jax.jit, static_argnums=())
-def get_player_platform(state: State, level_constants: LevelConstants) -> chex.Array:
+def get_platforms_below_player(state: State) -> chex.Array:
     """Returns array of booleans indicating if player is on a platform."""
     player_x = state.player.x
     player_y = state.player.y
     ph = state.player.height
     pw = PLAYER_WIDTH
     player_bottom_y = player_y + ph
+
+    level_constants = get_level_constants(state.current_level)
 
     platform_positions = level_constants.platform_positions  # [N, 2] array of (x, y)
     platform_sizes = level_constants.platform_sizes  # [N, 2] array of (width, height)
@@ -316,11 +318,12 @@ def entities_collide(
 @partial(jax.jit, static_argnums=())
 def player_is_above_ladder(
     state: State,
-    level_constants: LevelConstants,
     threshold: float = 0.3,
     virtual_hitbox_height: float = 12.0,
 ) -> chex.Array:
     """Checks collision between a virtual hitbox below player and ladders."""
+
+    level_constants = get_level_constants(state.current_level)
 
     def check_single_collision(i, collisions):
         ladder_pos = level_constants.ladder_positions[i]
@@ -480,7 +483,7 @@ def player_climb_controller(
 
     # Ladder Below Collision
     level_constants = get_level_constants(state.current_level)
-    ladder_intersect_below = jnp.any(player_is_above_ladder(state, level_constants))
+    ladder_intersect_below = jnp.any(player_is_above_ladder(state))
 
     new_y = y
     is_climbing = state.player.is_climbing
@@ -585,7 +588,7 @@ def get_y_of_platform_below_player(state: State) -> chex.Array:
 
     level_constants = get_level_constants(state.current_level)
 
-    platform_bands: jax.Array = get_player_platform(state, level_constants)
+    platform_bands: jax.Array = get_platforms_below_player(state)
     platform_ys = level_constants.platform_positions[:, 1]
 
     def find_next_platform(i, current_platform_y):
@@ -854,9 +857,7 @@ def player_step(state: State, action: chex.Array) -> Tuple[
         new_cooldown_counter,
     ) = player_climb_controller(state, new_y, press_up, press_down, ladder_intersect)
 
-    new_is_crouching = jnp.logical_and(
-        press_down, jnp.logical_and(~new_is_climbing, ~new_is_jumping)
-    )
+    new_is_crouching = press_down & ~new_is_climbing & ~new_is_jumping
 
     # Calculate horizontal velocity
     candidate_vel_x = jnp.where(
@@ -868,6 +869,7 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     )
 
     # Check Orientation (Left/Right)
+    # if standing still, keep the old orientation
     standing_still = jnp.equal(candidate_vel_x, 0)
     new_orientation = jnp.sign(candidate_vel_x)
     new_orientation = jnp.where(standing_still, old_orientation, new_orientation)
@@ -893,8 +895,8 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     x = jnp.clip(x + vel_x, LEFT_CLIP, RIGHT_CLIP - PLAYER_WIDTH)
 
     # y-axis movement
-    platform_bools = get_player_platform(state, level_constants)
-    platform_ys = level_constants.platform_positions[:, 1]
+    platform_bools: jax.Array = get_platforms_below_player(state)
+    platform_ys: jax.Array = level_constants.platform_positions[:, 1]
 
     def get_platform_dependent_y(i, curr_y):
         is_valid = is_valid_platform(level_constants.platform_positions[i])
