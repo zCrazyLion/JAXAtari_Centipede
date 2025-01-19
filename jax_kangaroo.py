@@ -188,10 +188,10 @@ def is_valid_platform(platform_position: chex.Array) -> chex.Array:
 
 
 @partial(jax.jit, static_argnums=())
-def get_platforms_below_player(state: State) -> chex.Array:
+def get_platforms_below_player(state: State, y_offset=0) -> chex.Array:
     """Returns array of booleans indicating if player is on a platform."""
     player_x = state.player.x
-    player_y = state.player.y
+    player_y = state.player.y + y_offset
     ph = state.player.height
     pw = PLAYER_WIDTH
     player_bottom_y = player_y + ph
@@ -319,7 +319,7 @@ def entities_collide(
 def player_is_above_ladder(
     state: State,
     threshold: float = 0.3,
-    virtual_hitbox_height: float = 12.0,
+    virtual_hitbox_height: float = 20.0,
 ) -> chex.Array:
     """Checks collision between a virtual hitbox below player and ladders."""
 
@@ -331,7 +331,7 @@ def player_is_above_ladder(
 
         collision = entities_collide_with_threshold(
             state.player.x,
-            state.player.y + ladder_size[1] + 1,
+            state.player.y + state.player.height,
             PLAYER_WIDTH,
             virtual_hitbox_height,
             ladder_pos[0],
@@ -500,12 +500,11 @@ def player_climb_controller(
 
     climb_counter = jnp.where(climb_start | climb_start_downward, 0, climb_counter)
 
-    climb_base_y = state.player.climb_base_y
     climb_base_y = jnp.where(climb_start, new_y, state.player.climb_base_y)
 
     climb_base_y = jnp.where(
         climb_start_downward,
-        get_y_of_platform_below_player(state) - state.player.height,
+        get_y_of_platform_below_player(state, 1) - PLAYER_HEIGHT,
         climb_base_y,
     )
 
@@ -525,7 +524,7 @@ def player_climb_controller(
     )
 
     # Check if not climbing anymore -> bottom of ladder
-    climb_stop = jnp.logical_and(is_climbing, jnp.greater_equal(new_y, climb_base_y))
+    climb_stop = is_climbing & (new_y >= climb_base_y) & ~climb_start_downward
 
     is_climbing = jnp.where(climb_stop, False, is_climbing)
 
@@ -583,12 +582,12 @@ def player_height_controller(
 
 
 @partial(jax.jit, static_argnums=())
-def get_y_of_platform_below_player(state: State) -> chex.Array:
+def get_y_of_platform_below_player(state: State, y_offset=0) -> chex.Array:
     """Gets the y-position of the next platform below the player."""
 
     level_constants = get_level_constants(state.current_level)
 
-    platform_bands: jax.Array = get_platforms_below_player(state)
+    platform_bands: jax.Array = get_platforms_below_player(state, y_offset)
     platform_ys = level_constants.platform_positions[:, 1]
 
     def find_next_platform(i, current_platform_y):
@@ -1099,6 +1098,16 @@ class Renderer:
                     int(pos[1]) * RENDER_SCALE_FACTOR,
                     int(size[0]) * RENDER_SCALE_FACTOR,
                     int(size[1]) * RENDER_SCALE_FACTOR,
+                ),
+            )
+            # also draw a label
+            font = pygame.font.Font(None, 20)
+            ladder_text = font.render(f"{i}", True, (255, 255, 255))
+            self.screen.blit(
+                ladder_text,
+                (
+                    int(pos[0] + 1) * RENDER_SCALE_FACTOR,
+                    int(pos[1] + 1) * RENDER_SCALE_FACTOR,
                 ),
             )
 
