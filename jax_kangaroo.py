@@ -426,7 +426,7 @@ def player_jump_controller(
         jump_start, state.player.orientation, state.player.jump_orientation
     )
     jump_base_y = jnp.where(jump_start, player_y, state.player.jump_base_y)
-    new_landing_base_y = jnp.where(jump_start, jump_base_y, state.player.landing_base_y)
+    new_landing_base_y = jump_base_y
     # check if player is on/above a new platform and change jump_base_y accordingly
 
     platform_y_below_player = get_y_of_platform_below_player(state)
@@ -504,7 +504,6 @@ def player_climb_controller(
 ) -> tuple[Array, Array, Array, Array, Array]:
 
     # Ladder Below Collision
-    level_constants = get_level_constants(state.current_level)
     ladder_intersect_below = jnp.any(player_is_above_ladder(state))
 
     new_y = y
@@ -513,9 +512,21 @@ def player_climb_controller(
 
     climb_counter = state.player.climb_counter
 
-    climb_start = press_up & ~is_climbing & ladder_intersect & ~state.player.is_jumping
+    cooldown_over = state.player.cooldown_counter <= 0
+
+    climb_start = (
+        press_up
+        & ~is_climbing
+        & ladder_intersect
+        & ~state.player.is_jumping
+        & cooldown_over
+    )
     climb_start_downward = (
-        press_down & ~is_climbing & ladder_intersect_below & ~state.player.is_jumping
+        press_down
+        & ~is_climbing
+        & ladder_intersect_below
+        & ~state.player.is_jumping
+        & cooldown_over
     )
 
     is_climbing = is_climbing | climb_start | climb_start_downward
@@ -545,6 +556,16 @@ def player_climb_controller(
         jnp.logical_and(climb_down, jnp.equal(climb_counter, 19)), new_y + 8, new_y
     )
 
+    set_new_climb_base = (
+        climb_up
+        & ((get_y_of_platform_below_player(state) - state.player.height) >= new_y)
+        & ladder_intersect
+    )
+    climb_base_y = jnp.where(
+        set_new_climb_base,  # when player is on a new platform but still climbing up
+        get_y_of_platform_below_player(state) - PLAYER_HEIGHT,
+        climb_base_y,
+    )
     # Check if not climbing anymore -> bottom of ladder
     climb_stop = is_climbing & (new_y >= climb_base_y) & ~climb_start_downward
 
@@ -553,12 +574,13 @@ def player_climb_controller(
     # Check if not climbing anymore -> top of ladder
     is_climbing = jnp.where(ladder_intersect | climb_start_downward, is_climbing, False)
 
-    clock_reset = climb_counter >= 19
-    climb_counter = jnp.where(clock_reset, 0, climb_counter)
+    climb_counter = jnp.where(climb_counter >= 19, 0, climb_counter)
     cooldown_counter = jnp.where(
-        clock_reset,
+        climb_stop | set_new_climb_base,
         15,
-        state.player.cooldown_counter - 1,
+        jnp.where(
+            state.player.cooldown_counter > 0, state.player.cooldown_counter - 1, 0
+        ),
     )
 
     return new_y, is_climbing, climb_base_y, climb_counter, cooldown_counter
@@ -1003,7 +1025,7 @@ class Game:
             child_position_y=13,
             child_velocity=1,
             player_lives=jnp.array(3),
-            current_level=jnp.array(2),
+            current_level=jnp.array(3),
             step_counter=jnp.array(0),
         )
 
