@@ -104,6 +104,8 @@ class State(NamedTuple):
     player_lives: chex.Array
     current_level: chex.Array
     step_counter: chex.Array
+    new_level_counter: chex.Array
+    level_finished: chex.Array
 
 
 # Level Constants
@@ -280,9 +282,6 @@ def entities_collide_with_threshold(
     overlap_width = overlap_end_x - overlap_start_x
     overlap_height = overlap_end_y - overlap_start_y
 
-    # Calculate area of overlap
-    overlap_area = overlap_width * overlap_height
-
     # Calculate minimum required overlap area based on threshold
     min_required_overlap = e1_w * threshold
 
@@ -320,7 +319,7 @@ def entities_collide(
 def player_is_above_ladder(
     state: State,
     threshold: float = 0.3,
-    virtual_hitbox_height: float = 20.0,
+    virtual_hitbox_height: float = 12.0,
 ) -> chex.Array:
     """Checks collision between a virtual hitbox below player and ladders."""
 
@@ -736,8 +735,8 @@ def child_step(state: State) -> Tuple[chex.Array]:
     RESET_TIMER_AFTER = 50
 
     counter = state.child_timer
-    counter = jnp.where(True, counter + 1, counter)
-    counter = jnp.where(counter == RESET_TIMER_AFTER + 1, 0, counter)
+    counter = counter + 1
+    counter = jnp.where(counter > RESET_TIMER_AFTER, 0, counter)
     reset = counter == RESET_TIMER_AFTER
 
     child_velocity = state.child_velocity
@@ -799,24 +798,7 @@ def get_level_constants(current_level):
 
 
 @partial(jax.jit, static_argnums=())
-def player_step(state: State, action: chex.Array) -> Tuple[
-    chex.Array,
-    chex.Array,
-    chex.Array,
-    chex.Array,
-    chex.Array,
-    chex.Array,
-    chex.Array,
-    chex.Array,
-    chex.Array,
-    chex.Array,
-    chex.Array,
-    chex.Array,
-    chex.Array,
-    chex.Array,
-    chex.Array,
-    chex.Array,
-]:
+def player_step(state: State, action: chex.Array):
     """Main player movement and state update function."""
     level_constants = get_level_constants(state.current_level)
     x, y = state.player.x, state.player.y
@@ -963,6 +945,14 @@ def player_step(state: State, action: chex.Array) -> Tuple[
     # iterate the platform bools and check which is true, then return the corresponding y value
     y = jax.lax.fori_loop(0, len(platform_bools), get_platform_dependent_y, y)
 
+    # check if player reached the final platform
+    final_platform_y = 28
+    player_on_last_platform = new_y == final_platform_y
+    level_finished = player_on_last_platform & ~state.level_finished
+    new_level_counter = jnp.where(
+        level_finished, state.step_counter, state.new_level_counter
+    )
+
     return (
         x,
         y,
@@ -981,7 +971,18 @@ def player_step(state: State, action: chex.Array) -> Tuple[
         is_punching_left,
         is_punching_right,
         new_cooldown_counter,
+        jnp.where(level_finished, jnp.array(True), state.level_finished),
+        new_level_counter,
     )
+
+
+@partial(jax.jit, static_argnums=())
+def change_level(state: State):
+    level_finished = state.level_finished
+    new_level_counter = jnp.where(
+        level_finished, state.new_level_counter + 1, state.new_level_counter
+    )
+    # TODO
 
 
 # -------- Game Interface for Reset and Step --------
@@ -989,7 +990,7 @@ class Game:
     def __init__(self, frameskip: int = 1):
         self.frameskip = frameskip
 
-    def reset(self) -> State:
+    def reset(self, next_level=0) -> State:
         return State(
             player=Player(
                 x=jnp.array(PLAYER_START_X),
@@ -1025,8 +1026,10 @@ class Game:
             child_position_y=13,
             child_velocity=1,
             player_lives=jnp.array(3),
-            current_level=jnp.array(3),
+            current_level=jnp.array((next_level % 3) + 1),
             step_counter=jnp.array(0),
+            new_level_counter=jnp.array(1),
+            level_finished=jnp.array(False),
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -1052,15 +1055,19 @@ class Game:
             punch_left,
             punch_right,
             cooldown_counter,
+            level_finished,
+            new_level_counter,
         ) = player_step(state, action)
 
         # Handle fruit collection
         score_addition, new_actives, new_fruit_stages, bell_timer = fruits_step(state)
         child_timer, new_child_x, new_child_y, new_child_velocity = child_step(state)
 
+        change_level(state)  # TODO
+
         return jax.lax.cond(
             reset_cond,
-            lambda: self.reset(),
+            lambda: self.reset(state.current_level),
             lambda: State(
                 player=Player(
                     x=player_x,
@@ -1095,7 +1102,9 @@ class Game:
                 fruit_stages=new_fruit_stages,
                 player_lives=state.player_lives,
                 current_level=state.current_level,
-                step_counter=state.step_counter + 1,
+                step_counter=(state.step_counter + 1) % 256,
+                new_level_counter=new_level_counter,
+                level_finished=level_finished,
             ),
         )
 
