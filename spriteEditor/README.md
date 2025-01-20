@@ -1,4 +1,4 @@
-# SpriteEditor
+# Sprite Editor
 This is a visual tool for editting images with `.npy` format. 
 
 ## File Menu
