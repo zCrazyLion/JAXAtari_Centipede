@@ -28,7 +28,7 @@ NOOP, FIRE, UP, RIGHT, LEFT, DOWN, UPRIGHT, UPLEFT, DOWNRIGHT, DOWNLEFT = range(
 RESET = 18
 
 # -------- Game constants --------
-RENDER_SCALE_FACTOR = 3
+RENDER_SCALE_FACTOR = 5
 SCREEN_WIDTH, SCREEN_HEIGHT = 160, 210
 PLAYER_WIDTH, PLAYER_HEIGHT = 8, 24
 ENEMY_WIDTH, ENEMY_HEIGHT = 8, 24
@@ -63,6 +63,7 @@ MOVEMENT_SPEED = 1
 LEFT_CLIP = 16
 RIGHT_CLIP = 144
 
+
 # -------- Entity Classes --------
 class Entity(NamedTuple):
     x: chex.Array
@@ -71,28 +72,45 @@ class Entity(NamedTuple):
     h: chex.Array
 
 
-class Player(NamedTuple):
+class PlayerState(NamedTuple):
+    # Player position
     x: chex.Array
     y: chex.Array
     vel_x: chex.Array
-    is_crouching: chex.Array
-    is_jumping: chex.Array
-    is_climbing: chex.Array
-    jump_counter: chex.Array
     orientation: chex.Array
-    jump_base_y: chex.Array
-    landing_base_y: chex.Array
     height: chex.Array
+    # crouching
+    is_crouching: chex.Array
+    # jumping
+    is_jumping: chex.Array
+    jump_base_y: chex.Array
+    jump_counter: chex.Array
     jump_orientation: chex.Array
+    landing_base_y: chex.Array
+    # climbing
+    is_climbing: chex.Array
     climb_base_y: chex.Array
     climb_counter: chex.Array
+    cooldown_counter: chex.Array
+    # other
+    is_crashing: chex.Array
+    chrash_timer: chex.Array
     punch_left: chex.Array
     punch_right: chex.Array
-    cooldown_counter: chex.Array
 
 
-class State(NamedTuple):
-    player: Player
+class LevelState(NamedTuple):
+    timer: chex.Array
+    platform_positions: chex.Array
+    ladder_positions: chex.Array
+    fruit_positions: chex.Array
+    bell_position: chex.Array
+    child_position: chex.Array
+
+
+class GameState(NamedTuple):
+    player: PlayerState
+    level: LevelState
     score: chex.Array
     fruit_positions_x: chex.Array
     fruit_positions_y: chex.Array
@@ -113,6 +131,7 @@ class State(NamedTuple):
     reset_coords: chex.Array
     levelup: chex.Array
     main_timer: chex.Array
+    lives: chex.Array
 
 
 # Level Constants
@@ -190,7 +209,7 @@ def is_valid_platform(platform_position: chex.Array) -> chex.Array:
 
 
 @partial(jax.jit, static_argnums=())
-def get_platforms_below_player(state: State, y_offset=0) -> chex.Array:
+def get_platforms_below_player(state: GameState, y_offset=0) -> chex.Array:
     """Returns array of booleans indicating if player is on a platform."""
     player_x = state.player.x
     player_y = state.player.y + y_offset
@@ -316,7 +335,7 @@ def entities_collide(
 
 @partial(jax.jit, static_argnums=())
 def player_is_above_ladder(
-    state: State,
+    state: GameState,
     threshold: float = 0.3,
     virtual_hitbox_height: float = 12.0,
 ) -> chex.Array:
@@ -349,7 +368,7 @@ def player_is_above_ladder(
 
 @partial(jax.jit, static_argnums=())
 def check_ladder_collisions(
-    state: State, level_constants: LevelConstants, threshold: float = 0.3
+    state: GameState, level_constants: LevelConstants, threshold: float = 0.3
 ) -> chex.Array:
     """Vectorized ladder collision checking."""
 
@@ -377,7 +396,7 @@ def check_ladder_collisions(
 
 
 def player_is_on_ladder(
-    state: State,
+    state: GameState,
     ladder_pos: chex.Array,
     ladder_size: chex.Array,
     threshold: float = 0.3,
@@ -401,7 +420,7 @@ def player_is_on_ladder(
 @partial(jax.jit, static_argnums=())
 # -------- Jumping and Climbing --------
 def player_jump_controller(
-    state: State, jump_pressed: chex.Array, ladder_intersect: chex.Array
+    state: GameState, jump_pressed: chex.Array, ladder_intersect: chex.Array
 ):
     """
     Schedule:
@@ -494,7 +513,7 @@ def player_jump_controller(
 
 @partial(jax.jit, static_argnums=())
 def player_climb_controller(
-    state: State,
+    state: GameState,
     y: chex.Array,
     press_up: chex.Array,
     press_down: chex.Array,
@@ -624,7 +643,7 @@ def player_height_controller(
 
 
 @partial(jax.jit, static_argnums=())
-def get_y_of_platform_below_player(state: State, y_offset=0) -> chex.Array:
+def get_y_of_platform_below_player(state: GameState, y_offset=0) -> chex.Array:
     """Gets the y-position of the next platform below the player."""
 
     level_constants = get_level_constants(state.current_level)
@@ -646,7 +665,7 @@ def get_y_of_platform_below_player(state: State, y_offset=0) -> chex.Array:
 
 
 @partial(jax.jit, static_argnums=())
-def fruits_step(state: State) -> Tuple[chex.Array, chex.Array]:
+def fruits_step(state: GameState) -> Tuple[chex.Array, chex.Array]:
     """Handles fruit collection and scoring."""
 
     def check_fruit(i, carry):
@@ -729,7 +748,7 @@ def fruits_step(state: State) -> Tuple[chex.Array, chex.Array]:
 
 
 @partial(jax.jit, static_argnums=())
-def child_step(state: State) -> Tuple[chex.Array]:
+def child_step(state: GameState) -> Tuple[chex.Array]:
 
     RESET_TIMER_AFTER = 50
 
@@ -797,7 +816,7 @@ def get_level_constants(current_level):
 
 
 @partial(jax.jit, static_argnums=())
-def player_step(state: State, action: chex.Array):
+def player_step(state: GameState, action: chex.Array):
     """Main player movement and state update function."""
     level_constants = get_level_constants(state.current_level)
     x, y = state.player.x, state.player.y
@@ -947,7 +966,9 @@ def player_step(state: State, action: chex.Array):
     # check if player reached the final platform
     final_platform_y = 28
     player_on_last_platform = (new_y + new_player_height) == final_platform_y
-    level_finished = player_on_last_platform & ~state.level_finished & (state.levelup_timer == 0)
+    level_finished = (
+        player_on_last_platform & ~state.level_finished & (state.levelup_timer == 0)
+    )
 
     # Reset X and Y when going to next level
     y = jnp.where(state.reset_coords, PLAYER_START_Y, y)
@@ -974,14 +995,17 @@ def player_step(state: State, action: chex.Array):
         level_finished,
     )
 
+
 @partial(jax.jit, static_argnums=())
 def timer_controller(state):
-    return jnp.where(state.step_counter == 255, state.main_timer - 100, state.main_timer)
-    
+    return jnp.where(
+        state.step_counter == 255, state.main_timer - 100, state.main_timer
+    )
+
 
 @partial(jax.jit, static_argnums=())
 def next_level(state):
-    
+
     RESET_AFTER_TICKS = 256
 
     counter = state.levelup_timer
@@ -994,18 +1018,55 @@ def next_level(state):
     reset_coords = jnp.where(reset_timer_done, jnp.array(True), jnp.array(False))
     levelup = jnp.where(reset_timer_done, jnp.array(True), jnp.array(False))
 
-    current_level = jnp.where(state.levelup, state.current_level+1, state.current_level)
+    current_level = jnp.where(
+        state.levelup, state.current_level + 1, state.current_level
+    )
 
     return current_level, counter, reset_coords, levelup
+
+
+@partial(jax.jit, static_argnums=())
+def lives_controller(state: GameState):
+    # timer check
+    is_time_over = state.main_timer <= 0
+
+    # platform_drop_check()
+
+    # monkey touch check
+
+    # coconut touch check
+
+    remove_live = is_time_over
+    new_is_crashing = jnp.where(remove_live, True, state.player.is_crashing)
+
+    # start counter
+    RESPAWN_AFTER_TICKS = 40
+
+    counter = state.player.chrash_timer
+    counter_start = state.player.is_crashing & (counter == 0)
+    counter = jnp.where(counter_start, 1, counter)
+    counter = jnp.where(counter > 0, counter + 1, counter)
+    counter = jnp.where(counter == RESPAWN_AFTER_TICKS + 1, 0, counter)
+    crash_timer_done = counter == RESPAWN_AFTER_TICKS
+
+    new_is_crashing = jnp.where(crash_timer_done, False, new_is_crashing)
+
+    return (
+        jnp.where(remove_live, state.lives - 1, state.lives),
+        new_is_crashing,
+        counter,
+        crash_timer_done,
+    )
+
 
 # -------- Game Interface for Reset and Step --------
 class Game:
     def __init__(self, frameskip: int = 1):
         self.frameskip = frameskip
 
-    def reset(self, next_level=0) -> State:
-        return State(
-            player=Player(
+    def reset(self, next_level=0) -> GameState:
+        return GameState(
+            player=PlayerState(
                 x=jnp.array(PLAYER_START_X),
                 y=jnp.array(PLAYER_START_Y),
                 vel_x=jnp.array(0),
@@ -1023,6 +1084,16 @@ class Game:
                 punch_left=jnp.array(False),
                 punch_right=jnp.array(False),
                 cooldown_counter=jnp.array(0),
+                chrash_timer=jnp.array(0),
+                is_crashing=jnp.array(False),
+            ),
+            level=LevelState(
+                bell_position=jnp.array([0, 0]),
+                fruit_positions=jnp.array([[]]),
+                ladder_positions=jnp.array([[]]),
+                platform_positions=jnp.array([[]]),
+                child_position=jnp.array([]),
+                timer=jnp.array(2000),
             ),
             score=jnp.array(0),
             # TODO: pull these in the levels as well, right?
@@ -1043,13 +1114,14 @@ class Game:
             step_counter=jnp.array(0),
             level_finished=jnp.array(False),
             levelup_timer=jnp.array(0),
-            reset_coords = jnp.array(False),
-            levelup = jnp.array(False),
-            main_timer = 2000
+            reset_coords=jnp.array(False),
+            levelup=jnp.array(False),
+            main_timer=2000,
+            lives=3,
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def step(self, state: State, action: chex.Array) -> State:
+    def step(self, state: GameState, action: chex.Array) -> GameState:
         reset_cond = jnp.any(jnp.array([action == RESET]))
 
         # Update player state
@@ -1074,7 +1146,9 @@ class Game:
             level_finished,
         ) = player_step(state, action)
 
-        new_current_level, new_levelup_timer, new_reset_coords, new_levelup = next_level(state)
+        new_current_level, new_levelup_timer, new_reset_coords, new_levelup = (
+            next_level(state)
+        )
 
         # Handle fruit collection
         score_addition, new_actives, new_fruit_stages, bell_timer = fruits_step(state)
@@ -1083,11 +1157,17 @@ class Game:
         # Handle Main Timer
         new_main_timer = timer_controller(state)
 
+        new_lives, new_is_crashing, crash_timer, crash_timer_done = lives_controller(
+            state
+        )
+
+        # reset_current_level_progress()
+
         return jax.lax.cond(
             reset_cond,
             lambda: self.reset(state.current_level),
-            lambda: State(
-                player=Player(
+            lambda: GameState(
+                player=PlayerState(
                     x=player_x,
                     y=player_y,
                     vel_x=vel_x,
@@ -1105,6 +1185,16 @@ class Game:
                     punch_left=punch_left,
                     punch_right=punch_right,
                     cooldown_counter=cooldown_counter,
+                    chrash_timer=crash_timer,
+                    is_crashing=new_is_crashing,
+                ),
+                level=LevelState(
+                    bell_position=state.level.bell_position,
+                    fruit_positions=state.level.fruit_positions,
+                    ladder_positions=state.level.ladder_positions,
+                    platform_positions=state.level.platform_positions,
+                    child_position=jnp.array([]),
+                    timer=new_main_timer,
                 ),
                 score=state.score + score_addition,
                 fruit_actives=new_actives,
@@ -1125,7 +1215,8 @@ class Game:
                 levelup_timer=new_levelup_timer,
                 reset_coords=new_reset_coords,
                 levelup=new_levelup,
-                main_timer=new_main_timer
+                main_timer=new_main_timer,
+                lives=new_lives,
             ),
         )
 
@@ -1142,7 +1233,7 @@ class Renderer:
         )
         pygame.display.set_caption("Kangaroo")
 
-    def render(self, state: State):
+    def render(self, state: GameState):
         self.screen.fill(BACKGROUND_COLOR)
 
         # Walls
@@ -1309,7 +1400,14 @@ class Renderer:
         self.screen.blit(orient_text, (10, 45))
 
         timer_text = font.render(f"Timer: {state.main_timer}", True, (255, 255, 255))
-        self.screen.blit(timer_text, (60 * RENDER_SCALE_FACTOR, 192 * RENDER_SCALE_FACTOR))
+        self.screen.blit(
+            timer_text, (60 * RENDER_SCALE_FACTOR, 192 * RENDER_SCALE_FACTOR)
+        )
+
+        lives_text = font.render(f"Lives: {state.lives}", True, (255, 255, 255))
+        self.screen.blit(
+            lives_text, (30 * RENDER_SCALE_FACTOR, 192 * RENDER_SCALE_FACTOR)
+        )
 
         pygame.display.flip()
 
