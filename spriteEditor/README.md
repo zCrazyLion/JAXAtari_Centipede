@@ -1,6 +1,13 @@
 # Sprite Editor
 This is a visual tool for editting images with `.npy` format. 
 
+Remember: if you can't execute the script, make sure that your current directory is `\JAXAtari`! 
+
+For example:
+```
+C:\Work\JAXAtari> & C:/Python310/python.exe c:/Work/JAXAtari/spriteEditor/spriteEditor.py
+```
+
 ## File Menu
 
 The File Menu is located on the toolbar on the top of the window.
