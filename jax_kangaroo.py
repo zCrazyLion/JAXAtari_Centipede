@@ -109,8 +109,10 @@ class State(NamedTuple):
     player_lives: chex.Array
     current_level: chex.Array
     step_counter: chex.Array
-    new_level_counter: chex.Array
     level_finished: chex.Array
+    levelup_timer: chex.Array
+    reset_coords: chex.Array
+    levelup: chex.Array
 
 
 # Level Constants
@@ -944,14 +946,12 @@ def player_step(state: State, action: chex.Array):
 
     # check if player reached the final platform
     final_platform_y = 28
-    player_on_last_platform = (new_y - new_player_height) == final_platform_y
-    level_finished = player_on_last_platform & ~state.level_finished
-    jax.debug.print("on_platform: {x}", x=player_on_last_platform)
-    new_level_counter = jnp.where(
-        level_finished, state.step_counter, state.new_level_counter
-    )
+    player_on_last_platform = (new_y + new_player_height) == final_platform_y
+    level_finished = player_on_last_platform & ~state.level_finished & (state.levelup_timer == 0)
 
-    #test
+    # Reset X and Y when going to next level
+    y = jnp.where(state.reset_coords, PLAYER_START_Y, y)
+    x = jnp.where(state.reset_coords, PLAYER_START_X, x)
 
     return (
         x,
@@ -971,19 +971,29 @@ def player_step(state: State, action: chex.Array):
         is_punching_left,
         is_punching_right,
         new_cooldown_counter,
-        jnp.where(level_finished, jnp.array(True), state.level_finished),
-        new_level_counter,
+        level_finished,
     )
 
 
 @partial(jax.jit, static_argnums=())
-def change_level(state: State):
-    level_finished = state.level_finished
-    new_level_counter = jnp.where(
-        level_finished, state.new_level_counter + 1, state.new_level_counter
-    )
-    # TODO
+def next_level(state):
+    
+    RESET_AFTER_TICKS = 40
 
+    counter = state.levelup_timer
+    counter_start = state.level_finished & (counter == 0)
+    counter = jnp.where(counter_start, 1, counter)
+    counter = jnp.where(counter > 0, counter + 1, counter)
+    reset_timer_done = counter == RESET_AFTER_TICKS
+    counter = jnp.where(counter == RESET_AFTER_TICKS + 20, 0, counter)
+
+    jax.debug.print("{x}", x=state.level_finished)
+
+    reset_coords = jnp.where(reset_timer_done, jnp.array(True), jnp.array(False))
+    levelup = jnp.where(reset_timer_done, jnp.array(True), jnp.array(False))
+    current_level = jnp.where(state.levelup, state.current_level+1, state.current_level)
+
+    return current_level, counter, reset_coords, levelup
 
 # -------- Game Interface for Reset and Step --------
 class Game:
@@ -1028,8 +1038,10 @@ class Game:
             player_lives=jnp.array(3),
             current_level=jnp.array((next_level % 3) + 1),
             step_counter=jnp.array(0),
-            new_level_counter=jnp.array(1),
             level_finished=jnp.array(False),
+            levelup_timer=jnp.array(0),
+            reset_coords = jnp.array(False),
+            levelup = jnp.array(False)
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -1056,14 +1068,13 @@ class Game:
             punch_right,
             cooldown_counter,
             level_finished,
-            new_level_counter,
         ) = player_step(state, action)
+
+        new_current_level, new_levelup_timer, new_reset_coords, new_levelup = next_level(state)
 
         # Handle fruit collection
         score_addition, new_actives, new_fruit_stages, bell_timer = fruits_step(state)
         child_timer, new_child_x, new_child_y, new_child_velocity = child_step(state)
-
-        change_level(state)  # TODO
 
         return jax.lax.cond(
             reset_cond,
@@ -1101,10 +1112,12 @@ class Game:
                 child_velocity=new_child_velocity,
                 fruit_stages=new_fruit_stages,
                 player_lives=state.player_lives,
-                current_level=state.current_level,
+                current_level=new_current_level,
                 step_counter=(state.step_counter + 1) % 256,
-                new_level_counter=new_level_counter,
                 level_finished=level_finished,
+                levelup_timer=new_levelup_timer,
+                reset_coords=new_reset_coords,
+                levelup=new_levelup
             ),
         )
 
