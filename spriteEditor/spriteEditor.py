@@ -86,8 +86,8 @@ class NPYImageEditor:
 
         edit_menu = tk.Menu(menu, tearoff=0)
         menu.add_cascade(label="Edit", menu=edit_menu)
-        edit_menu.add_command(label="Undo", command=self.undo)
-        edit_menu.add_command(label="Redo", command=self.redo)
+        edit_menu.add_command(label="Undo", command=self.undo_menu)
+        edit_menu.add_command(label="Redo", command=self.redo_menu)
 
         # Canvas
         self.figure, self.ax = plt.subplots()
@@ -217,6 +217,9 @@ class NPYImageEditor:
             self.update_state_queue_display()
         else:
             print("No more steps to undo.")
+            
+    def undo_menu(self):
+        self.undo(None)
 
     def redo(self, _):
         if self.current_state_index < len(self.state_queue) - 1:
@@ -230,7 +233,8 @@ class NPYImageEditor:
         else:
             print("No more steps to redo.")
 
-            
+    def redo_menu(self):
+        self.redo(None)         
             
         # Create a thumbnail of the image
     def create_thumbnail(self, image):
