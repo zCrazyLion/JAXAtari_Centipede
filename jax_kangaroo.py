@@ -63,7 +63,6 @@ MOVEMENT_SPEED = 1
 LEFT_CLIP = 16
 RIGHT_CLIP = 144
 
-
 # -------- Entity Classes --------
 class Entity(NamedTuple):
     x: chex.Array
@@ -113,6 +112,7 @@ class State(NamedTuple):
     levelup_timer: chex.Array
     reset_coords: chex.Array
     levelup: chex.Array
+    main_timer: chex.Array
 
 
 # Level Constants
@@ -974,6 +974,10 @@ def player_step(state: State, action: chex.Array):
         level_finished,
     )
 
+@partial(jax.jit, static_argnums=())
+def timer_controller(state):
+    return jnp.where(state.step_counter == 255, state.main_timer - 100, state.main_timer)
+    
 
 @partial(jax.jit, static_argnums=())
 def next_level(state):
@@ -986,8 +990,6 @@ def next_level(state):
     counter = jnp.where(counter > 0, counter + 1, counter)
     reset_timer_done = counter == RESET_AFTER_TICKS
     counter = jnp.where(counter == RESET_AFTER_TICKS + 20, 0, counter)
-
-    jax.debug.print("{x}", x=state.level_finished)
 
     reset_coords = jnp.where(reset_timer_done, jnp.array(True), jnp.array(False))
     levelup = jnp.where(reset_timer_done, jnp.array(True), jnp.array(False))
@@ -1042,7 +1044,8 @@ class Game:
             level_finished=jnp.array(False),
             levelup_timer=jnp.array(0),
             reset_coords = jnp.array(False),
-            levelup = jnp.array(False)
+            levelup = jnp.array(False),
+            main_timer = 2000
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -1076,6 +1079,9 @@ class Game:
         # Handle fruit collection
         score_addition, new_actives, new_fruit_stages, bell_timer = fruits_step(state)
         child_timer, new_child_x, new_child_y, new_child_velocity = child_step(state)
+
+        # Handle Main Timer
+        new_main_timer = timer_controller(state)
 
         return jax.lax.cond(
             reset_cond,
@@ -1118,7 +1124,8 @@ class Game:
                 level_finished=level_finished,
                 levelup_timer=new_levelup_timer,
                 reset_coords=new_reset_coords,
-                levelup=new_levelup
+                levelup=new_levelup,
+                main_timer=new_main_timer
             ),
         )
 
@@ -1300,6 +1307,9 @@ class Renderer:
             (255, 255, 255),
         )
         self.screen.blit(orient_text, (10, 45))
+
+        timer_text = font.render(f"Timer: {state.main_timer}", True, (255, 255, 255))
+        self.screen.blit(timer_text, (60 * RENDER_SCALE_FACTOR, 192 * RENDER_SCALE_FACTOR))
 
         pygame.display.flip()
 
