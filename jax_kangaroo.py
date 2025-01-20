@@ -6,7 +6,12 @@ import chex
 import pygame
 from jax import Array
 
-from kangaroo_levels import Kangaroo_Level_1, Kangaroo_Level_2, Kangaroo_Level_3
+from kangaroo_levels import (
+    LevelConstants,
+    Kangaroo_Level_1,
+    Kangaroo_Level_2,
+    Kangaroo_Level_3,
+)
 
 # -------- Action constants --------
 NOOP, FIRE, UP, RIGHT, LEFT, DOWN, UPRIGHT, UPLEFT, DOWNRIGHT, DOWNLEFT = range(10)
@@ -112,14 +117,6 @@ class State(NamedTuple):
 LADDER_HEIGHT = jnp.array(35)
 LADDER_WIDTH = jnp.array(8)
 P_HEIGHT = jnp.array(4)
-
-
-class LevelConstants(NamedTuple):
-    ladder_positions: chex.Array  # shape (num_ladders, 2) for x,y positions
-    ladder_sizes: chex.Array  # shape (num_ladders, 2) for width,height
-    platform_positions: chex.Array  # shape (num_platforms, 2) for x,y positions
-    platform_sizes: chex.Array  # shape (num_platforms, 2) for width,height
-
 
 LEVEL_1 = Kangaroo_Level_1
 LEVEL_2 = Kangaroo_Level_2
@@ -947,8 +944,9 @@ def player_step(state: State, action: chex.Array):
 
     # check if player reached the final platform
     final_platform_y = 28
-    player_on_last_platform = new_y == final_platform_y
+    player_on_last_platform = (new_y - new_player_height) == final_platform_y
     level_finished = player_on_last_platform & ~state.level_finished
+    jax.debug.print("on_platform: {x}", x=player_on_last_platform)
     new_level_counter = jnp.where(
         level_finished, state.step_counter, state.new_level_counter
     )
