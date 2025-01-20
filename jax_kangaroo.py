@@ -951,6 +951,8 @@ def player_step(state: State, action: chex.Array):
         level_finished, state.step_counter, state.new_level_counter
     )
 
+    #test
+
     return (
         x,
         y,
