@@ -978,7 +978,7 @@ def player_step(state: State, action: chex.Array):
 @partial(jax.jit, static_argnums=())
 def next_level(state):
     
-    RESET_AFTER_TICKS = 40
+    RESET_AFTER_TICKS = 256
 
     counter = state.levelup_timer
     counter_start = state.level_finished & (counter == 0)
@@ -991,6 +991,7 @@ def next_level(state):
 
     reset_coords = jnp.where(reset_timer_done, jnp.array(True), jnp.array(False))
     levelup = jnp.where(reset_timer_done, jnp.array(True), jnp.array(False))
+
     current_level = jnp.where(state.levelup, state.current_level+1, state.current_level)
 
     return current_level, counter, reset_coords, levelup
