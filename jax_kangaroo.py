@@ -102,27 +102,23 @@ class PlayerState(NamedTuple):
 class LevelState(NamedTuple):
     timer: chex.Array
     platform_positions: chex.Array
+    platform_sizes: chex.Array
     ladder_positions: chex.Array
+    ladder_sizes: chex.Array
     fruit_positions: chex.Array
+    fruit_actives: chex.Array
+    fruit_stages: chex.Array
     bell_position: chex.Array
+    bell_timer: chex.Array
     child_position: chex.Array
+    child_velocity: chex.Array
+    child_timer: chex.Array
 
 
 class GameState(NamedTuple):
     player: PlayerState
     level: LevelState
     score: chex.Array
-    fruit_positions_x: chex.Array
-    fruit_positions_y: chex.Array
-    fruit_actives: chex.Array
-    fruit_stages: chex.Array
-    bell_position_x: chex.Array
-    bell_position_y: chex.Array
-    bell_timer: chex.Array
-    child_position_x: chex.Array
-    child_position_y: chex.Array
-    child_velocity: chex.Array
-    child_timer: chex.Array
     player_lives: chex.Array
     current_level: chex.Array
     step_counter: chex.Array
@@ -794,8 +790,15 @@ def pad_to_size(level_constants, max_platforms):
 @partial(jax.jit, static_argnums=())
 def get_level_constants(current_level):
     """Returns constants for the current level."""
-    # TODO: this is necessary due to JAX JIT compatibility (it forces the same length for all arrays). Fun isn't it?
-    max_platforms = 20  # Maximum across all levels
+    max_platforms = jnp.max(
+        jnp.array(
+            [
+                LEVEL_1.platform_positions.shape[0],
+                LEVEL_2.platform_positions.shape[0],
+                LEVEL_3.platform_positions.shape[0],
+            ]
+        )
+    )
 
     # Pad each level's arrays to max size
     level1_padded = pad_to_size(LEVEL_1, max_platforms)
@@ -853,12 +856,6 @@ def player_step(state: GameState, action: chex.Array):
         jnp.array([action == DOWN, action == DOWNLEFT, action == DOWNRIGHT])
     )
 
-    # TODO: Change inputs based on state or better keep inputs but set local constants based on state for use in controllers
-    # e.g. instead of:
-    # press_down = jnp.where(state.is_jumping, False, press_down)
-    # use:
-    # IS_JUMPING = state.is_jumping
-    # in the fire/climbing controller: if IS_JUMPING -> do nothing
     press_down = jnp.where(state.player.is_jumping, False, press_down)
     press_fire = jnp.where(state.player.is_jumping, False, press_fire)
     press_fire = jnp.where(state.player.is_climbing, False, press_fire)
@@ -1065,6 +1062,10 @@ class Game:
         self.frameskip = frameskip
 
     def reset(self, next_level=0) -> GameState:
+
+        next_level = jnp.clip(next_level, 1, 3)
+        level_constants: LevelConstants = get_level_constants(next_level)
+
         return GameState(
             player=PlayerState(
                 x=jnp.array(PLAYER_START_X),
@@ -1088,29 +1089,23 @@ class Game:
                 is_crashing=jnp.array(False),
             ),
             level=LevelState(
-                bell_position=jnp.array([0, 0]),
-                fruit_positions=jnp.array([[]]),
-                ladder_positions=jnp.array([[]]),
-                platform_positions=jnp.array([[]]),
-                child_position=jnp.array([]),
+                bell_position=level_constants.bell_position,
+                bell_timer=jnp.array(0),
+                fruit_positions=level_constants.fruit_positions,
+                fruit_actives=jnp.ones(3, dtype=jnp.bool_),
+                fruit_stages=jnp.zeros(3, dtype=jnp.int32),
+                ladder_positions=level_constants.ladder_positions,
+                ladder_sizes=level_constants.ladder_sizes,
+                platform_positions=level_constants.platform_positions,
+                platform_sizes=level_constants.platform_sizes,
+                child_position=level_constants.child_position,
+                child_timer=jnp.array(0),
+                child_velocity=jnp.array(1),
                 timer=jnp.array(2000),
             ),
             score=jnp.array(0),
-            # TODO: pull these in the levels as well, right?
-            # Answer: yes but we have to put the whole level in the state (so the agent knows where the platforms and the ladders etc are)
-            fruit_positions_x=jnp.array([119, 39, 59]),
-            fruit_positions_y=jnp.array([108, 84, 60]),
-            fruit_actives=jnp.ones(3, dtype=jnp.bool_),
-            fruit_stages=jnp.zeros(3, dtype=jnp.int32),
-            bell_position_x=93,
-            bell_position_y=36,
-            bell_timer=0,
-            child_timer=0,
-            child_position_x=121,
-            child_position_y=13,
-            child_velocity=1,
             player_lives=jnp.array(3),
-            current_level=jnp.array((next_level % 3) + 1),
+            current_level=jnp.array(next_level),
             step_counter=jnp.array(0),
             level_finished=jnp.array(False),
             levelup_timer=jnp.array(0),
@@ -1192,7 +1187,9 @@ class Game:
                     bell_position=state.level.bell_position,
                     fruit_positions=state.level.fruit_positions,
                     ladder_positions=state.level.ladder_positions,
+                    ladder_sizes=state.level.ladder_sizes,
                     platform_positions=state.level.platform_positions,
+                    platform_sizes=state.level.platform_sizes,
                     child_position=jnp.array([]),
                     timer=new_main_timer,
                 ),
