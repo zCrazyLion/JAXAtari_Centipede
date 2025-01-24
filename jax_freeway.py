@@ -25,6 +25,10 @@ class GameConfig:
     num_lanes: int = 10
     lane_spacing: int = 16
     car_speeds: List[float] = None
+    lane_borders: List[int] = None
+    top_border: int = 15
+    top_path: int = 8
+    bottom_border: int = 180
 
     def __post_init__(self):
         if self.car_speeds is None:
@@ -42,6 +46,23 @@ class GameConfig:
                 4,  # Lane 8
                 5  # Lane 9
             ]
+        if self.lane_borders is None:
+            # Upper 5 lanes move left (-), lower 5 lanes move right (+)
+            # Value at i is the frequency in which car at lane i moves one pixel
+            self.lane_borders = [
+                self.top_border + self.top_path,  # Lane 0
+                1 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 1
+                2 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 2
+                3 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 3
+                4 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 4
+                5 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 5
+                6 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 6
+                7 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 7
+                8 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 8
+                9 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 10
+                10 * self.lane_spacing + (self.top_border + self.top_path) + 2  # Lane 10
+            ]
+
 
 
 class GameState(NamedTuple):
@@ -62,12 +83,11 @@ class FreewayGameLogic:
     def reset(self) -> GameState:
         """Initialize a new game state"""
         # Start chicken at bottom
-        chicken_y = self.config.screen_height - self.config.chicken_height - 6
-
+        chicken_y = self.config.bottom_border + self.config.chicken_height - 1
         # Initialize one car per lane
         cars = []
         for lane in range(self.config.num_lanes):
-            lane_y = self.config.lane_spacing * (lane + 1) + int(self.config.lane_spacing / 2)
+            lane_y = self.config.lane_borders[lane] + int(self.config.lane_spacing / 2) - int(self.config.car_height / 2)
             # Upper 5 lanes start from right, lower 5 lanes start from left
             if lane < 5:
                 x = self.config.screen_width - self.config.car_width + 0  # Start from right
@@ -93,8 +113,8 @@ class FreewayGameLogic:
                                  jnp.where(action == DOWN, 1.0, 0.0)))
 
         new_y = jnp.clip(state.chicken_y + dy,
-                         0,
-                         self.config.screen_height - self.config.chicken_height) # 6 to 177
+                         self.config.top_border,
+                         self.config.bottom_border + self.config.chicken_height - 1)
 
         # Update car positions
         new_cars = state.cars
@@ -129,20 +149,21 @@ class FreewayGameLogic:
         # Check collisions for all cars
         collisions = jax.vmap(check_collision)(new_cars)
         any_collision = jnp.any(collisions)
+        any_collision = jax.lax.cond(state.cooldown > 0, lambda _: False, lambda _: any_collision, operand=None)
 
         # Update cooldown
         new_cooldown = jnp.where(any_collision,
-                                 10,  # Set cooldown frames after collision
+                                 24,  # Set cooldown frames after collision
                                  jnp.maximum(0, state.cooldown - 1))
 
         # Update score if chicken reaches top
-        new_score = jnp.where(new_y <= 0,
+        new_score = jnp.where(new_y <= self.config.top_border,
                               state.score + 1,
                               state.score)
 
         # Reset chicken position if scored
-        new_y = jnp.where(new_y <= 0,
-                          self.config.screen_height - self.config.chicken_height,
+        new_y = jnp.where(new_y <= self.config.top_border,
+                          self.config.bottom_border + self.config.chicken_height - 1,
                           new_y)
 
         # Update time
@@ -205,11 +226,8 @@ class GameRenderer:
         sprite = pygame.Surface(size, pygame.SRCALPHA)
 
         # Simple triangle for the chicken
-        pygame.draw.polygon(sprite, self.render_config.chicken_color, [
-            (size[0] // 2, 0),
-            (0, size[1]),
-            (size[0], size[1])
-        ])
+        pygame.draw.rect(sprite, self.render_config.chicken_color,
+                         (0, 0, size[0], size[1]))
 
         return sprite
 
@@ -223,14 +241,7 @@ class GameRenderer:
 
             # Draw car body
             pygame.draw.rect(sprite, color,
-                             (0, size[1] // 4, size[0], size[1] // 2))
-            # Draw wheels
-            wheel_radius = size[1] // 6
-            pygame.draw.circle(sprite, (0, 0, 0),
-                               (wheel_radius, size[1] * 3 // 4), wheel_radius)
-            pygame.draw.circle(sprite, (0, 0, 0),
-                               (size[0] - wheel_radius, size[1] * 3 // 4),
-                               wheel_radius)
+                             (0, 0, size[0], size[1]))
 
             sprites.append(sprite)
 
@@ -243,23 +254,22 @@ class GameRenderer:
         # Draw road
         road_rect = pygame.Rect(
             0,
-            self.game_config.lane_spacing * self.render_config.scale_factor,
+            self.game_config.top_border * self.render_config.scale_factor,
             self.game_config.screen_width * self.render_config.scale_factor,
-            (self.game_config.num_lanes * self.game_config.lane_spacing) *
-            self.render_config.scale_factor
+            (self.game_config.screen_height - (self.game_config.screen_height - self.game_config.bottom_border)) * self.render_config.scale_factor
         )
         pygame.draw.rect(self.screen, self.render_config.road_color, road_rect)
 
         # Draw lane lines
         for lane in range(self.game_config.num_lanes + 1):
-            y = (self.game_config.lane_spacing * lane + self.game_config.lane_spacing) * \
-                self.render_config.scale_factor
+            y = (self.game_config.lane_borders[lane]) * self.render_config.scale_factor
+
             pygame.draw.line(
                 self.screen,
                 self.render_config.line_color,
                 (0, y),
                 (self.game_config.screen_width * self.render_config.scale_factor, y),
-                2
+                3
             )
 
         # Draw cars
@@ -268,18 +278,19 @@ class GameRenderer:
 
             car_pos = (
                 int(state.cars[lane][0] * self.render_config.scale_factor),
-                int(state.cars[lane][1] * self.render_config.scale_factor -
-                    self.game_config.car_height * self.render_config.scale_factor // 2)
+                int(state.cars[lane][1] * self.render_config.scale_factor)
             )
             self.screen.blit(car_sprite, car_pos)
 
         # Draw chicken
-        chicken_pos = (
-            int(self.game_config.chicken_x * self.render_config.scale_factor -
-                self.game_config.chicken_width * self.render_config.scale_factor // 2),
-            int(state.chicken_y * self.render_config.scale_factor)
+        chicken_rect = pygame.Rect(
+            int(self.game_config.chicken_x * self.render_config.scale_factor),
+            int(state.chicken_y * self.render_config.scale_factor),
+            int(self.game_config.chicken_width * self.render_config.scale_factor),
+            int(self.game_config.chicken_height * self.render_config.scale_factor)
         )
-        self.screen.blit(self.chicken_sprite, chicken_pos)
+
+        pygame.draw.rect(self.screen, self.render_config.chicken_color, chicken_rect)
 
         # Draw UI
         score_text = self.font.render(f"Score: {state.score}",
