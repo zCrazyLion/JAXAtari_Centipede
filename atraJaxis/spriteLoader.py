@@ -1,6 +1,19 @@
 import numpy as np
 from atraJaxis.sprite import Sprite
 from atraJaxis.renderMode import RenderMode
+from pathlib import Path, PureWindowsPath
+import os
+
+
+class AgnosticPath(Path): # https://stackoverflow.com/questions/60291545/converting-windows-path-to-linux
+    """A class that can handle input with Windows (\\) and/or posix (/) separators for paths"""
+
+    def __new__(cls, *args, **kwargs):
+        new_path = PureWindowsPath(*args).parts
+        if (os.name != "nt") and (len(new_path) > 0) and (new_path[0] in ("/", "\\")):
+          new_path = ("/", *new_path[1:])
+        return super().__new__(Path, *new_path, **kwargs)
+
 
 class SpriteLoader:
     """
@@ -47,7 +60,7 @@ class SpriteLoader:
             If the frame format is invalid or the name is already used.
         """
         # Load frame (np array) from a .npy file
-        frame = np.load(fileName)
+        frame = np.load(AgnosticPath(fileName))
 
         # Check if the frame's shape is [[[r, g, b, a], ...], ...]
         if frame.ndim != 3 or frame.shape[2] != 4:
