@@ -1,3 +1,4 @@
+import sys
 from functools import partial
 from typing import Tuple, NamedTuple
 import jax
@@ -5,6 +6,9 @@ import jax.numpy as jnp
 import chex
 import pygame
 
+
+# TODO: is it implemented that you get a submarine at 10000 points?
+# TODO: surface submarine at 6 divers collected + difficulty 1
 # Game Constants
 WINDOW_WIDTH = 160 * 3
 WINDOW_HEIGHT = 210 * 3
@@ -13,7 +17,13 @@ WINDOW_HEIGHT = 210 * 3
 BACKGROUND_COLOR = (0, 0, 139)  # Dark blue for water
 PLAYER_COLOR = (187, 187, 53)  # Yellow for player sub
 DIVER_COLOR = (66, 72, 200)  # Pink for divers
-SHARK_COLOR = (92, 186, 92)  # Green for sharks
+SHARK_DIFFICULTY_COLORS = jnp.array([
+    [92, 186, 92],   # Level 0: Base green
+    [213, 130, 74],  # Level 1: Orange (adjusted from original ROM)
+    [170, 92, 170],  # Level 2: Purple (adjusted from original ROM COLOR_KILLER_SHARK_02)
+    [213, 92, 130],  # Level 3: Pink (adjusted from original ROM)
+    [186, 92, 92],   # Level 4: Red (adjusted from original ROM)
+])
 ENEMY_SUB_COLOR = (170, 170, 170)  # Gray for enemy subs
 OXYGEN_BAR_COLOR = (214, 214, 214)  # White for oxygen
 SCORE_COLOR = (210, 210, 64)  # Score color
@@ -34,8 +44,8 @@ PLAYER_BOUNDS = (21, 134), (46, 141)
 
 # Maximum number of objects (from MAX_NB_OBJECTS)
 MAX_DIVERS = 4
-MAX_SHARKS = 4
-MAX_SUBS = 4
+MAX_SHARKS = 12
+MAX_SUBS = 12
 MAX_ENEMY_MISSILES = 4
 MAX_PLAYER_MISSILES = 1
 MAX_SURFACE_SUBS = 1
@@ -68,12 +78,36 @@ DIVER_SPAWN_POSITIONS = jnp.array([69, 93, 117, 141])
 
 MISSILE_SPAWN_POSITIONS = jnp.array([39, 126])  # Right, Left
 
+# First wave directions from original code
+FIRST_WAVE_DIRS = jnp.array([False, False, False, True])
+
 class SpawnState(NamedTuple):
     difficulty: chex.Array  # Current difficulty level (0-7)
-    wave_counts: chex.Array  # Track waves independently per lane [4 lanes]
-    last_kills: chex.Array # track if last enemy was killed or out-of-bounds [4 lanes, multiple enemies considered as one]
+    lane_dependent_pattern: chex.Array  # Track waves independently per lane [4 lanes]
+    to_be_spawned: chex.Array  # tracks which enemies are still in the spawning cycle [4 lanes * 3 slots] -> necessary due to the spaced out spawning of multiple enemies
+    survived: chex.Array # track if last enemy survived [4 lanes * 3 slots]
     prev_sub: chex.Array  # Track previous entity type for each lane [4 lanes]
     spawn_timers: chex.Array  # Individual spawn timers per lane [4 lanes]
+    diver_array: chex.Array # Track which divers are still in the spawning cycle [4 lanes]
+
+def initialize_spawn_state() -> SpawnState:
+    """Initialize spawn state with first wave matching original game."""
+    return SpawnState(
+        difficulty=jnp.array(0),
+        lane_dependent_pattern=jnp.zeros(4, dtype=jnp.int32),  # Each lane starts at wave 0
+        to_be_spawned=jnp.zeros(12, dtype=jnp.int32),  # Track which enemies are still in the spawning cycle
+        survived=jnp.zeros(12, dtype=jnp.bool_),  # Track which enemies survived
+        prev_sub=jnp.ones(4, dtype=jnp.int32),  # Track previous entity type (0 if shark, 1 if sub) -> starts at 1 since the first wave is sharks
+        spawn_timers=jnp.array([277, 277, 277, 277 + 60], dtype=jnp.int32),  # 277 is the std starting timer in the base game
+        diver_array=jnp.zeros(4, dtype=jnp.int32),
+    )
+
+
+def soft_reset_spawn_state(spawn_state: SpawnState) -> SpawnState:
+    """ Reset spawn_times"""
+    return spawn_state._replace(
+        spawn_timers=jnp.array([277, 277, 277, 277 + 60], dtype=jnp.int32)
+    )
 
 # Game state container
 class State(NamedTuple):
@@ -86,9 +120,9 @@ class State(NamedTuple):
     lives: chex.Array
     spawn_state: SpawnState
     diver_positions: chex.Array  # (4, 3) array for divers
-    shark_positions: chex.Array  # (4, 3) array for sharks
-    sub_positions: chex.Array  # (4, 3) array for enemy subs
-    enemy_missile_positions: chex.Array  # (4, 3) array for enemy missiles
+    shark_positions: chex.Array  # (12, 3) array for sharks - separated into 4 lanes, 3 slots per lane [left to right]
+    sub_positions: chex.Array  # (12, 3) array for enemy subs - separated into 4 lanes, 3 slots per lane [left to right]
+    enemy_missile_positions: chex.Array  # (4, 3) array for enemy missiles (only the front boats can shoot)
     surface_sub_position: chex.Array  # (1, 2) array for surface submarine
     player_missile_position: chex.Array  # (1, 3) array for player missile (x, y, direction)
     step_counter: chex.Array
@@ -234,22 +268,26 @@ def check_missile_collisions(
 
         # Update the kill tracking in spawn state
         any_collision = jnp.logical_or(shark_collision, sub_collision)
-        new_last_kills = spawn_state.last_kills.at[enemy_idx].set(
-            jnp.where(any_collision, True, spawn_state.last_kills[enemy_idx])
+        new_survived = spawn_state.survived.at[enemy_idx].set(
+            jnp.where(any_collision,
+                      False,  # Set to False when destroyed by missile
+                      spawn_state.survived[enemy_idx])
         )
 
         # Update spawn timers when enemy destroyed
-        new_spawn_timers = spawn_state.spawn_timers.at[enemy_idx].set(
-            jnp.where(any_collision, 60, spawn_state.spawn_timers[enemy_idx])
+        new_spawn_timers = spawn_state.spawn_timers.at[(enemy_idx // 3).astype(int)].set(  # Divide by 3 to get lane index
+            jnp.where(any_collision, 60, spawn_state.spawn_timers[(enemy_idx // 3).astype(int)].astype(int))
         )
 
         # Create updated spawn state
         new_spawn_state = SpawnState(
             difficulty=spawn_state.difficulty,
-            wave_counts=spawn_state.wave_counts,  # Wave counts updated in spawn step
+            lane_dependent_pattern=spawn_state.lane_dependent_pattern,  # Wave counts updated in spawn step
+            to_be_spawned=spawn_state.to_be_spawned,  # No changes to spawn state
             spawn_timers=new_spawn_timers,
             prev_sub=spawn_state.prev_sub,
-            last_kills=new_last_kills
+            survived=new_survived,
+            diver_array=spawn_state.diver_array
         )
 
         return (new_missile_pos,
@@ -317,124 +355,436 @@ def check_player_collision(player_x, player_y, submarine_list, shark_list, enemy
     return jnp.any(jnp.array([submarine_collisions, shark_collisions, missile_collisions])), collision_points
 
 
-def initialize_spawn_state() -> SpawnState:
-    """Initialize spawn state with first wave matching original game."""
-    return SpawnState(
-        difficulty=jnp.array(0),
-        wave_counts=jnp.zeros(4, dtype=jnp.int32),  # Each lane starts at wave 0
-        last_kills=jnp.zeros(4, dtype=jnp.int32),  # Track if last enemy was killed
-        prev_sub=jnp.ones(4, dtype=jnp.int32),  # Track previous entity type (0 if shark, 1 if sub) -> starts at 1 since the first wave is sharks
-        spawn_timers=jnp.array([277, 277, 277, 277 + 60], dtype=jnp.int32),  # 277 is the std starting timer in the base game
-    )
-
-
-def get_spawn_position(moving_left: bool, slot: chex.Array) -> chex.Array:
+def get_spawn_position(moving_left: chex.Array, slot: chex.Array) -> chex.Array:
     """Get spawn position based on movement direction and slot number"""
     base_y = jnp.array(SPAWN_POSITIONS_Y[slot])
     x_pos = jnp.where(moving_left,
-                      jnp.array(165),  # Start right if moving left
-                      jnp.array(0))    # Start left if moving right
+                      jnp.array(165, dtype=jnp.int32),  # Start right if moving left
+                      jnp.array(0, dtype=jnp.int32))    # Start left if moving right
     direction = jnp.where(moving_left, -1, 1)  # -1 for left, 1 for right
-    return jnp.array([x_pos, base_y, direction])
+    return jnp.array([x_pos, base_y, direction], dtype=jnp.int32)
 
 
 def is_slot_empty(pos: chex.Array) -> chex.Array:
-    """Check if a position slot is empty (0,0 position)"""
-    return jnp.logical_and(
-        pos[0] == 0,  # Check if x is 0
-        pos[1] == 0   # Check if y is 0
+    """Check if a position slot is empty (0,0,ß)"""
+    return pos[2] == 0
+
+
+def get_front_entity(i, lane_positions):
+    # check on the first submarine in the lane which direction they are going
+    direction = lane_positions[0][2]
+
+    direction = jnp.where(
+        lane_positions[0][2] == 0,
+        jnp.where(
+            lane_positions[1][2] == 0,
+            lane_positions[2][2],
+            lane_positions[1][2]
+        ),
+        lane_positions[0][2]
     )
+
+    # if direction is 1, go from right to left until an active entity is found
+    # if direction is -1, go from left to right until an active entity is found
+    front_entity = jnp.where(
+        direction == -1,
+        jnp.where(
+            lane_positions[0][2] != 0,
+            lane_positions[0],
+            jnp.where(
+                lane_positions[1][2] != 0,
+                lane_positions[1],
+                jnp.where(
+                    lane_positions[2][2] != 0,
+                    lane_positions[2],
+                    jnp.zeros(3)
+                )
+            )
+        ),
+        jnp.where(
+            lane_positions[2][2] != 0,
+            lane_positions[2],
+            jnp.where(
+                lane_positions[1][2] != 0,
+                lane_positions[1],
+                jnp.where(
+                    lane_positions[0][2] != 0,
+                    lane_positions[0],
+                    jnp.zeros(3)
+                )
+            )
+        )
+    )
+
+    return front_entity
+
+
+def get_pattern_for_difficulty(current_pattern: chex.Array, moving_left: chex.Array) -> chex.Array:
+    """Returns spawn pattern based on the lane's current wave/pattern number
+
+    Pattern meanings:
+    0: Single enemy (initial pattern)
+    1: Two adjacent enemies
+    2: Two enemies with gap
+    3: Three enemies in a row
+    """
+    # Basic pattern arrays for different formations
+    PATTERNS = jnp.array([
+        [0, 0, 1],  # wave 0: Single enemy
+        [0, 1, 1],  # wave 1: Two adjacent
+        [1, 0, 1],  # wave 2: Two with gap
+        [1, 1, 1],  # wave 3: Three in row
+    ])
+
+    # Reverse pattern if moving left
+    base_pattern = PATTERNS[current_pattern]
+    pattern = jnp.where(
+        moving_left,
+        jnp.flip(base_pattern),  # Reverse pattern for left movement
+        base_pattern
+    )
+
+    return pattern
 
 
 def update_enemy_spawns(spawn_state: SpawnState,
                         shark_positions: chex.Array,
                         sub_positions: chex.Array,
-                        step_counter: chex.Array,
-                        rng: chex.PRNGKey) -> Tuple[SpawnState, chex.Array, chex.Array]:
+                        step_counter: chex.Array) -> Tuple[SpawnState, chex.Array, chex.Array]:
     """Update enemy spawns using pattern-based system matching original game."""
 
-    def get_spawn_pattern(difficulty: chex.Array, lane: chex.Array, wave: chex.Array, killed_last: chex.Array, prev_sub: chex.Array) -> Tuple[
-        chex.Array, chex.Array]:
-        # Pattern definitions unchanged from before
-        # First wave pattern matches OCAtari
-        FIRST_WAVE_DIRS = jnp.array([False, False, False, True])
+    # TODO: inital pattern wrong
+    def initialize_new_spawn_cycle(i, carry):
+        spawn_state, shark_positions, sub_positions = carry
 
-        # Handle direction first #TODO: fix its incorrect
+        # Get survived status for this lane (3 slots)
+        lane_survived = jax.lax.dynamic_slice(
+            spawn_state.survived,
+            (i * 3,),
+            (3,)
+        )
+
+        # Update the difficulty patterns for this lane
+        left_over = jnp.any(lane_survived)
+        clipped_difficulty = spawn_state.difficulty % 8
+        # Update spawn state
+        lane_specific_pattern = jnp.where(
+            jnp.logical_not(left_over),  # Only update if all destroyed
+            jnp.where(
+                clipped_difficulty < 2, 0,
+                jnp.where(
+                    clipped_difficulty < 4, 1,
+                    jnp.where(
+                        clipped_difficulty < 6, 2,
+                        jnp.where(
+                            clipped_difficulty < 8, 3,
+                            0
+                        )
+                    )
+                )
+            ),
+            spawn_state.lane_dependent_pattern[i]
+        )
+
+
+        # find out the direction # TODO: this is wrong, fix
         moving_left = jnp.where(
-            wave == 0,
-            FIRST_WAVE_DIRS[lane],
-            # After first wave, alternate direction each wave
-            wave % 2 == 1
+            lane_specific_pattern == 0,
+            FIRST_WAVE_DIRS[lane_specific_pattern],
+            lane_specific_pattern % 2 == 1  # After first wave, alternate direction each wave
         )
 
-        # For enemy type:
-        # 1. First wave is always sharks
-        # 2. If enemy was killed in lane -> spawn shark
-        # 3. If enemy made it through (no kill) -> alternate between shark/sub
+        #print("left-over", left_over)
+        #print("survived_all", spawn_state.survived)
+        #print("lane_survived", lane_survived)
+
+        # get the spawn pattern for this lane
+        # Check if this slot had something survive last time (if yes, we have to overwrite the current_pattern)
+        current_pattern = jnp.where(
+            left_over,
+            lane_survived,
+            get_pattern_for_difficulty(lane_specific_pattern, moving_left)
+        )
+        #print("curr_pattern", current_pattern)
+
+        # check if this should be a submarine or a shark
         is_sub = jnp.logical_and(
-            jnp.logical_not(killed_last),
-            jnp.logical_not(prev_sub)
+            left_over,
+            jnp.logical_not(spawn_state.prev_sub[i])
         )
 
-        return is_sub, moving_left
+        # set the positions for the first enemy in the wave (dependent on the direction this is either the first or the last slot)
+        first_slot = jnp.where(moving_left, 0, 2)
 
-    def spawn_enemy(i, carry):
-        spawn_state, shark_pos, sub_pos = carry
-
-        # Check if this lane had a kill
-        killed_last = spawn_state.last_kills[i]
-        lane_wave = spawn_state.wave_counts[i]
-
-        should_be_sub, moving_left = get_spawn_pattern(
-            spawn_state.difficulty,
-            jnp.array(i),
-            lane_wave,
-            killed_last,
-            spawn_state.prev_sub[i]
+        base_pos = get_spawn_position(moving_left, jnp.array(i))
+        # spawn the first enemy in the wave
+        new_shark_positions = jnp.where(
+            is_sub,
+            shark_positions,
+            shark_positions.at[(i * 3 + first_slot)].set(base_pos)
         )
 
-        spawn_pos = get_spawn_position(moving_left, jnp.array(i))
-
-        #print("should_be_sub", should_be_sub)
-
-        new_shark_pos = jnp.where(should_be_sub, shark_pos[i], spawn_pos)
-        new_sub_pos = jnp.where(should_be_sub, spawn_pos, sub_pos[i])
-
-        # Only increment wave if there was a kill
-        new_wave_counts = spawn_state.wave_counts.at[i].set(
-            jnp.where(lane_wave == 0,
-                      1,
-                      jnp.where(killed_last,
-                                lane_wave + 1,
-                                lane_wave)
-                      )
+        new_sub_positions = jnp.where(
+            is_sub,
+            sub_positions.at[(i * 3 + first_slot)].set(base_pos),
+            sub_positions
         )
+
+        # for the other two slots, set the corresponding positions in the to_be_spawned array to the current pattern (1 for right, -1 for left, 0 for no spawn scheduled)
+        # -> helps us keep track of direction in the next step
+        new_to_be_spawned = jnp.where(
+            moving_left,
+            -current_pattern,
+            current_pattern
+        )
+
+        # wipe the survived status for this lane (since we are starting a new wave)
+        indices = (i * 3 + jnp.array([0, 1, 2]))
+        new_survived_full = spawn_state.survived.at[indices].set(jnp.zeros(3, dtype=jnp.bool_))
+
+        # remove the spawned entity from the new_to_be_spawned array
+        new_to_be_spawned = new_to_be_spawned.at[jnp.where(moving_left, 0, 2)].set(0)
+
+        # Update the full to_be_spawned array for this lane
+        new_full_to_be_spawned = spawn_state.to_be_spawned.at[indices].set(new_to_be_spawned)
+
+        #print("full_to_be_spawned_after_init", new_full_to_be_spawned)
 
         new_spawn_state = SpawnState(
             difficulty=spawn_state.difficulty,
-            wave_counts=new_wave_counts,
+            lane_dependent_pattern=spawn_state.lane_dependent_pattern.at[i].set(lane_specific_pattern),
+            to_be_spawned=new_full_to_be_spawned,
+            survived=new_survived_full,
+            prev_sub=spawn_state.prev_sub.at[i].set(is_sub),
             spawn_timers=spawn_state.spawn_timers.at[i].set(60),
-            prev_sub=spawn_state.prev_sub.at[i].set(should_be_sub),
-            last_kills=spawn_state.last_kills.at[i].set(False)
+            diver_array=spawn_state.diver_array
         )
 
-        return (new_spawn_state,
-                shark_pos.at[i].set(new_shark_pos),
-                sub_pos.at[i].set(new_sub_pos))
+        return new_spawn_state, new_shark_positions, new_sub_positions
 
-    def check_lane_ready(i, spawn_state, shark_positions, sub_positions, step_counter):
-        return jnp.logical_and(
-            spawn_state.spawn_timers[i] <= 0,
-            jnp.logical_and(
-                is_slot_empty(shark_positions[i]),
-                is_slot_empty(sub_positions[i])
+
+    def continue_spawn_cycle(i: int, carry):
+        spawn_state, shark_positions, sub_positions = carry
+
+        # get the relevant missing entities for this lane from the to_be_spawned array
+        missing_entities = jax.lax.dynamic_slice(
+            spawn_state.to_be_spawned,
+            (i * 3,),
+            (3,)
+        )
+
+        #print("missing_entities", missing_entities)
+
+        # check in which direction we are moving by finding the first non-zero value in the missing_entities array
+        moving_left = jnp.where(
+            missing_entities[0] == 0,
+            jnp.where(
+                missing_entities[1] == 0,
+                jnp.where(
+                    missing_entities[2] == -1,
+                    True,
+                    False
+                ),
+                jnp.where(
+                    missing_entities[1] == -1,
+                    True,
+                    False
+                )
+            ),
+            jnp.where(
+                missing_entities[0] == -1,
+                True,
+                False
             )
         )
 
-    def ready_lane_mapping(i, carry):
-        spawn_state, shark_positions, sub_positions, step_counter = carry
-        is_ready = check_lane_ready(i, spawn_state, shark_positions, sub_positions, step_counter)
-        return i, is_ready
+        #print("moving_left", moving_left)
+
+        # Find the index of the first non-zero value based on direction
+        def scan_right_to_left(j, val):
+            return jnp.where(
+                missing_entities[j] != 0,
+                j,
+                val
+            )
+
+        def scan_left_to_right(j, val):
+            return jnp.where(
+                missing_entities[2 - j] != 0,
+                2 - j,
+                val
+            )
+
+        # Use fori_loop to scan array in appropriate direction
+        spawn_idx = jax.lax.cond(
+            moving_left,
+            lambda _: jax.lax.fori_loop(0, 3, scan_left_to_right, -1),
+            lambda _: jax.lax.fori_loop(0, 3, scan_right_to_left, -1),
+            operand=None
+        )
+
+        #print("spawn_idx", spawn_idx)
+
+        spawn_idx = spawn_idx.astype(int)
+
+        # Get reference x position from neighboring entity
+        # For moving left, look at entity to the right (spawn_idx + 1)
+        # For moving right, look at entity to the left (spawn_idx - 1)
+        reference_idx = jnp.where(moving_left, spawn_idx - 1, spawn_idx + 1)
+        reference_idx = reference_idx.astype(int)
+        base_idx = i * 3  # Base index for this lane's entities
+
+        # Get position from either shark or sub position arrays
+        # We'll need to check both since we don't know which type exists
+        reference_shark_pos = shark_positions[base_idx + reference_idx]
+        reference_sub_pos = sub_positions[base_idx + reference_idx]
+        #print("shark_pos", shark_positions)
+        #print("reference_idx", reference_idx)
+        #print("reference_shark_pos", reference_shark_pos)
+
+        # Use whichever position is non-zero (active)
+        reference_x = jnp.where(
+            reference_shark_pos[0] != 0,
+            reference_shark_pos[0],
+            reference_sub_pos[0]
+        )
+
+        #print("reference_x", reference_x)
+
+        edge_case = reference_x == 0
+        # Edge Case: third option exists for the pattern 1 0 1, then check the next entity
+        edge_case_reference_idx = jnp.where(moving_left, spawn_idx - 2, spawn_idx + 2)
+
+        edge_case_reference_idx = edge_case_reference_idx.astype(int)
+
+        reference_x = jnp.where(
+            edge_case,
+            jnp.where(
+                shark_positions[base_idx + edge_case_reference_idx][0] != 0,
+                shark_positions[base_idx + edge_case_reference_idx][0],
+                sub_positions[base_idx + edge_case_reference_idx][0]
+            ),
+            reference_x
+        )
+
+        # Get base spawn position for this lane
+        base_spawn_pos = get_spawn_position(moving_left, jnp.array(i))
+
+        # check if the base spawn position x is 16 / 32 pixels away from the reference x position (depending on the edge case pattern)
+        # if yes, spawn the entity, if no, do nothing
+        offset = jnp.where(edge_case, 32, 16)
+        should_spawn = jnp.abs(base_spawn_pos[0] - reference_x) >= offset
+
+        spawn_pos = jnp.where(
+            should_spawn,
+            base_spawn_pos,
+            jnp.zeros(3)
+        )
+
+        # Update positions based on enemy type
+        new_shark_positions = shark_positions.at[base_idx + spawn_idx].set(
+            jnp.where(jnp.logical_not(spawn_state.prev_sub[i]), spawn_pos, shark_positions[base_idx + spawn_idx])
+        )
+        new_sub_positions = sub_positions.at[base_idx + spawn_idx].set(
+            jnp.where(spawn_state.prev_sub[i], spawn_pos, sub_positions[base_idx + spawn_idx])
+        )
+
+        # Update the to_be_spawned array
+        #print("should_spawn", should_spawn)
+        new_to_be_spawned = spawn_state.to_be_spawned.at[base_idx + spawn_idx].set(
+            jnp.where(
+                should_spawn,
+                jnp.array(0),  # Single value
+                missing_entities[spawn_idx]
+            )
+        )
+        #print("new_to_be_spawned", new_to_be_spawned)
+
+        # Then create the new spawn state with the updated array
+        new_spawn_state = SpawnState(
+            difficulty=spawn_state.difficulty,
+            lane_dependent_pattern=spawn_state.lane_dependent_pattern,
+            to_be_spawned=new_to_be_spawned,
+            survived=spawn_state.survived,
+            prev_sub=spawn_state.prev_sub,
+            spawn_timers=spawn_state.spawn_timers,
+            diver_array=spawn_state.diver_array
+        )
+
+        return new_spawn_state, new_shark_positions, new_sub_positions
+
+
+
+    def process_lane(i, carry):
+        spawn_state, shark_positions, sub_positions = carry
+        base_idx = i * 3  # Base index for this lane's slots
+
+        # determine if we need to initialize a new pattern or keep spawning for the current one
+        # do this by checking in the relevant part of the to_be_spawned array if there are still 1s
+        relevant_to_be_spawned = jax.lax.dynamic_slice(spawn_state.to_be_spawned, (base_idx,), (3,))
+
+        # if there are still 1s in the relevant part of the to_be_spawned array, keep spawning
+        keep_spawning = jnp.any(relevant_to_be_spawned)
+
+        # check the lane spawn timer
+        lane_timer = spawn_state.spawn_timers[i]
+
+        lane_empty = jnp.all(
+            jnp.array([
+            jnp.logical_and(
+                is_slot_empty(shark_positions[base_idx + j]),
+                is_slot_empty(sub_positions[base_idx + j])
+            )
+            for j in range(3)
+            ])
+        )
+
+        # if the lane timer is unequal to 0, continue_spawn_cycle may still be called but initialize_new_spawn_cycle should not be called
+        allow_new_initialization = jnp.logical_and(lane_timer == 0, lane_empty)
+        ##print("IDX", i)
+        ##print("keep_spawning", keep_spawning)
+        ##print("relevant_to_be_spawned", relevant_to_be_spawned)
+
+        def handle_no_spawning(x):
+            return jax.lax.cond(
+                allow_new_initialization,
+                lambda y: initialize_new_spawn_cycle(i, y),
+                lambda y: (y[0], y[1], y[2]),  # Return unchanged state
+                x
+            )
+
+        new_spawn_state, new_shark_positions, new_sub_positions = jax.lax.cond(
+            keep_spawning,
+            lambda x: continue_spawn_cycle(i, x),
+            handle_no_spawning,
+            (spawn_state, shark_positions, sub_positions)
+        )
+
+        return new_spawn_state, new_shark_positions, new_sub_positions
+
+
+
+    def lane_needs_update(i, spawn_state, shark_positions, sub_positions):
+        base_idx = i * 3  # Base index for this lane's slots
+
+        # get how many entities in this lane are inactive
+        lane_empty = jnp.all(
+            jnp.array([
+                jnp.logical_and(
+                    is_slot_empty(shark_positions[base_idx + j]),
+                    is_slot_empty(sub_positions[base_idx + j])
+                )
+                for j in range(3)
+            ])
+        )
+
+        # check if the to_be_spawned array has any 1s in the relevant part
+        relevant_to_be_spawned = jax.lax.dynamic_slice(spawn_state.to_be_spawned, (base_idx,), (3,))
+
+        return jnp.logical_or(
+            lane_empty,
+            jnp.any(relevant_to_be_spawned)
+        )
 
     # count down the spawn timers
     new_spawn_timers = jnp.where(
@@ -443,37 +793,71 @@ def update_enemy_spawns(spawn_state: SpawnState,
         spawn_state.spawn_timers
     )
 
-    ready_lane_idx = -1
-    for i in range(4):
-        _, is_ready = ready_lane_mapping(i, (spawn_state, shark_positions, sub_positions, step_counter))
-        ready_lane_idx = jnp.where(is_ready, i, ready_lane_idx)
-
     new_state = spawn_state._replace(spawn_timers=new_spawn_timers)
 
-    return jax.lax.cond(
-        ready_lane_idx >= 0,
-        lambda x: spawn_enemy(ready_lane_idx, x),
-        lambda x: x,
-        (new_state, shark_positions, sub_positions)
-    )
+    # loop over the 4 lanes, check if they need an update and update them if necessary
+    for i in range(4):
+        ready_lane_idx = jax.lax.cond(
+            lane_needs_update(i, new_state, shark_positions, sub_positions),
+            lambda x: i,
+            lambda x: -1,
+            (new_state, shark_positions, sub_positions)
+        )
+
+        new_state, shark_positions, sub_positions = jax.lax.cond(
+            ready_lane_idx >= 0,
+            lambda x: process_lane(i, x),
+            lambda x: x,
+            (new_state, shark_positions, sub_positions)
+        )
+
+    return new_state, shark_positions, sub_positions
 
 def step_enemy_movement(spawn_state: SpawnState,
-                        shark_positions: chex.Array,
-                        sub_positions: chex.Array,
-                        step_counter: chex.Array) -> Tuple[chex.Array, chex.Array]:
+                       shark_positions: chex.Array,
+                       sub_positions: chex.Array,
+                       step_counter: chex.Array) -> Tuple[chex.Array, chex.Array, SpawnState]:
     """Update enemy positions based on their patterns"""
 
-    def should_move_x(step_counter):
-        # X movement logic remains the same as before
-        cycle = (step_counter // 5) % 3
-        frame_in_cycle = step_counter % 5
+    def should_move_x(step_counter, difficulty):
+        # Base pattern length (8 or 16 steps)
+        cycle_len = jnp.where(
+            jnp.isin(difficulty, jnp.array([0, 2, 4, 6, 8, 12])),
+            8,
+            16
+        )
 
-        normal_cycle = jnp.logical_or(frame_in_cycle == 0, frame_in_cycle == 3)
-        short_cycle = jnp.logical_or(frame_in_cycle == 0, frame_in_cycle == 2)
+        cycle_step = step_counter % cycle_len
 
-        return jnp.where(cycle == 2, short_cycle, normal_cycle)
+        # For constant movement at difficulty 10
+        constant_movement = difficulty == 10
 
-    def get_shark_offset(step_counter):
+        # For difficulties 11+: movement with acceleration
+        is_accelerated = difficulty > 10
+        accel_spacing = cycle_len // (jnp.minimum(difficulty - 10, 8) + 1)
+        is_accel_point = (cycle_step + 1) % accel_spacing == 0
+        accelerated_movement = jnp.where(is_accel_point, 2, 1)
+
+        # For early difficulties (0-9)
+        # Now starts much slower:
+        base_frequency = 4 - (difficulty // 3)  # Starts at 4 and decreases
+        move_frequency = jnp.maximum(base_frequency, 1)  # Never slower than 1
+        basic_movement = (cycle_step % move_frequency) == 0
+
+        # Combine all cases using where
+        movement = jnp.where(
+            constant_movement,
+            True,
+            jnp.where(
+                is_accelerated,
+                accelerated_movement,
+                basic_movement
+            )
+        )
+
+        return movement
+
+    def get_shark_offset(step_counter): # shark offset should be constant over the difficulty levels..
         phase = step_counter // 4
         cycle_position = phase % 32
 
@@ -485,23 +869,22 @@ def step_enemy_movement(spawn_state: SpawnState,
 
         return raw_offset - 4
 
-    def move_enemy(pos, is_shark, slot_idx):
+    def move_enemy(pos, is_shark, difficulty, slot_idx):
         is_active = jnp.logical_not(is_slot_empty(pos))
         moving_left = pos[2] < 0
 
         # X movement
-        should_move_now = should_move_x(step_counter)
+        should_move_now = should_move_x(step_counter, difficulty)
         velocity_x = jnp.where(moving_left, -1, 1)
         movement_x = jnp.where(should_move_now, velocity_x, 0)
 
         # Base Y position comes from spawn positions
-        base_y = SPAWN_POSITIONS_Y[slot_idx]
+        base_y = SPAWN_POSITIONS_Y[slot_idx // 3]  # Divide by 3 to get lane index
 
         # Calculate Y position
         y_position = jnp.where(
             is_shark,
             base_y + get_shark_offset(step_counter),
-            # Submarines are 2 pixels higher than their base position
             base_y - SUBMARINE_Y_OFFSET
         )
 
@@ -512,23 +895,45 @@ def step_enemy_movement(spawn_state: SpawnState,
             pos
         )
 
-        # Check bounds
+        # Check bounds and update survived status
         out_of_bounds = jnp.logical_or(new_pos[0] < -8, new_pos[0] >= 168)
-        return jnp.where(out_of_bounds, jnp.zeros(3), new_pos)
 
-    # Move enemies
-    # Each slot belongs to a lane - we need the actual lane index (0-3)
-    new_shark_positions = jnp.stack([
-        move_enemy(pos, True, i)
-        for i, pos in enumerate(shark_positions)
-    ])
+        # if it is out of bounds, it is not active anymore. Set to 0,0,0
+        new_pos = jnp.where(
+            out_of_bounds,
+            jnp.zeros_like(new_pos),
+            new_pos
+        )
 
-    new_sub_positions = jnp.stack([
-        move_enemy(pos, False, i)
-        for i, pos in enumerate(sub_positions)
-    ])
+        return new_pos, out_of_bounds # out of bounds is the same as survived
 
-    return new_shark_positions, new_sub_positions
+
+    new_shark_positions = jnp.zeros_like(shark_positions)
+    new_sub_positions = jnp.zeros_like(sub_positions)
+    new_survived = spawn_state.survived
+
+    for i in range(len(shark_positions)):
+        new_pos, survived = move_enemy(shark_positions[i], True, spawn_state.difficulty, i)
+        new_shark_positions = new_shark_positions.at[i].set(new_pos)
+        new_survived = jnp.where(
+            survived,
+            new_survived.at[i].set(True),
+            new_survived
+        )
+
+    for i in range(len(sub_positions)):
+        new_pos, survived = move_enemy(sub_positions[i], False, spawn_state.difficulty, i)
+        new_sub_positions = new_sub_positions.at[i].set(new_pos)
+        new_survived = jnp.where(
+            survived,
+            new_survived.at[i].set(True),
+            new_survived
+        )
+
+    # Update spawn state with new survived status
+    new_spawn_state = spawn_state._replace(survived=new_survived)
+
+    return new_shark_positions, new_sub_positions, new_spawn_state
 
 
 def spawn_divers(spawn_state: SpawnState, diver_positions: chex.Array, shark_positions: chex.Array,
@@ -549,49 +954,48 @@ def spawn_divers(spawn_state: SpawnState, diver_positions: chex.Array, shark_pos
         # Unpack the carry tuple
         left, positions = carry
 
+        base_idx = i * 3  # Base index for this lane's slots
+
         # Get current diver position and enemy positions for this lane
         diver_pos = positions[i]
-        shark_in_lane = shark_positions[i]
-        sub_in_lane = sub_positions[i]
 
         # Check if a diver exists in this slot
         diver_exists = diver_pos[2] != 0
 
-        # Check if lane is blocked by submarine
-        lane_has_sub = sub_in_lane[2] != 0
-
-        # Check if we should spawn based on force_spawn flag, existing diver, and lane availability
-        should_spawn = jnp.logical_and(
-            force_spawn,
-            jnp.logical_and(jnp.logical_not(diver_exists), jnp.logical_not(lane_has_sub))  # Only spawn if no sub and no existing diver
+        # check if there is any enemy in the lane
+        lane_empty = jnp.all(
+            jnp.array([
+                jnp.logical_and(
+                    is_slot_empty(shark_positions[base_idx + j]),
+                    is_slot_empty(sub_positions[base_idx + j])
+                )
+                for j in range(3)
+            ])
         )
 
-        # Get direction from enemies in the lane (primarily sharks since subs block spawning)
-        shark_active = shark_in_lane[2] != 0
-        enemy_dir = jnp.where(
-            shark_active,
-            shark_in_lane[2],
-            # Default direction based on spawn side if no enemies
-            jnp.where(left, 1, -1)
-        )
+        # Check if we should spawn based on if a diver exists and the lane is empty and random chance (semi random, use step_counter)
+        random_should_spawn = step_counter % 58 == 0 # idk
 
-        # Set spawn position based on enemy direction
-        x_pos = jnp.where(enemy_dir > 0, 0, 160)  # Opposite side from movement direction
+        # TODO: does not work, idk why
+        should_spawn = jnp.logical_and(jnp.logical_not(diver_exists), jnp.logical_and(lane_empty, random_should_spawn))  # Only spawn if no sub and no existing diver
+
+        x_pos = jnp.where(left, 168, 0)
+        direction = jnp.where(left, -1, 1)
 
         # Spawn diver with direction matching enemies
         new_diver = jnp.where(
             should_spawn,
-            jnp.array([x_pos, DIVER_SPAWN_POSITIONS[i], enemy_dir]),
+            jnp.array([x_pos, DIVER_SPAWN_POSITIONS[i], direction]),
             diver_pos
         )
 
         # Return updated carry tuple
-        return (left, positions.at[i].set(new_diver))
+        return left, positions.at[i].set(new_diver)
 
     # Initialize RNG (keeping for pattern consistency)
     rng = jax.random.PRNGKey(42)
     rng, diver_rng = jax.random.split(rng)
-    left = jax.random.bernoulli(diver_rng, 0.5)
+    left = jax.random.bernoulli(diver_rng, 0.3)
 
     # Initialize carry tuple
     initial_carry = (left, diver_positions)
@@ -640,8 +1044,12 @@ def step_diver_movement(diver_positions: chex.Array, shark_positions: chex.Array
         # Calculate the cycle position within the pattern
         cycle = step_counter % 14  # Total cycle length: 4 + 1 + 4 + 1 + 5 + 1 = 14
 
+        curr_range = jnp.array([i * 3, i * 3 + 1, i * 3 + 2])
+        # get the three sharks in the lane
+        all_shark_lane_pos = shark_positions[curr_range]
+
         # Get shark in the same lane for collision check
-        shark_lane_pos = shark_positions[i]
+        shark_lane_pos = get_front_entity(i, all_shark_lane_pos)
         shark_collision = jnp.logical_and(
             is_active,
             check_collision(
@@ -650,6 +1058,15 @@ def step_diver_movement(diver_positions: chex.Array, shark_positions: chex.Array
                 jnp.array([diver_pos[0], diver_pos[1]]),
                 DIVER_SIZE
             )
+        )
+
+        # TODO: sometimes divers teleport infront of sharks, reason unkown
+
+        # check in which direction the shark is moving and copy the direction to the diver (even if it is not moving)
+        direction_of_shark = jnp.where(
+            shark_lane_pos[2] == 0,
+            diver_pos[2],
+            shark_lane_pos[2]
         )
 
         # If colliding with shark, match shark's position and direction
@@ -686,14 +1103,14 @@ def step_diver_movement(diver_positions: chex.Array, shark_positions: chex.Array
         new_pos = jnp.where(
             jnp.logical_or(out_of_bounds, should_collect),
             jnp.zeros(3),  # Reset if out of bounds or collected
-            jnp.array([new_x, diver_pos[1], diver_pos[2]])
+            jnp.array([new_x, DIVER_SPAWN_POSITIONS[i], direction_of_shark])
         )
 
         # Update collection count if collected
         new_collected = collected + jnp.where(should_collect, 1, 0)
 
         # Update the diver position and collection count
-        return (positions.at[i].set(new_pos), new_collected)
+        return positions.at[i].set(new_pos), new_collected
 
     # Update all diver positions and track collections
     initial_carry = (diver_positions, state_divers_collected)
@@ -708,37 +1125,40 @@ def step_diver_movement(diver_positions: chex.Array, shark_positions: chex.Array
 def spawn_step(state, spawn_state: SpawnState, shark_positions: chex.Array, sub_positions: chex.Array, diver_positions: chex.Array) -> Tuple[SpawnState, chex.Array, chex.Array, chex.Array]:
     """Main spawn handling function to be called in game step"""
     # Move existing enemies
-    new_shark_positions, new_sub_positions = step_enemy_movement(
+    new_shark_positions, new_sub_positions, spawn_state_after_movement = step_enemy_movement(
         spawn_state,
         shark_positions,
         sub_positions,
         state.step_counter
     )
 
-    # random number generator TODO: remove, there is a fixed pattern somewhere in the OG implementation
-    rng = jax.random.PRNGKey(42)
-    rng, spawn_rng = jax.random.split(rng)
-    # Update spawns
-    spawn_state, new_shark_positions, new_sub_positions = update_enemy_spawns(
-        spawn_state,
+    # Update spawns using updated spawn state
+    new_spawn_state, new_shark_positions, new_sub_positions = update_enemy_spawns(
+        spawn_state_after_movement,
         new_shark_positions,
         new_sub_positions,
-        state.step_counter,
-        spawn_rng
+        state.step_counter
     )
 
     # spawn new divers
-    diver_positions = spawn_divers(spawn_state, state.diver_positions, new_shark_positions, new_sub_positions, state.step_counter)
+    diver_positions = spawn_divers(new_spawn_state, state.diver_positions, new_shark_positions, new_sub_positions, state.step_counter)
 
-    return spawn_state, new_shark_positions, new_sub_positions, diver_positions
+    return new_spawn_state, new_shark_positions, new_sub_positions, diver_positions
 
 
 def enemy_missiles_step(curr_sub_positions, curr_enemy_missile_positions, step_counter) -> chex.Array:
     def single_missile_step(i, carry):
         # Input i is the loop index, carry is the full array of missile positions
         # Get current submarine and missile for this index
-        sub_pos = curr_sub_positions[i]
         missile_pos = carry[i]
+
+        # get the current range of the submarines in the lane
+        range_start = i * 3
+        current_sub_idx = jnp.array([range_start, range_start + 1, range_start + 2])
+        lane_subs = curr_sub_positions[current_sub_idx]
+
+        # get the position of the front submarine (thats the only relevant one)
+        sub_pos = get_front_entity(i, lane_subs)
 
         # check if the missile is in frame
         missile_exists = missile_pos[2] != 0
@@ -752,10 +1172,16 @@ def enemy_missiles_step(curr_sub_positions, curr_enemy_missile_positions, step_c
             )
         )
 
-        # Calculate new missile position
+        # Calculate new missile position ( x -/+ 4 (depending on direction), y = 47, direction = sub direction)
+        new_missile_x = jnp.where( # could be sub_pos[0] + 4 * sub_pos[2] as well, but this is easier to read
+            sub_pos[2] == 1,
+            sub_pos[0] + 4,
+            sub_pos[0] - 4
+        )
+
         new_missile = jnp.where(
             should_spawn,
-            jnp.array([sub_pos[0] + 4, ENEMY_MISSILE_Y[i], sub_pos[2]]),  # Use submarine's direction
+            jnp.array([new_missile_x, ENEMY_MISSILE_Y[i], sub_pos[2]]),  # Use submarine's direction
             missile_pos
         )
 
@@ -780,9 +1206,10 @@ def enemy_missiles_step(curr_sub_positions, curr_enemy_missile_positions, step_c
         # Update the missile position in the full array
         return carry.at[i].set(new_missile)
 
+
     # Update all missile positions maintaining the array shape
     new_missile_positions = jax.lax.fori_loop(
-        0, curr_sub_positions.shape[0],
+        0, 4,
         single_missile_step,
         curr_enemy_missile_positions
     )
@@ -797,7 +1224,6 @@ def player_missile_step(state: State, curr_player_x, curr_player_y, action: chex
     # also check if there is currently a missile in frame by checking if the player_missile_position is empty
     missile_exists = state.player_missile_position[2] != 0
 
-    # TODO: make it clearer that the missile has a 7 pixel y position offset
     # if the player shot and there is no missile in frame, then we can shoot a missile
     # the missile y is the current player y position + 7
     # the missile x is either player x + 3 if facing left or player x + 13 if facing right
@@ -882,7 +1308,7 @@ def update_oxygen(state, player_x, player_y, player_missile_position):
     new_just_surfaced = jnp.where(
         in_init_state,
         jnp.where(
-            jnp.logical_and(started_diving, state.oxygen >= 64),
+            jnp.logical_and(started_diving, state.oxygen >= 63),
             jnp.array(0),
             jnp.array(-1)
         ),
@@ -932,6 +1358,13 @@ def update_oxygen(state, player_x, player_y, player_missile_position):
         new_oxygen
     )
 
+    # Increase difficulty when reaching max oxygen after surfacing
+    old_difficulty = state.spawn_state.difficulty
+    reached_max = jnp.logical_and(jnp.logical_and(new_oxygen >= 64, state.oxygen < 64), jnp.logical_not(in_init_state))
+    new_difficulty = jnp.where(reached_max,
+                           old_difficulty + 1,
+                           old_difficulty)
+
     new_oxygen = jnp.where(
         stay_same,
         state.oxygen,
@@ -969,7 +1402,7 @@ def update_oxygen(state, player_x, player_y, player_missile_position):
     )
 
     return (new_oxygen, player_x, player_y, player_missile_position,
-            oxygen_depleted, lose_life, new_divers_collected, should_reset, new_just_surfaced)
+            oxygen_depleted, lose_life, new_divers_collected, should_reset, new_just_surfaced, new_difficulty)
 
 def player_step(state: State, action: chex.Array) -> tuple[chex.Array, chex.Array, chex.Array]:
     # implement all the possible movement directions for the player, the mapping is:
@@ -1078,7 +1511,7 @@ class Game:
         # First handle death animation if active
         def handle_death_animation():
             # Calculate new positions with frozen X coordinates
-            shark_y_positions, _ = step_enemy_movement(
+            shark_y_positions, _, _ = step_enemy_movement(
                 state.spawn_state,
                 state.shark_positions,
                 state.sub_positions,
@@ -1096,7 +1529,8 @@ class Game:
                     lives=state.lives - 1,
                     score=state.score,
                     successful_rescues=state.successful_rescues,
-                    divers_collected=jnp.maximum(state.divers_collected - 1, 0)
+                    divers_collected=jnp.maximum(state.divers_collected - 1, 0),
+                    spawn_state=soft_reset_spawn_state(state.spawn_state)
                     # Lose one diver only at end of animation
                 ),
                 lambda _: state._replace(
@@ -1129,26 +1563,29 @@ class Game:
             player_missile_position = player_missile_step(state, next_x, next_y, action_mod)
 
             # Rest of oxygen handling and game logic
-            new_oxygen, player_x, player_y, player_missile_position, oxygen_depleted, lose_life_surfacing, new_divers_collected, should_reset, new_just_surfaced = update_oxygen(
+            new_oxygen, player_x, player_y, player_missile_position, oxygen_depleted, lose_life_surfacing, new_divers_collected, should_reset, new_just_surfaced, new_difficulty = update_oxygen(
                 state, next_x, next_y, player_missile_position
             )
 
             # Update divers collected count from oxygen mechanics
             state_updated = state._replace(divers_collected=new_divers_collected)
 
+            # update the spawn state with the new difficulty
+            new_spawn_state = state_updated.spawn_state._replace(difficulty=new_difficulty)
+
             # Check missile collisions
             player_missile_position, new_shark_positions, new_sub_positions, new_score, updated_spawn_state = check_missile_collisions(
                 player_missile_position,
-                state.shark_positions,
-                state.sub_positions,
-                state.score,
-                state.successful_rescues,
-                state.spawn_state
+                state_updated.shark_positions,
+                state_updated.sub_positions,
+                state_updated.score,
+                state_updated.successful_rescues,
+                new_spawn_state
             )
 
             # perform all necessary spawn steps
             new_spawn_state, new_shark_positions, new_sub_positions, new_diver_positions = spawn_step(
-                state,
+                state_updated,
                 updated_spawn_state,
                 new_shark_positions,
                 new_sub_positions,
@@ -1161,14 +1598,14 @@ class Game:
                 player_x,
                 player_y,
                 state_updated.divers_collected,
-                state.step_counter
+                state_updated.step_counter,
             )
 
             # update the enemy missile positions
             new_enemy_missile_positions = enemy_missiles_step(
                 new_sub_positions,
-                state.enemy_missile_positions,
-                state.step_counter
+                state_updated.enemy_missile_positions,
+                state_updated.step_counter
             )
 
             # check if the player has collided with any of the enemies
@@ -1177,17 +1614,18 @@ class Game:
                 player_y,
                 new_sub_positions,
                 new_shark_positions,
-                state.enemy_missile_positions,
+                state_updated.enemy_missile_positions,
                 new_score,
-                state.successful_rescues
+                state_updated.successful_rescues
             )
 
             lose_life = jnp.any(jnp.array([oxygen_depleted, player_collision, lose_life_surfacing]))
 
             # Start death animation but keep divers intact during animation
-            death_animation_state = state._replace(
+            death_animation_state = state_updated._replace(
                 score=state.score + collision_points,
-                death_counter=jnp.array(90)
+                death_counter=jnp.array(90),
+                spawn_state=soft_reset_spawn_state(state_updated.spawn_state)
             )
 
             # Calculate points for rescuing divers. Each diver is worth 50 points.
@@ -1206,9 +1644,10 @@ class Game:
 
             # Create the scoring state
             scoring_state = self.reset()._replace(
-                lives=state.lives,
-                score=state.score + total_rescue_points,
-                successful_rescues=state.successful_rescues + 1
+                lives=state_updated.lives,
+                score=state_updated.score + total_rescue_points,
+                successful_rescues=state_updated.successful_rescues + 1,
+                spawn_state = soft_reset_spawn_state(state_updated.spawn_state)
             )
 
             # Create the normal returned state
@@ -1219,7 +1658,7 @@ class Game:
                 oxygen=new_oxygen,
                 divers_collected=new_divers_collected,
                 score=new_score,
-                lives=state.lives,
+                lives=state_updated.lives,
                 spawn_state=new_spawn_state,
                 diver_positions=new_diver_positions,
                 shark_positions=new_shark_positions,
@@ -1227,11 +1666,12 @@ class Game:
                 enemy_missile_positions=new_enemy_missile_positions,
                 surface_sub_position=jnp.zeros((MAX_SURFACE_SUBS, 3)),
                 player_missile_position=player_missile_position,
-                step_counter=state.step_counter + 1,
+                step_counter=state_updated.step_counter + 1,
                 just_surfaced=new_just_surfaced,
-                successful_rescues=state.successful_rescues,
+                successful_rescues=state_updated.successful_rescues,
                 death_counter=jnp.array(0)
             )
+
 
             # First handle surfacing with all divers (scoring)
             intermediate_state = jax.lax.cond(
@@ -1319,7 +1759,7 @@ class Renderer:
         divers_text = self.font.render(f"Divers: {int(divers)}/6", True, SCORE_COLOR)
         self.screen.blit(divers_text, (WINDOW_WIDTH - 100, 40))
 
-    def draw_enemies(self, shark_positions, sub_positions):
+    def draw_enemies(self, shark_positions, sub_positions, difficulty):
         """Draw sharks and submarines"""
         # Draw sharks
         for pos in shark_positions:
@@ -1328,7 +1768,11 @@ class Renderer:
                     int(pos[0]) * 3, int(pos[1]) * 3,
                     SHARK_SIZE[0] * 3, SHARK_SIZE[1] * 3
                 )
-                pygame.draw.rect(self.screen, SHARK_COLOR, shark_rect)
+
+                color = SHARK_DIFFICULTY_COLORS[difficulty % len(SHARK_DIFFICULTY_COLORS)]
+
+
+                pygame.draw.rect(self.screen, color, shark_rect)
 
         # Draw submarines
         for pos in sub_positions:
@@ -1390,7 +1834,7 @@ class Renderer:
 
         # Draw game objects
         self.draw_divers(state.diver_positions)
-        self.draw_enemies(state.shark_positions, state.sub_positions)
+        self.draw_enemies(state.shark_positions, state.sub_positions, state.spawn_state.difficulty)
         self.draw_missiles(state.player_missile_position)
         self.draw_missiles(state.enemy_missile_positions)
         self.draw_player(state.player_x, state.player_y)
@@ -1401,7 +1845,7 @@ class Renderer:
 
         # Update display
         pygame.display.flip()
-        self.clock.tick(512)
+        self.clock.tick(60)
 
 
 def get_human_action() -> chex.Array:
@@ -1458,10 +1902,10 @@ def get_human_action() -> chex.Array:
     return jnp.array(NOOP)
 
 
+
 if __name__ == "__main__":
     # Initialize game and renderer
     game = Game(frameskip=1)
-    renderer = Renderer()
 
     # Get jitted functions
     jitted_step = jax.jit(game.step)
@@ -1469,11 +1913,13 @@ if __name__ == "__main__":
 
     curr_state = jitted_reset()
 
-    # Game loop
+    # Game loop with rendering
     running = True
     frame_by_frame = False
     frameskip = game.frameskip
     counter = 1
+
+    renderer = Renderer()
 
     while running:
         for event in pygame.event.get():
@@ -1495,6 +1941,6 @@ if __name__ == "__main__":
 
         renderer.render(curr_state)
         counter += 1
-        renderer.clock.tick(256)
+        renderer.clock.tick(1024)
 
     pygame.quit()
