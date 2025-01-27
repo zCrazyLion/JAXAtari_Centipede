@@ -136,17 +136,20 @@ LEVEL_2_PLATFORMS_SIZE = jnp.array(
 )
 
 # LEVEL_2_FRUITS_POS
+LEVEL_2_FRUITS_POS = jnp.array([[119, 108], [39, 84], [59, 60]])
 # LEVEL_2_BELL_POS
+LEVEL_2_BELL_POS = jnp.array([93, 36])
 # LEVEL_2_CHILD_POS
+LEVEL_2_CHILD_POS = jnp.array([121, 13])
 
 Kangaroo_Level_2 = LevelConstants(
     ladder_positions=LEVEL_2_LADDERS_POS,
     ladder_sizes=LEVEL_2_LADDERS_SIZE,
     platform_positions=LEVEL_2_PLATFORMS_POS,
     platform_sizes=LEVEL_2_PLATFORMS_SIZE,
-    # fruit_positions=LEVEL_2_FRUITS_POS,
-    # bell_position=LEVEL_2_BELL_POS,
-    # child_position=LEVEL_2_CHILD_POS,
+    fruit_positions=LEVEL_2_FRUITS_POS,
+    bell_position=LEVEL_2_BELL_POS,
+    child_position=LEVEL_2_CHILD_POS,
 )
 
 # -------------------- Level 3 --------------------
@@ -224,15 +227,18 @@ LEVEL_3_PLATFORMS_SIZE = jnp.array(
 )
 
 # LEVEL_3_FRUITS_POS
+LEVEL_3_FRUITS_POS = jnp.array([[119, 108], [39, 84], [59, 60]])
 # LEVEL_3_BELL_POS
+LEVEL_3_BELL_POS = jnp.array([93, 36])
 # LEVEL_3_CHILD_POS
+LEVEL_3_CHILD_POS = jnp.array([121, 13])
 
 Kangaroo_Level_3 = LevelConstants(
     ladder_positions=LEVEL_3_LADDERS_POS,
     ladder_sizes=LEVEL_3_LADDERS_SIZE,
     platform_positions=LEVEL_3_PLATFORMS_POS,
     platform_sizes=LEVEL_3_PLATFORMS_SIZE,
-    # fruit_positions=LEVEL_3_FRUITS_POS,
-    # bell_position=LEVEL_3_BELL_POS,
-    # child_position=LEVEL_3_CHILD_POS,
+    fruit_positions=LEVEL_3_FRUITS_POS,
+    bell_position=LEVEL_3_BELL_POS,
+    child_position=LEVEL_3_CHILD_POS,
 )

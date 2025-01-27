@@ -126,7 +126,6 @@ class GameState(NamedTuple):
     levelup_timer: chex.Array
     reset_coords: chex.Array
     levelup: chex.Array
-    main_timer: chex.Array
     lives: chex.Array
 
 
@@ -666,14 +665,15 @@ def fruits_step(state: GameState) -> Tuple[chex.Array, chex.Array]:
 
     def check_fruit(i, carry):
         score, actives = carry
+        fruit_position = state.level.fruit_positions[i]
 
         fruit_collision = entities_collide(
             state.player.x,
             state.player.y,
             PLAYER_WIDTH,
             state.player.height,
-            state.fruit_positions_x[i],
-            state.fruit_positions_y[i],
+            fruit_position[0],
+            fruit_position[1],
             FRUIT_SIZE,
             FRUIT_SIZE,
         )
@@ -681,7 +681,9 @@ def fruits_step(state: GameState) -> Tuple[chex.Array, chex.Array]:
         collision_condition = jnp.logical_and(fruit_collision, actives[i])
 
         new_score = jnp.where(
-            collision_condition, score + (200 * state.fruit_stages[i] + 200), score
+            collision_condition,
+            score + (200 * state.level.fruit_stages[i] + 200),
+            score,
         )
         new_actives = actives.at[i].set(
             jnp.where(collision_condition, False, actives[i])
@@ -694,15 +696,15 @@ def fruits_step(state: GameState) -> Tuple[chex.Array, chex.Array]:
         state.player.y,
         PLAYER_WIDTH,
         state.player.height,
-        state.bell_position_x,
-        state.bell_position_y,
+        state.level.bell_position[0],
+        state.level.bell_position[1],
         BELL_WIDTH,
         BELL_HEIGHT,
     )
 
     RESPAWN_AFTER_TICKS = 40
 
-    counter = state.bell_timer
+    counter = state.level.bell_timer
     counter_start = bell_collision & (counter == 0)
     counter = jnp.where(counter_start, 1, counter)
     counter = jnp.where(counter > 0, counter + 1, counter)
@@ -710,26 +712,29 @@ def fruits_step(state: GameState) -> Tuple[chex.Array, chex.Array]:
     respawn_timer_done = counter == RESPAWN_AFTER_TICKS
 
     initial_score = jnp.array(0)
-    initial_actives = state.fruit_actives
+    initial_actives = state.level.fruit_actives
 
     new_score, new_activations = jax.lax.fori_loop(
-        0, len(state.fruit_actives), check_fruit, (initial_score, initial_actives)
+        0,
+        state.level.fruit_actives.shape[0],
+        check_fruit,
+        (initial_score, initial_actives),
     )
 
     stage_fruit_1 = jnp.where(
-        respawn_timer_done & (state.fruit_actives[0] == False),
-        jnp.clip(state.fruit_stages[0] + 1, 0, 4),
-        state.fruit_stages[0],
+        respawn_timer_done & (state.level.fruit_actives[0] == False),
+        jnp.clip(state.level.fruit_stages[0] + 1, 0, 4),
+        state.level.fruit_stages[0],
     )
     stage_fruit_2 = jnp.where(
-        respawn_timer_done & (state.fruit_actives[1] == False),
-        jnp.clip(state.fruit_stages[1] + 1, 0, 4),
-        state.fruit_stages[1],
+        respawn_timer_done & (state.level.fruit_actives[1] == False),
+        jnp.clip(state.level.fruit_stages[1] + 1, 0, 4),
+        state.level.fruit_stages[1],
     )
     stage_fruit_3 = jnp.where(
-        respawn_timer_done & (state.fruit_actives[2] == False),
-        jnp.clip(state.fruit_stages[2] + 1, 0, 4),
-        state.fruit_stages[2],
+        respawn_timer_done & (state.level.fruit_actives[2] == False),
+        jnp.clip(state.level.fruit_stages[2] + 1, 0, 4),
+        state.level.fruit_stages[2],
     )
 
     new_stages = jnp.array([stage_fruit_1, stage_fruit_2, stage_fruit_3])
@@ -748,57 +753,54 @@ def child_step(state: GameState) -> Tuple[chex.Array]:
 
     RESET_TIMER_AFTER = 50
 
-    counter = state.child_timer
+    counter = state.level.child_timer
     counter = counter + 1
     counter = jnp.where(counter > RESET_TIMER_AFTER, 0, counter)
     reset = counter == RESET_TIMER_AFTER
 
-    child_velocity = state.child_velocity
+    child_velocity = state.level.child_velocity
     new_child_velocity = jnp.where(reset, child_velocity * -1, child_velocity)
 
     new_child_x = jnp.where(
         (counter % 5) == 0,
-        state.child_position_x + new_child_velocity,
-        state.child_position_x,
+        state.level.child_position[0] + new_child_velocity,
+        state.level.child_position[0],
     )
-    new_child_y = state.child_position_y
+    new_child_y = state.level.child_position[1]
     new_child_timer = counter
 
     return new_child_timer, new_child_x, new_child_y, new_child_velocity
 
 
-def pad_array(arr, target_size):
+def pad_array(arr: jax.Array, target_size: int):
     """Pads a 2D array with -1s to reach target size in first dimension."""
     current_size = arr.shape[0]
-    if current_size >= target_size:
-        return arr
 
-    pad_size = target_size - current_size
-    return jnp.pad(arr, ((0, pad_size), (0, 0)), mode="constant", constant_values=-1)
+    return jnp.pad(
+        arr,
+        ((0, target_size - current_size), (0, 0)),
+        mode="constant",
+        constant_values=-1,
+    )
 
 
-def pad_to_size(level_constants, max_platforms):
+def pad_to_size(level_constants: LevelConstants, max_platforms: int):
     """Pads all arrays in level constants to specified size."""
     return LevelConstants(
         ladder_positions=pad_array(level_constants.ladder_positions, max_platforms),
         ladder_sizes=pad_array(level_constants.ladder_sizes, max_platforms),
         platform_positions=pad_array(level_constants.platform_positions, max_platforms),
         platform_sizes=pad_array(level_constants.platform_sizes, max_platforms),
+        fruit_positions=level_constants.fruit_positions,
+        bell_position=level_constants.bell_position,
+        child_position=level_constants.child_position,
     )
 
 
 @partial(jax.jit, static_argnums=())
 def get_level_constants(current_level):
     """Returns constants for the current level."""
-    max_platforms = jnp.max(
-        jnp.array(
-            [
-                LEVEL_1.platform_positions.shape[0],
-                LEVEL_2.platform_positions.shape[0],
-                LEVEL_3.platform_positions.shape[0],
-            ]
-        )
-    )
+    max_platforms = 20
 
     # Pad each level's arrays to max size
     level1_padded = pad_to_size(LEVEL_1, max_platforms)
@@ -994,14 +996,14 @@ def player_step(state: GameState, action: chex.Array):
 
 
 @partial(jax.jit, static_argnums=())
-def timer_controller(state):
+def timer_controller(state: GameState):
     return jnp.where(
-        state.step_counter == 255, state.main_timer - 100, state.main_timer
+        state.step_counter == 255, state.level.timer - 100, state.level.timer
     )
 
 
 @partial(jax.jit, static_argnums=())
-def next_level(state):
+def next_level(state: GameState):
 
     RESET_AFTER_TICKS = 256
 
@@ -1025,7 +1027,7 @@ def next_level(state):
 @partial(jax.jit, static_argnums=())
 def lives_controller(state: GameState):
     # timer check
-    is_time_over = state.main_timer <= 0
+    is_time_over = state.level.timer <= 0
 
     # platform_drop_check()
 
@@ -1061,7 +1063,7 @@ class Game:
     def __init__(self, frameskip: int = 1):
         self.frameskip = frameskip
 
-    def reset(self, next_level=0) -> GameState:
+    def reset(self, next_level=1) -> GameState:
 
         next_level = jnp.clip(next_level, 1, 3)
         level_constants: LevelConstants = get_level_constants(next_level)
@@ -1111,7 +1113,6 @@ class Game:
             levelup_timer=jnp.array(0),
             reset_coords=jnp.array(False),
             levelup=jnp.array(False),
-            main_timer=2000,
             lives=3,
         )
 
@@ -1158,6 +1159,26 @@ class Game:
 
         # reset_current_level_progress()
 
+        new_level_state = jax.lax.cond(
+            new_levelup,
+            lambda: self.reset(new_current_level).level,
+            lambda: LevelState(
+                bell_position=state.level.bell_position,
+                fruit_positions=state.level.fruit_positions,
+                ladder_positions=state.level.ladder_positions,
+                ladder_sizes=state.level.ladder_sizes,
+                platform_positions=state.level.platform_positions,
+                platform_sizes=state.level.platform_sizes,
+                child_position=jnp.array([new_child_x, new_child_y]),
+                timer=new_main_timer,
+                bell_timer=bell_timer,
+                child_timer=child_timer,
+                child_velocity=new_child_velocity,
+                fruit_actives=new_actives,
+                fruit_stages=new_fruit_stages,
+            ),
+        )
+
         return jax.lax.cond(
             reset_cond,
             lambda: self.reset(state.current_level),
@@ -1183,28 +1204,8 @@ class Game:
                     chrash_timer=crash_timer,
                     is_crashing=new_is_crashing,
                 ),
-                level=LevelState(
-                    bell_position=state.level.bell_position,
-                    fruit_positions=state.level.fruit_positions,
-                    ladder_positions=state.level.ladder_positions,
-                    ladder_sizes=state.level.ladder_sizes,
-                    platform_positions=state.level.platform_positions,
-                    platform_sizes=state.level.platform_sizes,
-                    child_position=jnp.array([]),
-                    timer=new_main_timer,
-                ),
+                level=new_level_state,
                 score=state.score + score_addition,
-                fruit_actives=new_actives,
-                fruit_positions_x=state.fruit_positions_x,
-                fruit_positions_y=state.fruit_positions_y,
-                bell_position_x=state.bell_position_x,
-                bell_position_y=state.bell_position_y,
-                bell_timer=bell_timer,
-                child_timer=child_timer,
-                child_position_x=new_child_x,
-                child_position_y=new_child_y,
-                child_velocity=new_child_velocity,
-                fruit_stages=new_fruit_stages,
                 player_lives=state.player_lives,
                 current_level=new_current_level,
                 step_counter=(state.step_counter + 1) % 256,
@@ -1212,7 +1213,6 @@ class Game:
                 levelup_timer=new_levelup_timer,
                 reset_coords=new_reset_coords,
                 levelup=new_levelup,
-                main_timer=new_main_timer,
                 lives=new_lives,
             ),
         )
@@ -1310,14 +1310,14 @@ class Renderer:
                 )
 
         # Draw fruits
-        for i in range(len(state.fruit_actives)):
-            if state.fruit_actives[i]:
+        for i in range(state.level.fruit_actives.shape[0]):
+            if state.level.fruit_actives[i]:
                 pygame.draw.rect(
                     self.screen,
-                    FRUIT_COLOR[state.fruit_stages[i]],
+                    FRUIT_COLOR[state.level.fruit_stages[i]],
                     (
-                        int(state.fruit_positions_x[i]) * RENDER_SCALE_FACTOR,
-                        int(state.fruit_positions_y[i]) * RENDER_SCALE_FACTOR,
+                        int(state.level.fruit_positions[i, 0]) * RENDER_SCALE_FACTOR,
+                        int(state.level.fruit_positions[i, 1]) * RENDER_SCALE_FACTOR,
                         int(FRUIT_SIZE) * RENDER_SCALE_FACTOR,
                         int(FRUIT_SIZE) * RENDER_SCALE_FACTOR,
                     ),
@@ -1328,8 +1328,8 @@ class Renderer:
             self.screen,
             BELL_COLOR,
             (
-                int(state.bell_position_x) * RENDER_SCALE_FACTOR,
-                int(state.bell_position_y) * RENDER_SCALE_FACTOR,
+                int(state.level.bell_position[0]) * RENDER_SCALE_FACTOR,
+                int(state.level.bell_position[1]) * RENDER_SCALE_FACTOR,
                 int(BELL_WIDTH) * RENDER_SCALE_FACTOR,
                 int(BELL_HEIGHT) * RENDER_SCALE_FACTOR,
             ),
@@ -1352,8 +1352,8 @@ class Renderer:
             self.screen,
             PLAYER_COLOR,
             (
-                int(state.child_position_x) * RENDER_SCALE_FACTOR,
-                int(state.child_position_y) * RENDER_SCALE_FACTOR,
+                int(state.level.child_position[0]) * RENDER_SCALE_FACTOR,
+                int(state.level.child_position[1]) * RENDER_SCALE_FACTOR,
                 int(CHILD_WIDTH) * RENDER_SCALE_FACTOR,
                 int(CHILD_HEIGHT) * RENDER_SCALE_FACTOR,
             ),
@@ -1396,7 +1396,7 @@ class Renderer:
         )
         self.screen.blit(orient_text, (10, 45))
 
-        timer_text = font.render(f"Timer: {state.main_timer}", True, (255, 255, 255))
+        timer_text = font.render(f"Timer: {state.level.timer}", True, (255, 255, 255))
         self.screen.blit(
             timer_text, (60 * RENDER_SCALE_FACTOR, 192 * RENDER_SCALE_FACTOR)
         )
