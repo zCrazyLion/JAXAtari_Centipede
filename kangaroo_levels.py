@@ -138,7 +138,7 @@ LEVEL_2_PLATFORMS_SIZE = jnp.array(
 # LEVEL_2_FRUITS_POS
 LEVEL_2_FRUITS_POS = jnp.array([[119, 108], [39, 84], [59, 60]])
 # LEVEL_2_BELL_POS
-LEVEL_2_BELL_POS = jnp.array([93, 36])
+LEVEL_2_BELL_POS = jnp.array([31, 36])
 # LEVEL_2_CHILD_POS
 LEVEL_2_CHILD_POS = jnp.array([121, 13])
 
@@ -229,7 +229,7 @@ LEVEL_3_PLATFORMS_SIZE = jnp.array(
 # LEVEL_3_FRUITS_POS
 LEVEL_3_FRUITS_POS = jnp.array([[119, 108], [39, 84], [59, 60]])
 # LEVEL_3_BELL_POS
-LEVEL_3_BELL_POS = jnp.array([93, 36])
+LEVEL_3_BELL_POS = jnp.array([130, 36])
 # LEVEL_3_CHILD_POS
 LEVEL_3_CHILD_POS = jnp.array([121, 13])
 
