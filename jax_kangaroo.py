@@ -32,7 +32,8 @@ RENDER_SCALE_FACTOR = 5
 SCREEN_WIDTH, SCREEN_HEIGHT = 160, 210
 PLAYER_WIDTH, PLAYER_HEIGHT = 8, 24
 ENEMY_WIDTH, ENEMY_HEIGHT = 8, 24
-FRUIT_SIZE = 8
+FRUIT_WIDTH = 8
+FRUIT_HEIGHT = 12
 
 BELL_WIDTH = 6
 BELL_HEIGHT = 11
@@ -674,8 +675,8 @@ def fruits_step(state: GameState) -> Tuple[chex.Array, chex.Array]:
             state.player.height,
             fruit_position[0],
             fruit_position[1],
-            FRUIT_SIZE,
-            FRUIT_SIZE,
+            FRUIT_WIDTH,
+            FRUIT_HEIGHT,
         )
 
         collision_condition = jnp.logical_and(fruit_collision, actives[i])
@@ -1318,8 +1319,8 @@ class Renderer:
                     (
                         int(state.level.fruit_positions[i, 0]) * RENDER_SCALE_FACTOR,
                         int(state.level.fruit_positions[i, 1]) * RENDER_SCALE_FACTOR,
-                        int(FRUIT_SIZE) * RENDER_SCALE_FACTOR,
-                        int(FRUIT_SIZE) * RENDER_SCALE_FACTOR,
+                        int(FRUIT_WIDTH) * RENDER_SCALE_FACTOR,
+                        int(FRUIT_HEIGHT) * RENDER_SCALE_FACTOR,
                     ),
                 )
 
