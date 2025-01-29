@@ -1480,9 +1480,9 @@ class Renderer_AtraJaxis:
                     self.enemy_torpedo_objects[idx] = None
         
         # update HUD elements
-        self.hud_score.text = str(int(state.score.item()))
-        self.hud_lives.text = "l" * int(state.lives.item())
-        self.hud_divers.text = "d" * int(state.divers_collected.item() % 7)
+        self.hud_score.text = str(int(state.score.item())) 
+        self.hud_lives.text = "l" * int(state.lives.item()) 
+        self.hud_divers.text = "d" * int(state.divers_collected.item() % 7) 
         self.hud_oxygen.current_value = state.oxygen.item()
         # finally, update the canvas
         self.canvas.update()
