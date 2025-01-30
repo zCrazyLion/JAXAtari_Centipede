@@ -26,12 +26,16 @@ class ResourceMonitor:
     def _get_gpu_info(self):
         try:
             result = subprocess.run(
-                ['nvidia-smi', '--query-gpu=utilization.gpu,memory.used', '--format=csv,nounits,noheader'],
+                [
+                    "nvidia-smi",
+                    "--query-gpu=utilization.gpu,memory.used",
+                    "--format=csv,nounits,noheader",
+                ],
                 capture_output=True,
-                text=True
+                text=True,
             )
             if result.returncode == 0:
-                util, mem = map(float, result.stdout.strip().split(','))
+                util, mem = map(float, result.stdout.strip().split(","))
                 return util, mem
             return 0.0, 0.0
         except:
@@ -57,14 +61,16 @@ class ResourceMonitor:
 
     def get_averages(self):
         return {
-            'cpu_avg': np.mean(self.cpu_percentages),
-            'memory_avg': np.mean(self.memory_percentages),
-            'gpu_util_avg': np.mean(self.gpu_utilization),
-            'gpu_memory_avg': np.mean(self.gpu_memory)
+            "cpu_avg": np.mean(self.cpu_percentages),
+            "memory_avg": np.mean(self.memory_percentages),
+            "gpu_util_avg": np.mean(self.gpu_utilization),
+            "gpu_memory_avg": np.mean(self.gpu_memory),
         }
 
 
-def run_parallel_jax(num_steps: int = 1_000_000, num_envs: int = 2000) -> Tuple[float, float, int, Dict]:
+def run_parallel_jax(
+    num_steps: int = 1_000_000, num_envs: int = 2000
+) -> Tuple[float, float, int, Dict]:
     monitor = ResourceMonitor()
     monitor.start()
 
@@ -92,10 +98,7 @@ def run_parallel_jax(num_steps: int = 1_000_000, num_envs: int = 2000) -> Tuple[
     start_time = time.time()
 
     (final_states, _), _ = jax.lax.scan(
-        run_one_step,
-        (states, rng_key),
-        None,
-        length=steps_per_env
+        run_one_step, (states, rng_key), None, length=steps_per_env
     )
 
     total_time = time.time() - start_time
@@ -119,7 +122,9 @@ def run_ocatari_worker(steps_per_env: int) -> int:
     return completed_steps
 
 
-def run_parallel_ocatari(num_steps: int = 1_000_000, num_envs: int = None) -> Tuple[float, float, int, Dict]:
+def run_parallel_ocatari(
+    num_steps: int = 1_000_000, num_envs: int = None
+) -> Tuple[float, float, int, Dict]:
     if num_envs is None:
         num_envs = mp.cpu_count()
 
@@ -166,29 +171,31 @@ def run_scaling_benchmarks(num_steps: int = 1_000_000):
 
 def plot_benchmark_comparison(jax_results, ocatari_results, timestamp):
     metrics = {
-        'Time (s)': (0, 'Time (seconds)'),
-        'Steps/Second': (1, 'Steps per Second'),
-        'CPU Usage (%)': (lambda x: x[3]['cpu_avg'], 'Percentage'),
-        'Memory Usage (%)': (lambda x: x[3]['memory_avg'], 'Percentage'),
-        'GPU Utilization (%)': (lambda x: x[3]['gpu_util_avg'], 'Percentage'),
-        'GPU Memory (MB)': (lambda x: x[3]['gpu_memory_avg'], 'Memory (MB)')
+        "Time (s)": (0, "Time (seconds)"),
+        "Steps/Second": (1, "Steps per Second"),
+        "CPU Usage (%)": (lambda x: x[3]["cpu_avg"], "Percentage"),
+        "Memory Usage (%)": (lambda x: x[3]["memory_avg"], "Percentage"),
+        "GPU Utilization (%)": (lambda x: x[3]["gpu_util_avg"], "Percentage"),
+        "GPU Memory (MB)": (lambda x: x[3]["gpu_memory_avg"], "Memory (MB)"),
     }
 
     # Create individual plots
     for metric_name, (metric_idx, ylabel) in metrics.items():
         plt.figure(figsize=(8, 6))
         data = []
-        for impl, results in [('JAX', jax_results), ('OCAtari', ocatari_results)]:
+        for impl, results in [("JAX", jax_results), ("OCAtari", ocatari_results)]:
             if callable(metric_idx):
                 value = metric_idx(results)
             else:
                 value = results[metric_idx]
             data.append(value)
 
-        plt.bar(['JAX', 'OCAtari'], data)
-        plt.title(f'{metric_name} Comparison')
+        plt.bar(["JAX", "OCAtari"], data)
+        plt.title(f"{metric_name} Comparison")
         plt.ylabel(ylabel)
-        plt.savefig(f'benchmark_{metric_name.lower().replace(" ", "_")}_{timestamp}.png')
+        plt.savefig(
+            f'benchmark_{metric_name.lower().replace(" ", "_")}_{timestamp}.png'
+        )
         plt.close()
 
     # Combined plot
@@ -197,27 +204,24 @@ def plot_benchmark_comparison(jax_results, ocatari_results, timestamp):
 
     for i, (metric_name, (metric_idx, ylabel)) in enumerate(metrics.items()):
         data = []
-        for impl, results in [('JAX', jax_results), ('OCAtari', ocatari_results)]:
+        for impl, results in [("JAX", jax_results), ("OCAtari", ocatari_results)]:
             if callable(metric_idx):
                 value = metric_idx(results)
             else:
                 value = results[metric_idx]
             data.append(value)
 
-        axes[i].bar(['JAX', 'OCAtari'], data)
+        axes[i].bar(["JAX", "OCAtari"], data)
         axes[i].set_title(metric_name)
         axes[i].set_ylabel(ylabel)
 
     plt.tight_layout()
-    plt.savefig(f'benchmark_combined_{timestamp}.png')
+    plt.savefig(f"benchmark_combined_{timestamp}.png")
     plt.close()
 
 
 def plot_scaling_results(cpu_workers, cpu_results, gpu_workers, gpu_results, timestamp):
-    metrics = {
-        'Time': (0, 'Time (seconds)'),
-        'Throughput': (1, 'Steps per Second')
-    }
+    metrics = {"Time": (0, "Time (seconds)"), "Throughput": (1, "Steps per Second")}
 
     # Create individual scaling plots
     for metric_name, (metric_idx, ylabel) in metrics.items():
@@ -225,27 +229,39 @@ def plot_scaling_results(cpu_workers, cpu_results, gpu_workers, gpu_results, tim
 
         # Plot CPU scaling (OCAtari)
         cpu_values = [results[metric_idx] for results in cpu_results]
-        plt.plot(cpu_workers, cpu_values, 'b-o', label='OCAtari (CPU)')
+        plt.plot(cpu_workers, cpu_values, "b-o", label="OCAtari (CPU)")
 
         # Plot GPU scaling (JAX)
         gpu_values = [results[metric_idx] for results in gpu_results]
-        plt.plot(gpu_workers, gpu_values, 'r-o', label='JAX (GPU)')
+        plt.plot(gpu_workers, gpu_values, "r-o", label="JAX (GPU)")
 
-        plt.xscale('log')
-        plt.yscale('log')
-        plt.xlabel('Number of Workers/Environments')
+        plt.xscale("log")
+        plt.yscale("log")
+        plt.xlabel("Number of Workers/Environments")
         plt.ylabel(ylabel)
-        plt.title(f'{metric_name} Scaling Comparison')
+        plt.title(f"{metric_name} Scaling Comparison")
         plt.legend()
         plt.grid(True)
 
         # Add value annotations
         for x, y in zip(cpu_workers, cpu_values):
-            plt.annotate(f'{y:.1f}', (x, y), textcoords="offset points", xytext=(0, 10), ha='center')
+            plt.annotate(
+                f"{y:.1f}",
+                (x, y),
+                textcoords="offset points",
+                xytext=(0, 10),
+                ha="center",
+            )
         for x, y in zip(gpu_workers, gpu_values):
-            plt.annotate(f'{y:.1f}', (x, y), textcoords="offset points", xytext=(0, -15), ha='center')
+            plt.annotate(
+                f"{y:.1f}",
+                (x, y),
+                textcoords="offset points",
+                xytext=(0, -15),
+                ha="center",
+            )
 
-        plt.savefig(f'scaling_{metric_name.lower()}_{timestamp}.png')
+        plt.savefig(f"scaling_{metric_name.lower()}_{timestamp}.png")
         plt.close()
 
     # Combined scaling plot
@@ -254,33 +270,50 @@ def plot_scaling_results(cpu_workers, cpu_results, gpu_workers, gpu_results, tim
     for i, (metric_name, (metric_idx, ylabel)) in enumerate(metrics.items()):
         # Plot CPU scaling
         cpu_values = [results[metric_idx] for results in cpu_results]
-        axes[i].plot(cpu_workers, cpu_values, 'b-o', label='OCAtari (CPU)')
+        axes[i].plot(cpu_workers, cpu_values, "b-o", label="OCAtari (CPU)")
 
         # Plot GPU scaling
         gpu_values = [results[metric_idx] for results in gpu_results]
-        axes[i].plot(gpu_workers, gpu_values, 'r-o', label='JAX (GPU)')
+        axes[i].plot(gpu_workers, gpu_values, "r-o", label="JAX (GPU)")
 
-        axes[i].set_xscale('log')
-        axes[i].set_yscale('log')
-        axes[i].set_xlabel('Number of Workers/Environments')
+        axes[i].set_xscale("log")
+        axes[i].set_yscale("log")
+        axes[i].set_xlabel("Number of Workers/Environments")
         axes[i].set_ylabel(ylabel)
-        axes[i].set_title(f'{metric_name} Scaling')
+        axes[i].set_title(f"{metric_name} Scaling")
         axes[i].legend()
         axes[i].grid(True)
 
         # Add value annotations
         for x, y in zip(cpu_workers, cpu_values):
-            axes[i].annotate(f'{y:.1f}', (x, y), textcoords="offset points", xytext=(0, 10), ha='center')
+            axes[i].annotate(
+                f"{y:.1f}",
+                (x, y),
+                textcoords="offset points",
+                xytext=(0, 10),
+                ha="center",
+            )
         for x, y in zip(gpu_workers, gpu_values):
-            axes[i].annotate(f'{y:.1f}', (x, y), textcoords="offset points", xytext=(0, -15), ha='center')
+            axes[i].annotate(
+                f"{y:.1f}",
+                (x, y),
+                textcoords="offset points",
+                xytext=(0, -15),
+                ha="center",
+            )
 
     plt.tight_layout()
-    plt.savefig(f'scaling_combined_{timestamp}.png')
+    plt.savefig(f"scaling_combined_{timestamp}.png")
     plt.close()
 
 
-def print_benchmark_results(name: str, total_time: float, steps_per_second: float,
-                            total_steps: int, resource_usage: Dict):
+def print_benchmark_results(
+    name: str,
+    total_time: float,
+    steps_per_second: float,
+    total_steps: int,
+    resource_usage: Dict,
+):
     print(f"\n{name} Benchmark Results:")
     print(f"Total steps completed: {total_steps:,}")
     print(f"Total time: {total_time:.2f} seconds")

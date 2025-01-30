@@ -22,7 +22,7 @@ BLOCK_COLORS = [
     (180, 122, 48),  # Orange
     (162, 162, 42),  # Yellow
     (72, 160, 72),  # Green
-    (66, 72, 200)  # Blue
+    (66, 72, 200),  # Blue
 ]
 
 # Object sizes and positions
@@ -38,7 +38,7 @@ WALL_SIDE_WIDTH = 8
 # Initial positions
 PLAYER_START_X = 99
 PLAYER_START_Y = 189
-BALL_START_X = 127 # TODO add other starting positions and directions
+BALL_START_X = 127  # TODO add other starting positions and directions
 BALL_START_Y = 113
 
 # Game boundaries (adjusted for wall width)
@@ -77,6 +77,7 @@ FIRE = 1
 RIGHT = 2
 LEFT = 3
 
+
 def get_human_action() -> chex.Array:
     """Records keyboard input and returns the corresponding action."""
     keys = pygame.key.get_pressed()
@@ -89,7 +90,8 @@ def get_human_action() -> chex.Array:
     else:
         return jnp.array(NOOP)
 
-def player_step(state_player_x, action): # TODO add acceleration and deceleration
+
+def player_step(state_player_x, action):  # TODO add acceleration and deceleration
     """Updates the player position based on the action."""
     move_right = action == RIGHT
     move_left = action == LEFT
@@ -98,31 +100,25 @@ def player_step(state_player_x, action): # TODO add acceleration and deceleratio
         move_right,
         jnp.minimum(state_player_x + 2, PLAYER_X_MAX),
         jnp.where(
-            move_left,
-            jnp.maximum(state_player_x - 2, PLAYER_X_MIN),
-            state_player_x
-        )
+            move_left, jnp.maximum(state_player_x - 2, PLAYER_X_MIN), state_player_x
+        ),
     )
     return player_x
 
 
 def ball_step(state, game_started, player_x):
     """Updates the ball's position, handles wall collisions, and paddle bounces."""
-    ball_x = jnp.where(
-        game_started,
-        state.ball_x + state.ball_vel_x,
-        BALL_START_X
-    )
-    ball_y = jnp.where(
-        game_started,
-        state.ball_y + state.ball_vel_y,
-        BALL_START_Y
-    )
+    ball_x = jnp.where(game_started, state.ball_x + state.ball_vel_x, BALL_START_X)
+    ball_y = jnp.where(game_started, state.ball_y + state.ball_vel_y, BALL_START_Y)
 
     # Ball collision with side walls
     wall_left = ball_x <= WALL_SIDE_WIDTH
     wall_right = ball_x >= 160 - WALL_SIDE_WIDTH - BALL_SIZE[0]
-    ball_x = jnp.where(wall_left, WALL_SIDE_WIDTH, jnp.where(wall_right, 160 - WALL_SIDE_WIDTH - BALL_SIZE[0], ball_x))
+    ball_x = jnp.where(
+        wall_left,
+        WALL_SIDE_WIDTH,
+        jnp.where(wall_right, 160 - WALL_SIDE_WIDTH - BALL_SIZE[0], ball_x),
+    )
     ball_vel_x = jnp.where(wall_left | wall_right, -state.ball_vel_x, state.ball_vel_x)
 
     # Ball collision with top wall
@@ -134,33 +130,44 @@ def ball_step(state, game_started, player_x):
     paddle_hit = jnp.logical_and(
         ball_y + BALL_SIZE[1] >= PLAYER_START_Y,
         jnp.logical_and(
-            ball_x + BALL_SIZE[0] >= player_x,
-            ball_x <= player_x + PLAYER_SIZE[0]
-        )
+            ball_x + BALL_SIZE[0] >= player_x, ball_x <= player_x + PLAYER_SIZE[0]
+        ),
     )
 
     section_width = PLAYER_SIZE[0] / 5  # Divide paddle into 5 sections
     hit_section = jnp.where(
-        paddle_hit,
-        jnp.floor((ball_x - player_x) / section_width).astype(jnp.int32),
-        0
+        paddle_hit, jnp.floor((ball_x - player_x) / section_width).astype(jnp.int32), 0
     )
 
     # Adjust ball velocity based on hit section
     ball_vel_x = jnp.where(
         paddle_hit,
-        jnp.where(hit_section == 0, -2,  # Leftmost section
-                 jnp.where(hit_section == 1, -1,  # Second section from left
-                          jnp.where(hit_section == 3, 1,  # Second section from right
-                                   jnp.where(hit_section == 4, 2, ball_vel_x)))),  # Rightmost section
-        ball_vel_x
+        jnp.where(
+            hit_section == 0,
+            -2,  # Leftmost section
+            jnp.where(
+                hit_section == 1,
+                -1,  # Second section from left
+                jnp.where(
+                    hit_section == 3,
+                    1,  # Second section from right
+                    jnp.where(hit_section == 4, 2, ball_vel_x),
+                ),
+            ),
+        ),  # Rightmost section
+        ball_vel_x,
     )
 
-    ball_vel_y = jnp.where(paddle_hit, -jnp.abs(ball_vel_y), ball_vel_y)  # Always bounce upwards
+    ball_vel_y = jnp.where(
+        paddle_hit, -jnp.abs(ball_vel_y), ball_vel_y
+    )  # Always bounce upwards
 
     return ball_x, ball_y, ball_vel_x, ball_vel_y
 
-def check_block_collision(state, ball_x, ball_y, ball_vel_x, ball_vel_y): # TODO better bouncing and ball speed
+
+def check_block_collision(
+    state, ball_x, ball_y, ball_vel_x, ball_vel_y
+):  # TODO better bouncing and ball speed
     """Checks for block collisions and updates the state."""
 
     def collision_logic(carry, block_idx):
@@ -174,14 +181,12 @@ def check_block_collision(state, ball_x, ball_y, ball_vel_x, ball_vel_y): # TODO
             blocks[row, col] == 1,
             jnp.logical_and(
                 jnp.logical_and(
-                    ball_x <= block_x + BLOCK_SIZE[0],
-                    ball_x + BALL_SIZE[0] >= block_x
+                    ball_x <= block_x + BLOCK_SIZE[0], ball_x + BALL_SIZE[0] >= block_x
                 ),
                 jnp.logical_and(
-                    ball_y <= block_y + BLOCK_SIZE[1],
-                    ball_y + BALL_SIZE[1] >= block_y
-                )
-            )
+                    ball_y <= block_y + BLOCK_SIZE[1], ball_y + BALL_SIZE[1] >= block_y
+                ),
+            ),
         )
 
         # Collision side detection
@@ -204,7 +209,7 @@ def check_block_collision(state, ball_x, ball_y, ball_vel_x, ball_vel_y): # TODO
     (new_blocks, new_score, ball_x, ball_y, ball_vel_x, ball_vel_y), _ = jax.lax.scan(
         collision_logic,
         (state.blocks, state.score, ball_x, ball_y, ball_vel_x, ball_vel_y),
-        jnp.arange(NUM_ROWS * BLOCKS_PER_ROW)
+        jnp.arange(NUM_ROWS * BLOCKS_PER_ROW),
     )
 
     return new_blocks, new_score, ball_x, ball_y, ball_vel_x, ball_vel_y
@@ -226,7 +231,7 @@ class Game:
             score=jnp.array(0),
             lives=jnp.array(NUM_LIVES),
             step_counter=jnp.array(0),
-            game_started=jnp.array(0)
+            game_started=jnp.array(0),
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -237,13 +242,11 @@ class Game:
 
         # Pass the game_started flag to ball_step
         ball_x, ball_y, ball_vel_x, ball_vel_y = ball_step(
-            state,
-            game_started,
-            player_x
+            state, game_started, player_x
         )
 
-        new_blocks, new_score, ball_x, ball_y, ball_vel_x, ball_vel_y = check_block_collision(
-            state, ball_x, ball_y, ball_vel_x, ball_vel_y
+        new_blocks, new_score, ball_x, ball_y, ball_vel_x, ball_vel_y = (
+            check_block_collision(state, ball_x, ball_y, ball_vel_x, ball_vel_y)
         )
 
         life_lost = ball_y >= WINDOW_HEIGHT // 3
@@ -265,7 +268,7 @@ class Game:
             score=new_score,
             lives=new_lives,
             step_counter=state.step_counter + 1,
-            game_started=game_started
+            game_started=game_started,
         )
 
 
@@ -282,28 +285,30 @@ class Renderer:
 
         # Draw walls
         # Top wall
-        pygame.draw.rect(self.screen, WALL_COLOR, (
-            0,
-            WALL_TOP_Y * 3,
-            WINDOW_WIDTH,
-            WALL_TOP_HEIGHT * 3
-        ))
+        pygame.draw.rect(
+            self.screen,
+            WALL_COLOR,
+            (0, WALL_TOP_Y * 3, WINDOW_WIDTH, WALL_TOP_HEIGHT * 3),
+        )
 
         # Left wall
-        pygame.draw.rect(self.screen, WALL_COLOR, (
-            0,
-            WALL_TOP_Y * 3,
-            WALL_SIDE_WIDTH * 3,
-            WINDOW_HEIGHT
-        ))
+        pygame.draw.rect(
+            self.screen,
+            WALL_COLOR,
+            (0, WALL_TOP_Y * 3, WALL_SIDE_WIDTH * 3, WINDOW_HEIGHT),
+        )
 
         # Right wall
-        pygame.draw.rect(self.screen, WALL_COLOR, (
-            WINDOW_WIDTH - WALL_SIDE_WIDTH * 3,
-            WALL_TOP_Y * 3,
-            WALL_SIDE_WIDTH * 3,
-            WINDOW_HEIGHT
-        ))
+        pygame.draw.rect(
+            self.screen,
+            WALL_COLOR,
+            (
+                WINDOW_WIDTH - WALL_SIDE_WIDTH * 3,
+                WALL_TOP_Y * 3,
+                WALL_SIDE_WIDTH * 3,
+                WINDOW_HEIGHT,
+            ),
+        )
 
         # Draw blocks
         for row in range(NUM_ROWS):
@@ -313,7 +318,7 @@ class Renderer:
                         (BLOCK_START_X + col * BLOCK_SIZE[0]) * 3,
                         (BLOCK_START_Y + row * BLOCK_SIZE[1]) * 3,
                         BLOCK_SIZE[0] * 3,
-                        BLOCK_SIZE[1] * 3
+                        BLOCK_SIZE[1] * 3,
                     )
                     pygame.draw.rect(self.screen, BLOCK_COLORS[row], block_rect)
 
@@ -322,7 +327,7 @@ class Renderer:
             int(state.player_x) * 3,
             PLAYER_START_Y * 3,
             PLAYER_SIZE[0] * 3,
-            PLAYER_SIZE[1] * 3
+            PLAYER_SIZE[1] * 3,
         )
         pygame.draw.rect(self.screen, PLAYER_COLOR, player_rect)
 
@@ -332,7 +337,7 @@ class Renderer:
                 int(state.ball_x) * 3,
                 int(state.ball_y) * 3,
                 BALL_SIZE[0] * 3,
-                BALL_SIZE[1] * 3
+                BALL_SIZE[1] * 3,
             )
             pygame.draw.rect(self.screen, BALL_COLOR, ball_rect)
 
