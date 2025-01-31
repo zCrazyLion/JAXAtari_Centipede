@@ -38,6 +38,8 @@ def flipSprite(sprite, flip_horizontal=False, flip_vertical=False):
 
 def get_sprite_frame(frames, frame_idx, flip_horizontal=False, flip_vertical=False, loop=True):
     frame_idx_converted = jax.lax.cond(loop, lambda x: x % len(frames), lambda x: x, frame_idx)
+    if frame_idx_converted < 0 or frame_idx_converted >= len(frames):
+        return jnp.zeros((1,1,4))  # Return a blank frame if the index is out of bounds
     original = frames[frame_idx_converted] # get the frame as a jnp array
     rendered = flipSprite(original, flip_horizontal, flip_vertical)
     # Apply vertical flip
@@ -117,7 +119,7 @@ if __name__ == "__main__":
         raster = empty_frame
         # render the 1st frame at (0, 0)
         sub_sprite = [sub1,sub1,sub1,sub1,sub2,sub2,sub2,sub2,sub3,sub3, sub3,sub3]
-        sub_frame = get_sprite_frame(sub_sprite, frame_idx, loop=True)
+        sub_frame = get_sprite_frame(sub_sprite, frame_idx, loop=False)
         shark_sprite = [shark1, shark1, shark2, shark2]
         shark_frame = get_sprite_frame(shark_sprite, frame_idx, loop=True)
         raster = render_at(raster, 140, 140, sub_frame)
