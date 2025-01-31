@@ -1242,8 +1242,6 @@ class Renderer_AtraJaxis:
         self.scaling_factor = 3
         pygame.init()
         self.win = pygame.display.set_mode((self.window_width*self.scaling_factor, self.window_height*self.scaling_factor))
-
-        self.screen = pygame.display.set_mode((self.window_width*self.scaling_factor, self.window_height*self.scaling_factor))
         pygame.display.set_caption("Seaquest")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.Font(None, 36)
