@@ -75,8 +75,6 @@ def update_pygame(pygame_screen, raster, SCALING_FACTOR=3, WIDTH=400, HEIGHT=300
 
     
     # Convert to Pygame surface and scale to screen size
-
-
     frame_surface = pygame.surfarray.make_surface(raster)
     frame_surface = pygame.transform.scale(frame_surface, (WIDTH * SCALING_FACTOR, HEIGHT * SCALING_FACTOR))
 
