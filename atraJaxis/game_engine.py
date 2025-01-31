@@ -86,9 +86,6 @@ if __name__ == "__main__":
     sub1 = loadFrame("./atraJaxis/test_frames/1.npy")
     sub2 = loadFrame("./atraJaxis/test_frames/2.npy")
     sub3 = loadFrame("./atraJaxis/test_frames/3.npy")
-    
-    def update():
-        pass
 
     # render an 2d RGBA array in pygame and update at a frame rate of 60fps
     pygame.init()
@@ -110,7 +107,7 @@ if __name__ == "__main__":
         # render the frame
         raster = empty_frame
         # render the 1st frame at (0, 0)
-        sub_frame = get_sprite_frame([sub1, sub2, sub3], frame_idx, loop=True)
+        sub_frame = get_sprite_frame([sub1,sub1,sub1,sub1, sub2,sub2,sub2,sub2,sub3,sub3, sub3,sub3], frame_idx, loop=True)
         raster = render_at(raster, 140, 140, sub_frame)
         update_pygame(screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
         frame_idx += 1
