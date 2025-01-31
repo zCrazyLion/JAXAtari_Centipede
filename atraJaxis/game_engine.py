@@ -58,10 +58,10 @@ def render_at(raster, x, y, sprite):
     sprite_crop = sprite[:, :, :3]  # Always take full sprite RGB channels
     alpha = sprite[:, :, 3:] / 255  # Alpha channel normalization
 
-    # Alpha blending
-    blended_crop = raster_crop * (1 - alpha) + sprite_crop * alpha
+    # Alpha blending (this should correctly handle transparency)
+    blended_crop = sprite_crop * (alpha) + raster_crop * (1 - alpha)
 
-    # Dynamically update raster
+    # Dynamically update raster with blended crop
     new_raster = lax.dynamic_update_slice(raster, blended_crop, (y, x, 0))
 
     return new_raster
@@ -71,7 +71,11 @@ def update_pygame(pygame_screen, raster, SCALING_FACTOR=3, WIDTH=400, HEIGHT=300
 
     # Convert JAX array to NumPy and ensure uint8 format
     raster = np.array(raster)  # Convert from JAX to NumPy
-    raster = (raster * 255).astype(np.uint8)  # Scale from [0,1] float to [0,255] uint8
+    raster = raster.astype(np.uint8) # Ensure uint8 format
+
+    
+    # Convert to Pygame surface and scale to screen size
+
 
     frame_surface = pygame.surfarray.make_surface(raster)
     frame_surface = pygame.transform.scale(frame_surface, (WIDTH * SCALING_FACTOR, HEIGHT * SCALING_FACTOR))
@@ -80,12 +84,17 @@ def update_pygame(pygame_screen, raster, SCALING_FACTOR=3, WIDTH=400, HEIGHT=300
     pygame.display.flip()
 
 
+
+
     
 if __name__ == "__main__":
 
     sub1 = loadFrame("./atraJaxis/test_frames/1.npy")
     sub2 = loadFrame("./atraJaxis/test_frames/2.npy")
     sub3 = loadFrame("./atraJaxis/test_frames/3.npy")
+    
+    shark1 = loadFrame("./sprites/seaquest/shark/1.npy")
+    shark2 = loadFrame("./sprites/seaquest/shark/2.npy")
 
     # render an 2d RGBA array in pygame and update at a frame rate of 60fps
     pygame.init()
@@ -107,8 +116,12 @@ if __name__ == "__main__":
         # render the frame
         raster = empty_frame
         # render the 1st frame at (0, 0)
-        sub_frame = get_sprite_frame([sub1,sub1,sub1,sub1, sub2,sub2,sub2,sub2,sub3,sub3, sub3,sub3], frame_idx, loop=True)
+        sub_sprite = [sub1,sub1,sub1,sub1,sub2,sub2,sub2,sub2,sub3,sub3, sub3,sub3]
+        sub_frame = get_sprite_frame(sub_sprite, frame_idx, loop=True)
+        shark_sprite = [shark1, shark1, shark2, shark2]
+        shark_frame = get_sprite_frame(shark_sprite, frame_idx, loop=True)
         raster = render_at(raster, 140, 140, sub_frame)
+        raster = render_at(raster, 100, 100, shark_frame)
         update_pygame(screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
         frame_idx += 1
         clock.tick(60)
