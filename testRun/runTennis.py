@@ -6,16 +6,17 @@ import os
 # Initialize ALE
 ale = ale_py.ALEInterface()
 
-# Set the path to your Boxing ROM file
-rom_path = "./testRun/Boxing.bin"
+# Set the path to your ROM file
+rom_path = "./testRun/tennis.bin"
 ale.loadROM(rom_path)
 
-# Create a directory for screenshots
-screenshot_dir = "screenshots"
+# Create a directory for screenshots (stored as NumPy arrays)
+screenshot_dir = "./frames_tennis"
 os.makedirs(screenshot_dir, exist_ok=True)
 
 # Counter for frame filenames
 frame_counter = 1
+
 def get_action_from_key(key):
     """Map keyboard keys to ALE actions."""
     key_action_map = {
@@ -23,7 +24,7 @@ def get_action_from_key(key):
         pygame.K_DOWN: 5,    # Move Down
         pygame.K_LEFT: 4,    # Move Left
         pygame.K_RIGHT: 3,   # Move Right
-        pygame.K_SPACE: 1    # Punch
+        pygame.K_SPACE: 1    # Fire torpedoes 
     }
     return key_action_map.get(key, 0)  # Default to no-op
 
@@ -38,17 +39,22 @@ def save_frame_as_numpy(frame):
     np.save(filepath, frame)
     print(f"Frame saved as NumPy array: {filepath}")
     frame_counter += 1
+# Add a global set to track pressed keys
+pressed_keys = set()
 
 def main():
     pygame.init()
     screen_width, screen_height = 160 * 4, 210 * 4
     screen = pygame.display.set_mode((screen_width, screen_height))
-    pygame.display.set_caption("Boxing Game")
+    base_caption = "Seaquest Game"
+    pygame.display.set_caption(base_caption)
     clock = pygame.time.Clock()
 
     ale.reset_game()
 
     running = True
+    paused = False
+
     while running:
         frame = get_current_render()
         frame_surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
@@ -61,18 +67,35 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_s:  # Save screenshot
+                pressed_keys.add(event.key)
+                if event.key == pygame.K_s:  # Save frame as NumPy array
                     save_frame_as_numpy(frame)
+                elif event.key == pygame.K_p:  # Toggle pause
+                    paused = not paused
+                    pygame.display.set_caption(f"{base_caption} (Paused)" if paused else base_caption)
+                elif paused and event.key == pygame.K_f:  # Step one frame
+                    action = ale.act(action)  # Execute one frame of the game
+                    print("Stepped one frame.")
                 else:
                     action = get_action_from_key(event.key)
+            elif event.type == pygame.KEYUP:
+                if event.key in pressed_keys:
+                    pressed_keys.remove(event.key)
 
-        ale.act(action)
+        if not paused:
+            # Determine the action based on pressed keys
+            for key in pressed_keys:
+                action = get_action_from_key(key)
+                if action != 0:  # If any action is mapped, use it
+                    break
+
+            ale.act(action)
 
         if ale.game_over():
             print("Game over!")
             ale.reset_game()
 
-        clock.tick(5)  # Limit to 30 FPS
+        clock.tick(60)  # Limit to 60 FPS
 
     pygame.quit()
 
