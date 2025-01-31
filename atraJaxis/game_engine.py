@@ -44,7 +44,9 @@ def get_sprite_frame(frames, frame_idx, flip_horizontal=False, flip_vertical=Fal
     return rendered
 
 @jax.jit
-def render_at(raster, x, y, sprite):
+def render_at(raster, x, y, sprite, destroyed=False):
+    if destroyed:
+        return raster
     # Get the dimensions of the sprite
     sprite_height, sprite_width, _ = sprite.shape
     raster_height, raster_width, _ = raster.shape
