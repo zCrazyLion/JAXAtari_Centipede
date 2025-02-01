@@ -27,28 +27,27 @@ def flipSprite(sprite, flip_horizontal=False, flip_vertical=False):
     # Use jnp.transpose for JAX compatibility
     transposed = jnp.transpose(sprite, (1, 0, 2))  # Transpose x and y axes
 
-    if flip_horizontal:
+    if flip_vertical:
         return transposed[:, ::-1, :]
-    elif flip_vertical:
+    elif flip_horizontal:
         return transposed[::-1, :, :]
     else:
         return transposed
 
 
 
-def get_sprite_frame(frames, frame_idx, flip_horizontal=False, flip_vertical=False, loop=True):
+def get_sprite_frame(frames, frame_idx, loop=True):
     frame_idx_converted = jax.lax.cond(loop, lambda x: x % len(frames), lambda x: x, frame_idx)
     if frame_idx_converted < 0 or frame_idx_converted >= len(frames):
         return jnp.zeros((1,1,4))  # Return a blank frame if the index is out of bounds
-    original = frames[frame_idx_converted] # get the frame as a jnp array
-    rendered = flipSprite(original, flip_horizontal, flip_vertical)
-    # Apply vertical flip
-    return rendered
+    return frames[frame_idx_converted] # get the frame as a jnp array
 
-@jax.jit
-def render_at(raster, x, y, sprite, destroyed=False):
+
+@partial(jax.jit, static_argnames=["flip_horizontal", "flip_vertical"])
+def render_at(raster, x, y, sprite_frame, flip_horizontal=False, flip_vertical=False, destroyed=False):
     if destroyed:
         return raster
+    sprite = flipSprite(sprite_frame, flip_horizontal, flip_vertical)
     # Get the dimensions of the sprite
     sprite_height, sprite_width, _ = sprite.shape
     raster_height, raster_width, _ = raster.shape
@@ -91,13 +90,14 @@ def update_pygame(pygame_screen, raster, SCALING_FACTOR=3, WIDTH=400, HEIGHT=300
     
 if __name__ == "__main__":
 
-    sub1 = loadFrame("./atraJaxis/test_frames/1.npy")
-    sub2 = loadFrame("./atraJaxis/test_frames/2.npy")
-    sub3 = loadFrame("./atraJaxis/test_frames/3.npy")
-    
+    sub1 = loadFrame("./sprites/seaquest/player_sub/1.npy")
+    sub2 = loadFrame("./sprites/seaquest/player_sub/2.npy")
+    sub3 = loadFrame("./sprites/seaquest/player_sub/3.npy")
+    sub_sprite = [sub1,sub1,sub1,sub1,sub2,sub2,sub2,sub2,sub3,sub3, sub3,sub3]
+
     shark1 = loadFrame("./sprites/seaquest/shark/1.npy")
     shark2 = loadFrame("./sprites/seaquest/shark/2.npy")
-
+    shark_sprite = [shark1, shark1, shark2, shark2]
     # render an 2d RGBA array in pygame and update at a frame rate of 60fps
     pygame.init()
     
@@ -110,19 +110,18 @@ if __name__ == "__main__":
     running = True
     frame_idx = 0
     # establish a frame of WIDTH x HEIGHT
-    empty_frame = np.zeros((WIDTH, HEIGHT, 3))
+
+
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
         # render the frame
-        raster = empty_frame
+        raster = jnp.zeros((WIDTH, HEIGHT, 3))
         # render the 1st frame at (0, 0)
-        sub_sprite = [sub1,sub1,sub1,sub1,sub2,sub2,sub2,sub2,sub3,sub3, sub3,sub3]
-        sub_frame = get_sprite_frame(sub_sprite, frame_idx, loop=False)
-        shark_sprite = [shark1, shark1, shark2, shark2]
+        sub_frame = get_sprite_frame(sub_sprite, frame_idx, loop=True)
         shark_frame = get_sprite_frame(shark_sprite, frame_idx, loop=True)
-        raster = render_at(raster, 140, 140, sub_frame)
+        raster = render_at(raster, 140, 140, sub_frame, flip_horizontal=True)
         raster = render_at(raster, 100, 100, shark_frame)
         update_pygame(screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
         frame_idx += 1

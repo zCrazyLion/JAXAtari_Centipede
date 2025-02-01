@@ -4,19 +4,17 @@ import jax
 import jax.numpy as jnp
 import chex
 import pygame
-from atraJaxis.canvas import Canvas
-from atraJaxis.sprite import Sprite
-from atraJaxis.layer import Layer
-from atraJaxis.gameObject import GameObject
-from atraJaxis.spriteLoader import SpriteLoader
-from atraJaxis.renderMode import RenderMode
-from atraJaxis.hud import TextHUD, BarHUD
-
+import atraJaxis as aj
+import numpy as np
 
 
 # Game Constants
 WINDOW_WIDTH = 160 * 3
 WINDOW_HEIGHT = 210 * 3
+
+WIDTH = 160
+HEIGHT = 210
+SCALING_FACTOR = 3
 
 # Colors
 BACKGROUND_COLOR = (0, 0, 139)  # Dark blue for water
@@ -1105,385 +1103,313 @@ class Game:
 
         # Return unchanged state for now
         return final_state
-
-
-class Renderer:
-    def __init__(self):
-        """Initialize the renderer"""
-        pygame.init()
-        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pygame.display.set_caption("Seaquest")
-        self.clock = pygame.time.Clock()
-        self.font = pygame.font.Font(None, 36)
-
-    def draw_water_gradient(self):
-        """Draw water surface gradient effect"""
-        surface_gradient = pygame.Surface((WINDOW_WIDTH, 46))
-        for i in range(46):
-            alpha = 255 - (i * 8)
-            color = (*BACKGROUND_COLOR[:2], min(255, BACKGROUND_COLOR[2] + 50))
-            pygame.draw.line(surface_gradient, color, (0, i), (WINDOW_WIDTH, i))
-        self.screen.blit(surface_gradient, (0, 0))
-
-    def draw_oxygen_bar(self, oxygen_value):
-        """Draw oxygen bar and text"""
-        # Draw "OXYGEN" text
-        text = self.font.render("OXYGEN", True, OXYGEN_TEXT_COLOR)
-        self.screen.blit(text, (15 * 3, 170 * 3))
-
-        # Draw oxygen bar
-        oxygen_width = int((float(oxygen_value) / 63.0) * 180)
-        oxygen_rect = pygame.Rect(49 * 3, 170 * 3, oxygen_width, 15)
-        pygame.draw.rect(self.screen, OXYGEN_BAR_COLOR, oxygen_rect)
-
-    def draw_score_lives_and_divers(self, score, lives, divers):
-        """Draw score, lives counter and collected divers"""
-        # Draw score on left
-        score_text = self.font.render(str(int(score)), True, SCORE_COLOR)
-        self.screen.blit(score_text, (10, 10))
-
-        # Draw lives in middle
-        lives_text = self.font.render(f"Lives: {int(lives)}", True, SCORE_COLOR)
-        self.screen.blit(lives_text, (WINDOW_WIDTH - 200, 10))
-
-        # Draw diver count on right
-        divers_text = self.font.render(f"Divers: {int(divers)}/6", True, SCORE_COLOR)
-        self.screen.blit(divers_text, (WINDOW_WIDTH - 100, 40))
-
-    def draw_enemies(self, shark_positions, sub_positions):
-        """Draw sharks and submarines"""
-        # Draw sharks
-        for pos in shark_positions:
-            if pos[0] > 0:  # Only draw if x position is valid
-                shark_rect = pygame.Rect(
-                    int(pos[0]) * 3, int(pos[1]) * 3,
-                    SHARK_SIZE[0] * 3, SHARK_SIZE[1] * 3
-                )
-                pygame.draw.rect(self.screen, SHARK_COLOR, shark_rect)
-
-        # Draw submarines
-        for pos in sub_positions:
-            if pos[0] > 0:  # Only draw if x position is valid
-                sub_rect = pygame.Rect(
-                    int(pos[0]) * 3, int(pos[1]) * 3,
-                    ENEMY_SUB_SIZE[0] * 3, ENEMY_SUB_SIZE[1] * 3
-                )
-                pygame.draw.rect(self.screen, ENEMY_SUB_COLOR, sub_rect)
-
-    def draw_divers(self, diver_positions):
-        """Draw divers"""
-        for pos in diver_positions:
-            if pos[0] > 0:  # Only draw if x position is valid
-                diver_rect = pygame.Rect(
-                    int(pos[0]) * 3, int(pos[1]) * 3,
-                    DIVER_SIZE[0] * 3, DIVER_SIZE[1] * 3
-                )
-                pygame.draw.rect(self.screen, DIVER_COLOR, diver_rect)
-
-    def draw_player(self, x, y):
-        """Draw player submarine"""
-        player_rect = pygame.Rect(
-            int(x) * 3, int(y) * 3,
-            PLAYER_SIZE[0] * 3, PLAYER_SIZE[1] * 3
-        )
-        pygame.draw.rect(self.screen, PLAYER_COLOR, player_rect)
-
-    def draw_missiles(self, missile_positions):
-        """Draw missiles
-        Args:
-            missile_positions: Array of shape (N, 3) or (3,) containing missile data
-                where each missile has [x, y, direction]
-        """
-        # check if there is only a single missile (i.e. not multiple 3 element arrays)
-        if len(missile_positions.shape) == 1:
-            # Handle single missile case - reshape to match expected dimensions
-            missile_positions = jnp.expand_dims(missile_positions, axis=0)
-
-        """Draw missiles"""
-        for pos in missile_positions:
-            # Only draw if missile exists (x position > 0)
-            if pos[0] > 0:
-                missile_rect = pygame.Rect(
-                    int(pos[0]) * 3,  # x position
-                    int(pos[1]) * 3,  # y position
-                    MISSILE_SIZE[0] * 3,
-                    MISSILE_SIZE[1] * 3
-                )
-                pygame.draw.rect(self.screen, PLAYER_COLOR, missile_rect)
-
-    def render(self, state: State):
-        """Main render method that draws everything"""
-        # Clear screen
-        self.screen.fill(BACKGROUND_COLOR)
-
-        # Draw background effects
-        self.draw_water_gradient()
-
-        # Draw game objects
-        self.draw_divers(state.diver_positions)
-        self.draw_enemies(state.shark_positions, state.sub_positions)
-        self.draw_missiles(state.player_missile_position)
-        self.draw_missiles(state.enemy_missile_positions)
-        self.draw_player(state.player_x, state.player_y)
-
-        # Draw HUD elements
-        self.draw_oxygen_bar(state.oxygen)
-        self.draw_score_lives_and_divers(state.score, state.lives, state.divers_collected)
-
-        # Update display
-        pygame.display.flip()
-        self.clock.tick(60)
     
 class Renderer_AtraJaxis:
     def __init__(self):
-        # initialize renderer
-        self.window_width = 160
-        self.window_height = 210
-        self.scaling_factor = 3
-        pygame.init()
-        self.win = pygame.display.set_mode((self.window_width*self.scaling_factor, self.window_height*self.scaling_factor))
-        pygame.display.set_caption("Seaquest")
-        self.clock = pygame.time.Clock()
-        self.font = pygame.font.Font(None, 36)
-        running = True
-        
-        # initialize sprites
-        self.spriteLoader = SpriteLoader()
-        
+        # read sprite frames from files
         # background
-        self.spriteLoader.loadFrame('sprites\seaquest\\bg\\1.npy', name='bg1')
-        self.spriteLoader.loadSprite('bg', [('bg1', 1)], RenderMode.LOOP)
+        bg1 = aj.loadFrame('sprites\seaquest\\bg\\1.npy')
+        self.sprite_bg = [bg1]
+    
         
         # player submarine
-        self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\1.npy', name='pl_sub1')
-        self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\2.npy', name='pl_sub2')
-        self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\3.npy', name='pl_sub3')
-        self.spriteLoader.loadSprite('player_sub', [('pl_sub1', 4), ('pl_sub2', 4), ('pl_sub3', 4)], RenderMode.LOOP)
-        
-        # enemy submarine
-        self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\1.npy', name='en_sub1')
-        self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\2.npy', name='en_sub2')
-        self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\3.npy', name='en_sub3')
-        self.spriteLoader.loadSprite('enemy_sub', [('en_sub1', 4), ('en_sub2', 4), ('en_sub3', 4)], RenderMode.LOOP)
-        
-        # enemy shark
-        self.spriteLoader.loadFrame('sprites\seaquest\shark\\1.npy', name='shark1')
-        self.spriteLoader.loadFrame('sprites\seaquest\shark\\2.npy', name='shark2')
-        self.spriteLoader.loadSprite('shark', [('shark1', 16), ('shark2', 8)], RenderMode.LOOP)
+        pl_sub1 = aj.loadFrame('sprites\seaquest\player_sub\\1.npy')
+        pl_sub2 = aj.loadFrame('sprites\seaquest\player_sub\\2.npy')
+        pl_sub3 = aj.loadFrame('sprites\seaquest\player_sub\\3.npy')
+        self.sprite_pl_sub = [pl_sub1, pl_sub1, pl_sub1, pl_sub1, pl_sub2, pl_sub2, pl_sub2, pl_sub2, pl_sub3, pl_sub3, pl_sub3, pl_sub3]
         
         # diver
-        self.spriteLoader.loadFrame('sprites\seaquest\diver\\1.npy', name='diver1')
-        self.spriteLoader.loadFrame('sprites\seaquest\diver\\2.npy', name='diver2')
-        self.spriteLoader.loadSprite('diver', [('diver1', 16), ('diver2', 8)], RenderMode.LOOP)
+        diver1 = aj.loadFrame('sprites\seaquest\diver\\1.npy')
+        diver2 = aj.loadFrame('sprites\seaquest\diver\\2.npy')
+        self.sprite_diver = [diver1, diver1, diver1, diver1, diver1, diver1, diver1, diver1, \
+            diver1, diver1, diver1, diver1, diver1, diver1, diver1, diver1, \
+                diver2, diver2, diver2, diver2]
+    #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\1.npy', name='pl_sub1')
+    #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\2.npy', name='pl_sub2')
+    #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\3.npy', name='pl_sub3')
+    #     self.spriteLoader.loadSprite('player_sub', [('pl_sub1', 4), ('pl_sub2', 4), ('pl_sub3', 4)], RenderMode.LOOP)
         
-        # player torpedo
-        self.spriteLoader.loadFrame('sprites\seaquest\player_torp\\1.npy', name='pl_torpedo1')
-        self.spriteLoader.loadSprite('player_torpedo', [('pl_torpedo1', 1)], RenderMode.LOOP)
+    #     # enemy submarine
+    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\1.npy', name='en_sub1')
+    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\2.npy', name='en_sub2')
+    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\3.npy', name='en_sub3')
+    #     self.spriteLoader.loadSprite('enemy_sub', [('en_sub1', 4), ('en_sub2', 4), ('en_sub3', 4)], RenderMode.LOOP)
         
-        # enemy torpedo
-        self.spriteLoader.loadFrame('sprites\seaquest\enemy_torp\\1.npy', name='en_torpedo1')
-        self.spriteLoader.loadSprite('enemy_torpedo', [('en_torpedo1', 1)], RenderMode.LOOP)
+    #     # enemy shark
+    #     self.spriteLoader.loadFrame('sprites\seaquest\shark\\1.npy', name='shark1')
+    #     self.spriteLoader.loadFrame('sprites\seaquest\shark\\2.npy', name='shark2')
+    #     self.spriteLoader.loadSprite('shark', [('shark1', 16), ('shark2', 8)], RenderMode.LOOP)
+        
+    #     # diver
+    #     self.spriteLoader.loadFrame('sprites\seaquest\diver\\1.npy', name='diver1')
+    #     self.spriteLoader.loadFrame('sprites\seaquest\diver\\2.npy', name='diver2')
+    #     self.spriteLoader.loadSprite('diver', [('diver1', 16), ('diver2', 8)], RenderMode.LOOP)
+        
+    #     # player torpedo
+    #     self.spriteLoader.loadFrame('sprites\seaquest\player_torp\\1.npy', name='pl_torpedo1')
+    #     self.spriteLoader.loadSprite('player_torpedo', [('pl_torpedo1', 1)], RenderMode.LOOP)
+        
+    #     # enemy torpedo
+    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_torp\\1.npy', name='en_torpedo1')
+    #     self.spriteLoader.loadSprite('enemy_torpedo', [('en_torpedo1', 1)], RenderMode.LOOP)
+        
+        # initialize renderer
+
+        
+        
+
+    # def __init__(self):
+    #     # initialize renderer
+    #     self.window_width = 160
+    #     self.window_height = 210
+    #     self.scaling_factor = 3
+    #     pygame.init()
+    #     self.win = pygame.display.set_mode((self.window_width*self.scaling_factor, self.window_height*self.scaling_factor))
+    #     pygame.display.set_caption("Seaquest")
+    #     self.clock = pygame.time.Clock()
+    #     self.font = pygame.font.Font(None, 36)
+    #     running = True
+        
+    #     # initialize sprites
+    #     self.spriteLoader = SpriteLoader()
+        
+    #     # background
+    #     self.spriteLoader.loadFrame('sprites\seaquest\\bg\\1.npy', name='bg1')
+    #     self.spriteLoader.loadSprite('bg', [('bg1', 1)], RenderMode.LOOP)
+        
+    #     # player submarine
+    #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\1.npy', name='pl_sub1')
+    #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\2.npy', name='pl_sub2')
+    #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\3.npy', name='pl_sub3')
+    #     self.spriteLoader.loadSprite('player_sub', [('pl_sub1', 4), ('pl_sub2', 4), ('pl_sub3', 4)], RenderMode.LOOP)
+        
+    #     # enemy submarine
+    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\1.npy', name='en_sub1')
+    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\2.npy', name='en_sub2')
+    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\3.npy', name='en_sub3')
+    #     self.spriteLoader.loadSprite('enemy_sub', [('en_sub1', 4), ('en_sub2', 4), ('en_sub3', 4)], RenderMode.LOOP)
+        
+    #     # enemy shark
+    #     self.spriteLoader.loadFrame('sprites\seaquest\shark\\1.npy', name='shark1')
+    #     self.spriteLoader.loadFrame('sprites\seaquest\shark\\2.npy', name='shark2')
+    #     self.spriteLoader.loadSprite('shark', [('shark1', 16), ('shark2', 8)], RenderMode.LOOP)
+        
+    #     # diver
+    #     self.spriteLoader.loadFrame('sprites\seaquest\diver\\1.npy', name='diver1')
+    #     self.spriteLoader.loadFrame('sprites\seaquest\diver\\2.npy', name='diver2')
+    #     self.spriteLoader.loadSprite('diver', [('diver1', 16), ('diver2', 8)], RenderMode.LOOP)
+        
+    #     # player torpedo
+    #     self.spriteLoader.loadFrame('sprites\seaquest\player_torp\\1.npy', name='pl_torpedo1')
+    #     self.spriteLoader.loadSprite('player_torpedo', [('pl_torpedo1', 1)], RenderMode.LOOP)
+        
+    #     # enemy torpedo
+    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_torp\\1.npy', name='en_torpedo1')
+    #     self.spriteLoader.loadSprite('enemy_torpedo', [('en_torpedo1', 1)], RenderMode.LOOP)
         
 
         
-        # digits
-        char_to_frame = {}
-        for i in range(10):
-            self.spriteLoader.loadFrame(f'sprites\seaquest\digits\\{i}.npy', name=f'digit{i}')
-            char_to_frame[str(i)] = self.spriteLoader.frames[f'digit{i}']
+    #     # digits
+    #     char_to_frame = {}
+    #     for i in range(10):
+    #         self.spriteLoader.loadFrame(f'sprites\seaquest\digits\\{i}.npy', name=f'digit{i}')
+    #         char_to_frame[str(i)] = self.spriteLoader.frames[f'digit{i}']
             
 
             
-        # life indicator
-        self.spriteLoader.loadFrame('sprites\seaquest\life_indicator\\1.npy', name='life1')
-        char_to_frame['l'] = self.spriteLoader.frames['life1']
+    #     # life indicator
+    #     self.spriteLoader.loadFrame('sprites\seaquest\life_indicator\\1.npy', name='life1')
+    #     char_to_frame['l'] = self.spriteLoader.frames['life1']
 
         
-        # diver indicator
-        self.spriteLoader.loadFrame('sprites\seaquest\diver_indicator\\1.npy', name='diver_indicator1')
-        char_to_frame['d'] = self.spriteLoader.frames['diver_indicator1']
+    #     # diver indicator
+    #     self.spriteLoader.loadFrame('sprites\seaquest\diver_indicator\\1.npy', name='diver_indicator1')
+    #     char_to_frame['d'] = self.spriteLoader.frames['diver_indicator1']
 
-        # initialize canvas  
-        self.canvas = Canvas(self.window_width, self.window_height)
-        self.canvas.addLayer(Layer('bg', self.window_width, self.window_height))
-        self.canvas.addLayer(Layer('torpedoes', self.window_width, self.window_height))
-        self.canvas.addLayer(Layer('player_sub', self.window_width, self.window_height))
-        self.canvas.addLayer(Layer('divers', self.window_width, self.window_height))
-        self.canvas.addLayer(Layer('enemies', self.window_width, self.window_height))
-        self.canvas.addLayer(Layer('waves', self.window_width, self.window_height))
-        self.canvas.addLayer(Layer('HUD', self.window_width, self.window_height))
+    #     # initialize canvas  
+    #     self.canvas = Canvas(self.window_width, self.window_height)
+    #     self.canvas.addLayer(Layer('bg', self.window_width, self.window_height))
+    #     self.canvas.addLayer(Layer('torpedoes', self.window_width, self.window_height))
+    #     self.canvas.addLayer(Layer('player_sub', self.window_width, self.window_height))
+    #     self.canvas.addLayer(Layer('divers', self.window_width, self.window_height))
+    #     self.canvas.addLayer(Layer('enemies', self.window_width, self.window_height))
+    #     self.canvas.addLayer(Layer('waves', self.window_width, self.window_height))
+    #     self.canvas.addLayer(Layer('HUD', self.window_width, self.window_height))
         
-        # initialize game objects
-        background = GameObject(0, 0, self.spriteLoader.getSprite('bg'))
-        self.canvas.getLayer('bg').addGameObject(background)
+    #     # initialize game objects
+    #     background = GameObject(0, 0, self.spriteLoader.getSprite('bg'))
+    #     self.canvas.getLayer('bg').addGameObject(background)
         
-        pl_sub = GameObject(0, 0, self.spriteLoader.getSprite('player_sub'))
-        self.canvas.getLayer('player_sub').addGameObject(pl_sub)
+    #     pl_sub = GameObject(0, 0, self.spriteLoader.getSprite('player_sub'))
+    #     self.canvas.getLayer('player_sub').addGameObject(pl_sub)
         
-        # HUD elements
-        # TODO: verify positioning and width between chars in the HUD
+    #     # HUD elements
+    #     # TODO: verify positioning and width between chars in the HUD
 
-        hud_score = TextHUD("00", 10, 10, char_to_frame, 2) # score indicator
-        self.hud_score = hud_score
-        self.canvas.getLayer('HUD').addGameObject(hud_score)
+    #     hud_score = TextHUD("00", 10, 10, char_to_frame, 2) # score indicator
+    #     self.hud_score = hud_score
+    #     self.canvas.getLayer('HUD').addGameObject(hud_score)
         
-        hud_lives = TextHUD("lll", 20, 10, char_to_frame, 2) # lives indicator
-        self.hud_lives = hud_lives
-        self.canvas.getLayer('HUD').addGameObject(hud_lives)
+    #     hud_lives = TextHUD("lll", 20, 10, char_to_frame, 2) # lives indicator
+    #     self.hud_lives = hud_lives
+    #     self.canvas.getLayer('HUD').addGameObject(hud_lives)
         
-        hud_divers = TextHUD("", 20, 40, char_to_frame, 2) # diver indicator
-        self.hud_divers = hud_divers
-        self.canvas.getLayer('HUD').addGameObject(hud_divers)
+    #     hud_divers = TextHUD("", 20, 40, char_to_frame, 2) # diver indicator
+    #     self.hud_divers = hud_divers
+    #     self.canvas.getLayer('HUD').addGameObject(hud_divers)
         
-        hud_oxygen = BarHUD(10, 60, 60, 5, 64, 64, (255,255,255,255)) # oxygen bar
-        self.hud_oxygen = hud_oxygen
-        self.canvas.getLayer('HUD').addGameObject(hud_oxygen)
+    #     hud_oxygen = BarHUD(10, 60, 60, 5, 64, 64, (255,255,255,255)) # oxygen bar
+    #     self.hud_oxygen = hud_oxygen
+    #     self.canvas.getLayer('HUD').addGameObject(hud_oxygen)
         
-        # initialize arrays that map indices to game objects
-        self.diver_objects = [None] * MAX_DIVERS 
-        self.shark_objects = [None] * MAX_SHARKS
-        self.sub_objects = [None] * MAX_SUBS
-        self.enemy_torpedo_objects = [None] * MAX_ENEMY_MISSILES
-        self.surface_sub_objects = [None] * MAX_SURFACE_SUBS
-        self.player_torpedo_object = None
+    #     # initialize arrays that map indices to game objects
+    #     self.diver_objects = [None] * MAX_DIVERS 
+    #     self.shark_objects = [None] * MAX_SHARKS
+    #     self.sub_objects = [None] * MAX_SUBS
+    #     self.enemy_torpedo_objects = [None] * MAX_ENEMY_MISSILES
+    #     self.surface_sub_objects = [None] * MAX_SURFACE_SUBS
+    #     self.player_torpedo_object = None
 
 
         
-    def render(self, state):
-        grid = self.canvas.render()
-        self.update(state)
+    def render(self, state, counter):
+        raster = jnp.zeros((WIDTH, HEIGHT, 3))
         
-        frame_surface = pygame.surfarray.make_surface(grid)
-        frame_surface = pygame.transform.scale(frame_surface, (self.window_width*self.scaling_factor, self.window_height*self.scaling_factor))
-        self.win.blit(frame_surface, (0, 0))
+        # render background
+        frame_bg = aj.get_sprite_frame(self.sprite_bg, 0)
+        raster = aj.render_at(raster, 0, 0, frame_bg)
         
-        pygame.display.flip()
-        # Update display from state
-        self.update(state)
-
-        self.clock.tick(60)
-    def update(self, state):
-        # update according to state
-        # update player submarine position
-        self.canvas.getLayer('player_sub').gameObjects[0].displace(state.player_y.item(), state.player_x.item())
-        self.canvas.getLayer('player_sub').gameObjects[0].sprite.transform["flip_horizontal"] = state.player_direction.item() == FACE_LEFT # flip sprite if facing left
-        
-        # update divers
+        # render player submarine
+        frame_pl_sub = aj.get_sprite_frame(self.sprite_pl_sub, counter)
+        raster = aj.render_at(raster, state.player_y.item(), state.player_x.item(), frame_pl_sub, flip_horizontal = state.player_direction.item() == FACE_LEFT)
+        # render divers
+        frame_diver = aj.get_sprite_frame(self.sprite_diver, counter)
+        # convert diver positions to integers
+        diver_positions = state.diver_positions.astype(int)
         for idx in range(MAX_DIVERS):
             if state.diver_positions[idx][0] > 0: # indicates existence
-                diver_x = int(state.diver_positions[idx][1].item())
-                diver_y = int(state.diver_positions[idx][0].item())
-                diver_direction = state.diver_positions[idx][2].item()
-                if self.diver_objects[idx] is None: # if object does not exist, create it
-                    self.diver_objects[idx] = GameObject(diver_x, diver_y, self.spriteLoader.getSprite('diver'))
-                    self.canvas.getLayer('divers').addGameObject(self.diver_objects[idx])
-                    self.canvas.getLayer('divers').gameObjects[idx].sprite.transform["flip_horizontal"] = diver_direction == FACE_LEFT # flip sprite if facing left
+                raster = aj.render_at(raster, diver_positions[idx][1].item(),diver_positions[idx][0].item(), frame_diver, flip_horizontal = diver_positions[idx][2].item() == FACE_LEFT)
 
-                else: # if object exists, update its position
-                    self.diver_objects[idx].displace(diver_x, diver_y)
-                    if self.diver_objects[idx] is not None: # avoid error if diver object is killed on the same frame
-                        self.diver_objects[idx].sprite.transform["flip_horizontal"] = diver_direction == FACE_LEFT # flip sprite if facing left
+        return raster
 
-            else: # the diver no longer exists
-                if self.diver_objects[idx] is not None:
-                    self.canvas.getLayer('divers').removeGameObject(self.diver_objects[idx])
-                    self.diver_objects[idx] = None
+
+    #     # update divers
+    #     for idx in range(MAX_DIVERS):
+    #         if state.diver_positions[idx][0] > 0: # indicates existence
+    #             diver_x = int(state.diver_positions[idx][1].item())
+    #             diver_y = int(state.diver_positions[idx][0].item())
+    #             diver_direction = state.diver_positions[idx][2].item()
+    #             if self.diver_objects[idx] is None: # if object does not exist, create it
+    #                 self.diver_objects[idx] = GameObject(diver_x, diver_y, self.spriteLoader.getSprite('diver'))
+    #                 self.canvas.getLayer('divers').addGameObject(self.diver_objects[idx])
+    #                 self.canvas.getLayer('divers').gameObjects[idx].sprite.transform["flip_horizontal"] = diver_direction == FACE_LEFT # flip sprite if facing left
+
+    #             else: # if object exists, update its position
+    #                 self.diver_objects[idx].displace(diver_x, diver_y)
+    #                 if self.diver_objects[idx] is not None: # avoid error if diver object is killed on the same frame
+    #                     self.diver_objects[idx].sprite.transform["flip_horizontal"] = diver_direction == FACE_LEFT # flip sprite if facing left
+
+    #         else: # the diver no longer exists
+    #             if self.diver_objects[idx] is not None:
+    #                 self.canvas.getLayer('divers').removeGameObject(self.diver_objects[idx])
+    #                 self.diver_objects[idx] = None
                     
-        # update sharks
-        for idx in range(MAX_SHARKS):
-            if state.shark_positions[idx][0] > 0: # indicates existence
-                shark_x = int(state.shark_positions[idx][1].item())
-                shark_y = int(state.shark_positions[idx][0].item())
-                shark_direction = state.shark_positions[idx][2].item()
-                if self.shark_objects[idx] is None: # if object does not exist, create it
-                    self.shark_objects[idx] = GameObject(shark_x, shark_y, self.spriteLoader.getSprite('shark'))
-                    self.canvas.getLayer('enemies').addGameObject(self.shark_objects[idx])
-                    self.shark_objects[idx].sprite.transform["flip_horizontal"] = shark_direction == FACE_LEFT # flip sprite if facing left
+    #     # update sharks
+    #     for idx in range(MAX_SHARKS):
+    #         if state.shark_positions[idx][0] > 0: # indicates existence
+    #             shark_x = int(state.shark_positions[idx][1].item())
+    #             shark_y = int(state.shark_positions[idx][0].item())
+    #             shark_direction = state.shark_positions[idx][2].item()
+    #             if self.shark_objects[idx] is None: # if object does not exist, create it
+    #                 self.shark_objects[idx] = GameObject(shark_x, shark_y, self.spriteLoader.getSprite('shark'))
+    #                 self.canvas.getLayer('enemies').addGameObject(self.shark_objects[idx])
+    #                 self.shark_objects[idx].sprite.transform["flip_horizontal"] = shark_direction == FACE_LEFT # flip sprite if facing left
 
-                else: # if object exists, update its position
-                    self.shark_objects[idx].displace(shark_x, shark_y)
-                    if self.shark_objects[idx] is not None: # avoid error if shark object is killed on the same frame
-                        self.shark_objects[idx].sprite.transform["flip_horizontal"] = shark_direction == FACE_LEFT # flip sprite if facing left
+    #             else: # if object exists, update its position
+    #                 self.shark_objects[idx].displace(shark_x, shark_y)
+    #                 if self.shark_objects[idx] is not None: # avoid error if shark object is killed on the same frame
+    #                     self.shark_objects[idx].sprite.transform["flip_horizontal"] = shark_direction == FACE_LEFT # flip sprite if facing left
 
-            else: # the shark no longer exists
-                if self.shark_objects[idx] is not None:
-                    self.canvas.getLayer('enemies').removeGameObject(self.shark_objects[idx])
-                    self.shark_objects[idx] = None
+    #         else: # the shark no longer exists
+    #             if self.shark_objects[idx] is not None:
+    #                 self.canvas.getLayer('enemies').removeGameObject(self.shark_objects[idx])
+    #                 self.shark_objects[idx] = None
                     
-        # update enemy submarines
-        for idx in range(MAX_SUBS):
-            if state.sub_positions[idx][0] > 0: # indicates existence
-                sub_x = int(state.sub_positions[idx][1].item())
-                sub_y = int(state.sub_positions[idx][0].item())
-                sub_direction = state.sub_positions[idx][2].item()
-                if self.sub_objects[idx] is None:
-                    self.sub_objects[idx] = GameObject(sub_x, sub_y, self.spriteLoader.getSprite('enemy_sub'))
-                    self.canvas.getLayer('enemies').addGameObject(self.sub_objects[idx])
-                    # update direction of submarine
-                    self.sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
-                else:
-                    self.sub_objects[idx].displace(sub_x, sub_y)
-                    if self.sub_objects[idx] is not None: # avoid error if submarine object is killed on the same frame
-                        self.sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
-            else: # the submarine no longer exists
-                if self.sub_objects[idx] is not None:
-                    self.canvas.getLayer('enemies').removeGameObject(self.sub_objects[idx])
-                    self.sub_objects[idx] = None
+    #     # update enemy submarines
+    #     for idx in range(MAX_SUBS):
+    #         if state.sub_positions[idx][0] > 0: # indicates existence
+    #             sub_x = int(state.sub_positions[idx][1].item())
+    #             sub_y = int(state.sub_positions[idx][0].item())
+    #             sub_direction = state.sub_positions[idx][2].item()
+    #             if self.sub_objects[idx] is None:
+    #                 self.sub_objects[idx] = GameObject(sub_x, sub_y, self.spriteLoader.getSprite('enemy_sub'))
+    #                 self.canvas.getLayer('enemies').addGameObject(self.sub_objects[idx])
+    #                 # update direction of submarine
+    #                 self.sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
+    #             else:
+    #                 self.sub_objects[idx].displace(sub_x, sub_y)
+    #                 if self.sub_objects[idx] is not None: # avoid error if submarine object is killed on the same frame
+    #                     self.sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
+    #         else: # the submarine no longer exists
+    #             if self.sub_objects[idx] is not None:
+    #                 self.canvas.getLayer('enemies').removeGameObject(self.sub_objects[idx])
+    #                 self.sub_objects[idx] = None
                     
-        # update surface submarine
-        for idx in range(MAX_SURFACE_SUBS):
-            if state.surface_sub_position[idx][0] > 0: # indicates existence
-                surface_sub_x = int(state.surface_sub_position[idx][1].item())
-                surface_sub_y = int(state.surface_sub_position[idx][0].item())
-                sub_direction = state.surface_sub_position[idx][2].item()
-                if self.surface_sub_objects[idx] is None:
-                    self.surface_sub_objects[idx] = GameObject(surface_sub_x, surface_sub_y, self.spriteLoader.getSprite('enemy_sub'))
-                    self.canvas.getLayer('enemies').addGameObject(self.surface_sub_objects[idx])
-                    # update direction of submarine
-                    self.surface_sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
-                else:
-                    # if object exists, update its position
-                    self.surface_sub_objects[idx].displace(surface_sub_x, surface_sub_y)
-                    # update direction of submarine
-                    self.surface_sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
+    #     # update surface submarine
+    #     for idx in range(MAX_SURFACE_SUBS):
+    #         if state.surface_sub_position[idx][0] > 0: # indicates existence
+    #             surface_sub_x = int(state.surface_sub_position[idx][1].item())
+    #             surface_sub_y = int(state.surface_sub_position[idx][0].item())
+    #             sub_direction = state.surface_sub_position[idx][2].item()
+    #             if self.surface_sub_objects[idx] is None:
+    #                 self.surface_sub_objects[idx] = GameObject(surface_sub_x, surface_sub_y, self.spriteLoader.getSprite('enemy_sub'))
+    #                 self.canvas.getLayer('enemies').addGameObject(self.surface_sub_objects[idx])
+    #                 # update direction of submarine
+    #                 self.surface_sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
+    #             else:
+    #                 # if object exists, update its position
+    #                 self.surface_sub_objects[idx].displace(surface_sub_x, surface_sub_y)
+    #                 # update direction of submarine
+    #                 self.surface_sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
             
                     
-        # update player's torpedo
-        if state.player_missile_position[0] > 0: # exists
-            pltorp_x = int(state.player_missile_position[1].item())
-            pltorp_y = int(state.player_missile_position[0].item())
-            if self.player_torpedo_object is None: # if object does not exist, create it
-                self.player_torpedo_object = GameObject(pltorp_x, pltorp_y, self.spriteLoader.getSprite('player_torpedo'))
-                self.canvas.getLayer('torpedoes').addGameObject(self.player_torpedo_object)
-            else: # if object exists, update its position
-                self.player_torpedo_object.displace(pltorp_x, pltorp_y)   
-        else: # the torpedo no longer exists
-            if self.player_torpedo_object is not None:
-                self.canvas.getLayer('torpedoes').removeGameObject(self.player_torpedo_object)
-                self.player_torpedo_object = None
+    #     # update player's torpedo
+    #     if state.player_missile_position[0] > 0: # exists
+    #         pltorp_x = int(state.player_missile_position[1].item())
+    #         pltorp_y = int(state.player_missile_position[0].item())
+    #         if self.player_torpedo_object is None: # if object does not exist, create it
+    #             self.player_torpedo_object = GameObject(pltorp_x, pltorp_y, self.spriteLoader.getSprite('player_torpedo'))
+    #             self.canvas.getLayer('torpedoes').addGameObject(self.player_torpedo_object)
+    #         else: # if object exists, update its position
+    #             self.player_torpedo_object.displace(pltorp_x, pltorp_y)   
+    #     else: # the torpedo no longer exists
+    #         if self.player_torpedo_object is not None:
+    #             self.canvas.getLayer('torpedoes').removeGameObject(self.player_torpedo_object)
+    #             self.player_torpedo_object = None
                 
-        # update enemy torpedoes
-        for idx in range(MAX_ENEMY_MISSILES):
-            if state.enemy_missile_positions[idx][0] > 0: # indicates existence
-                entorp_x = int(state.enemy_missile_positions[idx][1].item())
-                entorp_y = int(state.enemy_missile_positions[idx][0].item())
-                if self.enemy_torpedo_objects[idx] is None: # if object does not exist, create it
-                    self.enemy_torpedo_objects[idx] = GameObject(entorp_x, entorp_y, self.spriteLoader.getSprite('enemy_torpedo'))
-                    self.canvas.getLayer('torpedoes').addGameObject(self.enemy_torpedo_objects[idx])
-                else: # if object exists, update its position
-                    self.enemy_torpedo_objects[idx].displace(entorp_x, entorp_y)
-            else: # the torpedo no longer exists
-                if self.enemy_torpedo_objects[idx] is not None:
-                    self.canvas.getLayer('torpedoes').removeGameObject(self.enemy_torpedo_objects[idx])
-                    self.enemy_torpedo_objects[idx] = None
+    #     # update enemy torpedoes
+    #     for idx in range(MAX_ENEMY_MISSILES):
+    #         if state.enemy_missile_positions[idx][0] > 0: # indicates existence
+    #             entorp_x = int(state.enemy_missile_positions[idx][1].item())
+    #             entorp_y = int(state.enemy_missile_positions[idx][0].item())
+    #             if self.enemy_torpedo_objects[idx] is None: # if object does not exist, create it
+    #                 self.enemy_torpedo_objects[idx] = GameObject(entorp_x, entorp_y, self.spriteLoader.getSprite('enemy_torpedo'))
+    #                 self.canvas.getLayer('torpedoes').addGameObject(self.enemy_torpedo_objects[idx])
+    #             else: # if object exists, update its position
+    #                 self.enemy_torpedo_objects[idx].displace(entorp_x, entorp_y)
+    #         else: # the torpedo no longer exists
+    #             if self.enemy_torpedo_objects[idx] is not None:
+    #                 self.canvas.getLayer('torpedoes').removeGameObject(self.enemy_torpedo_objects[idx])
+    #                 self.enemy_torpedo_objects[idx] = None
         
-        # update HUD elements
-        self.hud_score.text = str(int(state.score.item())) 
-        self.hud_lives.text = "l" * int(state.lives.item()) 
-        self.hud_divers.text = "d" * int(state.divers_collected.item() % 7) 
-        self.hud_oxygen.current_value = state.oxygen.item()
-        # finally, update the canvas
-        self.canvas.update()
+    #     # update HUD elements
+    #     self.hud_score.text = str(int(state.score.item())) 
+    #     self.hud_lives.text = "l" * int(state.lives.item()) 
+    #     self.hud_divers.text = "d" * int(state.divers_collected.item() % 7) 
+    #     self.hud_oxygen.current_value = state.oxygen.item()
+    #     # finally, update the canvas
+    #     self.canvas.update()
+
 
 
 
@@ -1544,7 +1470,10 @@ def get_human_action() -> chex.Array:
 if __name__ == "__main__":
     # Initialize game and renderer
     game = Game(frameskip=1)
-    renderer = Renderer()
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH * SCALING_FACTOR, HEIGHT * SCALING_FACTOR))
+    clock = pygame.time.Clock()
+   
     
     renderer_AtraJaxis = Renderer_AtraJaxis()
 
@@ -1578,9 +1507,12 @@ if __name__ == "__main__":
                 action = get_human_action()
                 curr_state = jitted_step(curr_state, action)
 
-        renderer_AtraJaxis.render(curr_state)
+        # render and update pygame
+        raster = renderer_AtraJaxis.render(curr_state, counter)
+        aj.update_pygame(screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
         # renderer.render(curr_state)
         counter += 1
+        clock.tick(60)
         # renderer.clock.tick(256)
 
     pygame.quit()

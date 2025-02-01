@@ -1,6 +1,6 @@
 import numpy as np
-from atraJaxis.sprite import Sprite
-from atraJaxis.renderMode import RenderMode
+from atraJaxis_defunct.sprite import Sprite
+from atraJaxis_defunct.renderMode import RenderMode
 from pathlib import Path, PureWindowsPath
 import os
 
