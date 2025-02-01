@@ -120,7 +120,6 @@ class GameState(NamedTuple):
     player: PlayerState
     level: LevelState
     score: chex.Array
-    player_lives: chex.Array
     current_level: chex.Array
     step_counter: chex.Array
     level_finished: chex.Array
@@ -496,7 +495,7 @@ def player_jump_controller(
     is_jumping = jnp.where(jump_complete, False, is_jumping)
     jump_counter = jnp.where(jump_complete, 0, jump_counter)
 
-    return (
+    return_value = (
         new_y,
         jump_counter,
         is_jumping,
@@ -504,6 +503,20 @@ def player_jump_controller(
         new_landing_base_y,
         jump_orientation,
         new_cooldown_counter,
+    )
+
+    return jax.lax.cond(
+        state.levelup_timer == 0,
+        lambda: return_value,
+        lambda: (
+            state.player.y,
+            state.player.jump_counter,
+            state.player.is_jumping,
+            state.player.jump_base_y,
+            state.player.landing_base_y,
+            state.player.jump_orientation,
+            state.player.cooldown_counter,
+        ),
     )
 
 
@@ -596,7 +609,19 @@ def player_climb_controller(
         ),
     )
 
-    return new_y, is_climbing, climb_base_y, climb_counter, cooldown_counter
+    return_value = (new_y, is_climbing, climb_base_y, climb_counter, cooldown_counter)
+
+    return jax.lax.cond(
+        state.levelup_timer == 0,
+        lambda: return_value,
+        lambda: (
+            state.player.y,
+            state.player.is_climbing,
+            state.player.climb_base_y,
+            state.player.climb_counter,
+            state.player.cooldown_counter,
+        ),
+    )
 
 
 # -------- Player Height --------
@@ -763,8 +788,12 @@ def child_step(state: GameState) -> Tuple[chex.Array]:
     new_child_velocity = jnp.where(reset, child_velocity * -1, child_velocity)
 
     new_child_x = jnp.where(
-        (counter % 5) == 0,
-        state.level.child_position[0] + new_child_velocity,
+        state.levelup_timer == 0,
+        jnp.where(
+            (counter % 5) == 0,
+            state.level.child_position[0] + new_child_velocity,
+            state.level.child_position[0],
+        ),
         state.level.child_position[0],
     )
     new_child_y = state.level.child_position[1]
@@ -936,12 +965,19 @@ def player_step(state: GameState, action: chex.Array):
         jump_counter=new_jump_counter,
         is_crouching=new_is_crouching,
     )
+    new_player_height = jnp.where(
+        state.levelup_timer > 0, PLAYER_HEIGHT, new_player_height
+    )
     # If height changes, shift the player's top so the bottom remains consistent
     dy = old_height - new_player_height
     y = new_y + dy
 
     # x-axis movement
-    x = jnp.clip(x + vel_x, LEFT_CLIP, RIGHT_CLIP - PLAYER_WIDTH)
+    x = jnp.where(
+        state.levelup_timer == 0,
+        jnp.clip(x + vel_x, LEFT_CLIP, RIGHT_CLIP - PLAYER_WIDTH),
+        x,
+    )
 
     # y-axis movement
     platform_bools: jax.Array = get_platforms_below_player(state)
@@ -970,9 +1006,11 @@ def player_step(state: GameState, action: chex.Array):
         player_on_last_platform & ~state.level_finished & (state.levelup_timer == 0)
     )
 
+    y = jnp.where(state.levelup_timer == 0, y, state.player.y)
+
     # Reset X and Y when going to next level
-    y = jnp.where(state.reset_coords, PLAYER_START_Y, y)
     x = jnp.where(state.reset_coords, PLAYER_START_X, x)
+    y = jnp.where(state.reset_coords, PLAYER_START_Y, y)
 
     return (
         x,
@@ -1010,17 +1048,14 @@ def next_level(state: GameState):
 
     counter = state.levelup_timer
     counter_start = state.level_finished & (counter == 0)
-    counter = jnp.where(counter_start, 1, counter)
-    counter = jnp.where(counter > 0, counter + 1, counter)
+    counter = jnp.where((counter > 0) | counter_start, counter + 1, counter)
     reset_timer_done = counter == RESET_AFTER_TICKS
-    counter = jnp.where(counter == RESET_AFTER_TICKS + 20, 0, counter)
+    counter = jnp.where(counter > RESET_AFTER_TICKS, 0, counter)
 
     reset_coords = jnp.where(reset_timer_done, jnp.array(True), jnp.array(False))
     levelup = jnp.where(reset_timer_done, jnp.array(True), jnp.array(False))
 
-    current_level = jnp.where(
-        state.levelup, state.current_level + 1, state.current_level
-    )
+    current_level = jnp.where(levelup, state.current_level + 1, state.current_level)
 
     return current_level, counter, reset_coords, levelup
 
@@ -1107,7 +1142,6 @@ class Game:
                 timer=jnp.array(2000),
             ),
             score=jnp.array(0),
-            player_lives=jnp.array(3),
             current_level=jnp.array(next_level),
             step_counter=jnp.array(0),
             level_finished=jnp.array(False),
@@ -1207,7 +1241,6 @@ class Game:
                 ),
                 level=new_level_state,
                 score=state.score + score_addition,
-                player_lives=state.player_lives,
                 current_level=new_current_level,
                 step_counter=(state.step_counter + 1) % 256,
                 level_finished=level_finished,
