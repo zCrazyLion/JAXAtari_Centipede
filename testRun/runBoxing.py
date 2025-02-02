@@ -11,7 +11,7 @@ rom_path = "./testRun/Boxing.bin"
 ale.loadROM(rom_path)
 
 # Create a directory for screenshots
-screenshot_dir = "screenshots"
+screenshot_dir = "./frames_boxings"
 os.makedirs(screenshot_dir, exist_ok=True)
 
 # Counter for frame filenames
