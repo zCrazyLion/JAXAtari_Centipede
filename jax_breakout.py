@@ -43,7 +43,10 @@ BALL_START_Y = 113
 
 # Game boundaries (adjusted for wall width)
 PLAYER_X_MIN = WALL_SIDE_WIDTH
-PLAYER_X_MAX = 160 - WALL_SIDE_WIDTH - PLAYER_SIZE[0]
+PLAYER_X_MAX = 160 - PLAYER_SIZE[0]
+PLAYER_MAX_SPEED = 6
+PLAYER_ACCELERATION = jnp.array([3, 2, -1, 1, 1])
+PLAYER_WALL_ACCELERATION = jnp.array([1, 2, 1, 1, 1])
 
 # Block layout
 BLOCKS_PER_ROW = 18
@@ -60,6 +63,7 @@ NUM_LIVES = 5
 # Game state container
 class State(NamedTuple):
     player_x: chex.Array
+    player_speed: chex.Array
     ball_x: chex.Array
     ball_y: chex.Array
     ball_vel_x: chex.Array
@@ -68,6 +72,7 @@ class State(NamedTuple):
     score: chex.Array
     lives: chex.Array
     step_counter: chex.Array
+    acceleration_counter: chex.Array
     game_started: chex.Array
 
 
@@ -91,19 +96,90 @@ def get_human_action() -> chex.Array:
         return jnp.array(NOOP)
 
 
-def player_step(state_player_x, action):  # TODO add acceleration and deceleration
+def player_step(state_player_x: chex.Array,
+                state_player_speed: chex.Array,
+                acceleration_counter: chex.Array,
+                action: chex.Array) -> (chex.Array, chex.Array, chex.Array):
     """Updates the player position based on the action."""
-    move_right = action == RIGHT
-    move_left = action == LEFT
+    left = (action == LEFT)
+    right = (action == RIGHT)
 
-    player_x = jnp.where(
-        move_right,
-        jnp.minimum(state_player_x + 2, PLAYER_X_MAX),
-        jnp.where(
-            move_left, jnp.maximum(state_player_x - 2, PLAYER_X_MIN), state_player_x
-        ),
+    # Check if the paddle is touching the left or right wall.
+    touches_wall = jnp.logical_or(state_player_x <= PLAYER_X_MIN, state_player_x >= PLAYER_X_MAX)
+
+    # Get the acceleration schedule based on whether the paddle is at a wall.
+    # If touching a wall, use PLAYER_WALL_ACCELERATION, otherwise use PLAYER_ACCELERATION.
+    acceleration = jax.lax.cond(
+        touches_wall,
+        lambda _: PLAYER_WALL_ACCELERATION[acceleration_counter],
+        lambda _: PLAYER_ACCELERATION[acceleration_counter],
+        operand=None
     )
-    return player_x
+
+    # Apply deceleration if no button is pressed or if the paddle touches a wall.
+    player_speed = jax.lax.cond(
+        jnp.logical_or(jnp.logical_not(jnp.logical_or(left, right)), touches_wall),
+        lambda s: jnp.round(s / 2).astype(jnp.int32),
+        lambda s: s,
+        operand=state_player_speed,
+    )
+
+    # If the paddle is moving to the right but the player pressed left, reset speed.
+    direction_change_left = jnp.logical_and(left, state_player_speed > 0)
+    player_speed = jax.lax.cond(
+        direction_change_left,
+        lambda s: 0,
+        lambda s: s,
+        operand=player_speed,
+    )
+
+    # Likewise, if moving left but the player pressed right, reset speed.
+    direction_change_right = jnp.logical_and(right, state_player_speed < 0)
+    player_speed = jax.lax.cond(
+        direction_change_right,
+        lambda s: 0,
+        lambda s: s,
+        operand=player_speed,
+    )
+
+    # If a direction change occurred, reset the acceleration counter.
+    direction_change = jnp.logical_or(direction_change_left, direction_change_right)
+    acceleration_counter = jax.lax.cond(
+        direction_change,
+        lambda _: 0,
+        lambda s: s,
+        operand=acceleration_counter,
+    )
+
+    # Apply acceleration for the pressed direction:
+    # For left, we subtract the acceleration (making speed more negative), clamped to -MAX_SPEED.
+    player_speed = jax.lax.cond(
+        left,
+        lambda s: jnp.maximum(s - acceleration, -PLAYER_MAX_SPEED),
+        lambda s: s,
+        operand=player_speed,
+    )
+
+    # For right, we add the acceleration (making speed more positive), clamped to MAX_SPEED.
+    player_speed = jax.lax.cond(
+        right,
+        lambda s: jnp.minimum(s + acceleration, PLAYER_MAX_SPEED),
+        lambda s: s,
+        operand=player_speed,
+    )
+
+    # Update the acceleration counter: increment if a directional button is held, otherwise reset.
+    new_acceleration_counter = jax.lax.cond(
+        jnp.logical_or(left, right),
+        lambda s: jnp.minimum(s + 1, PLAYER_ACCELERATION.size - 1),
+        lambda s: 0,
+        operand=acceleration_counter,
+    )
+
+    # Update the paddle's horizontal position and clamp it within the game boundaries.
+    player_x = jnp.clip(state_player_x + player_speed, PLAYER_X_MIN, PLAYER_X_MAX)
+
+    return player_x, player_speed, new_acceleration_counter
 
 
 def ball_step(state, game_started, player_x):
@@ -223,6 +299,7 @@ class Game:
         """Initialize game state"""
         return State(
             player_x=jnp.array(PLAYER_START_X),
+            player_speed=jnp.array(0),
             ball_x=jnp.array(BALL_START_X),
             ball_y=jnp.array(BALL_START_Y),
             ball_vel_x=BALL_SPEED[0],
@@ -231,35 +308,34 @@ class Game:
             score=jnp.array(0),
             lives=jnp.array(NUM_LIVES),
             step_counter=jnp.array(0),
+            acceleration_counter=jnp.array(0).astype(jnp.int32),
             game_started=jnp.array(0),
         )
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: State, action: chex.Array) -> State:
-        player_x = player_step(state.player_x, action)
+        new_player_x, new_paddle_v, new_acceleration_counter = player_step(state.player_x, state.player_speed, state.acceleration_counter, action)
 
         game_started = jnp.logical_or(state.game_started, action == FIRE)
 
-        # Pass the game_started flag to ball_step
-        ball_x, ball_y, ball_vel_x, ball_vel_y = ball_step(
-            state, game_started, player_x
-        )
-
+        # Update ball, check collisions, etc., as before, but now pass new_player_x
+        ball_x, ball_y, ball_vel_x, ball_vel_y = ball_step(state, game_started, new_player_x)
         new_blocks, new_score, ball_x, ball_y, ball_vel_x, ball_vel_y = (
             check_block_collision(state, ball_x, ball_y, ball_vel_x, ball_vel_y)
         )
 
+        # Handle life loss, etc.
         life_lost = ball_y >= WINDOW_HEIGHT // 3
-        ball_x = jnp.where(life_lost, player_x + 7, ball_x)
+        ball_x = jnp.where(life_lost, new_player_x + 7, ball_x)
         ball_y = jnp.where(life_lost, BALL_START_Y, ball_y)
         ball_vel_x = jnp.where(life_lost, BALL_SPEED[0], ball_vel_x)
         ball_vel_y = jnp.where(life_lost, BALL_SPEED[1], ball_vel_y)
         game_started = jnp.where(life_lost, jnp.array(0), game_started)
-
         new_lives = jnp.where(life_lost, state.lives - 1, state.lives)
 
         return State(
-            player_x=player_x,
+            player_x=new_player_x,
+            player_speed=new_paddle_v,
             ball_x=ball_x,
             ball_y=ball_y,
             ball_vel_x=ball_vel_x,
@@ -268,6 +344,7 @@ class Game:
             score=new_score,
             lives=new_lives,
             step_counter=state.step_counter + 1,
+            acceleration_counter=new_acceleration_counter,
             game_started=game_started,
         )
 
