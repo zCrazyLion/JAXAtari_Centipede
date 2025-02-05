@@ -1,3 +1,4 @@
+import sys
 from functools import partial
 from typing import Tuple, NamedTuple
 import jax
@@ -110,6 +111,59 @@ class CarryState(NamedTuple):
     shark_pos: chex.Array
     sub_pos: chex.Array
     score: chex.Array
+
+# RENDER CONSTANTS
+def load_sprites():
+    # Load sprites - no padding needed for background since it's already full size
+    bg1 = jnp.flip(jnp.array(aj.loadFrame('sprites/seaquest/bg/1.npy')), axis=0)
+    pl_sub1 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/player_sub/1.npy')), (1, 0, 2))
+    pl_sub2 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/player_sub/2.npy')), (1, 0, 2))
+    pl_sub3 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/player_sub/3.npy')), (1, 0, 2))
+    diver1 = jnp.flip(jnp.flip(jnp.array(aj.loadFrame('sprites/seaquest/diver/1.npy')), axis=0), axis=1)
+    diver2 = jnp.flip(jnp.flip(jnp.array(aj.loadFrame('sprites/seaquest/diver/2.npy')), axis=0), axis=1)
+
+    # Only pad sprites of same type to match each other's dimensions
+    def pad_to_match(sprites):
+        max_height = max(sprite.shape[0] for sprite in sprites)
+        max_width = max(sprite.shape[1] for sprite in sprites)
+
+        def pad_sprite(sprite):
+            pad_height = max_height - sprite.shape[0]
+            pad_width = max_width - sprite.shape[1]
+            return jnp.pad(sprite,
+                          ((0, pad_height), (0, pad_width), (0, 0)),
+                          mode='constant',
+                          constant_values=0)
+
+        return [pad_sprite(sprite) for sprite in sprites]
+
+    # Pad player submarine sprites to match each other
+    pl_sub_sprites = pad_to_match([pl_sub1, pl_sub2, pl_sub3])
+
+    # Pad diver sprites to match each other
+    diver_sprites = pad_to_match([diver1, diver2])
+
+    # Background sprite (no padding needed)
+    SPRITE_BG = jnp.expand_dims(bg1, axis=0)
+
+    # Player submarine sprites
+    SPRITE_PL_SUB = jnp.concatenate([
+        jnp.repeat(pl_sub_sprites[0][None], 4, axis=0),
+        jnp.repeat(pl_sub_sprites[1][None], 4, axis=0),
+        jnp.repeat(pl_sub_sprites[2][None], 4, axis=0)
+    ])
+
+    # Diver sprites
+    SPRITE_DIVER = jnp.concatenate([
+        jnp.repeat(diver_sprites[0][None], 16, axis=0),
+        jnp.repeat(diver_sprites[1][None], 4, axis=0)
+    ])
+
+    return SPRITE_BG, SPRITE_PL_SUB, SPRITE_DIVER
+
+
+# Load sprites once at module level
+SPRITE_BG, SPRITE_PL_SUB, SPRITE_DIVER = load_sprites()
 
 
 # TODO: remove, for debugging purposes only
@@ -1103,27 +1157,13 @@ class Game:
 
         # Return unchanged state for now
         return final_state
-    
+
 class Renderer_AtraJaxis:
     def __init__(self):
-        # read sprite frames from files
-        # background
-        bg1 = aj.loadFrame('sprites\seaquest\\bg\\1.npy')
-        self.sprite_bg = [bg1]
-    
-        
-        # player submarine
-        pl_sub1 = aj.loadFrame('sprites\seaquest\player_sub\\1.npy')
-        pl_sub2 = aj.loadFrame('sprites\seaquest\player_sub\\2.npy')
-        pl_sub3 = aj.loadFrame('sprites\seaquest\player_sub\\3.npy')
-        self.sprite_pl_sub = [pl_sub1, pl_sub1, pl_sub1, pl_sub1, pl_sub2, pl_sub2, pl_sub2, pl_sub2, pl_sub3, pl_sub3, pl_sub3, pl_sub3]
-        
-        # diver
-        diver1 = aj.loadFrame('sprites\seaquest\diver\\1.npy')
-        diver2 = aj.loadFrame('sprites\seaquest\diver\\2.npy')
-        self.sprite_diver = [diver1, diver1, diver1, diver1, diver1, diver1, diver1, diver1, \
-            diver1, diver1, diver1, diver1, diver1, diver1, diver1, diver1, \
-                diver2, diver2, diver2, diver2]
+        self.sprite_bg = SPRITE_BG
+        self.sprite_pl_sub = SPRITE_PL_SUB
+        self.sprite_diver = SPRITE_DIVER
+
     #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\1.npy', name='pl_sub1')
     #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\2.npy', name='pl_sub2')
     #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\3.npy', name='pl_sub3')
@@ -1226,7 +1266,7 @@ class Renderer_AtraJaxis:
     #     self.spriteLoader.loadFrame('sprites\seaquest\diver_indicator\\1.npy', name='diver_indicator1')
     #     char_to_frame['d'] = self.spriteLoader.frames['diver_indicator1']
 
-    #     # initialize canvas  
+    #     # initialize canvas
     #     self.canvas = Canvas(self.window_width, self.window_height)
     #     self.canvas.addLayer(Layer('bg', self.window_width, self.window_height))
     #     self.canvas.addLayer(Layer('torpedoes', self.window_width, self.window_height))
@@ -1257,40 +1297,59 @@ class Renderer_AtraJaxis:
     #     hud_divers = TextHUD("", 20, 40, char_to_frame, 2) # diver indicator
     #     self.hud_divers = hud_divers
     #     self.canvas.getLayer('HUD').addGameObject(hud_divers)
-        
+
     #     hud_oxygen = BarHUD(10, 60, 60, 5, 64, 64, (255,255,255,255)) # oxygen bar
     #     self.hud_oxygen = hud_oxygen
     #     self.canvas.getLayer('HUD').addGameObject(hud_oxygen)
-        
+
     #     # initialize arrays that map indices to game objects
-    #     self.diver_objects = [None] * MAX_DIVERS 
+    #     self.diver_objects = [None] * MAX_DIVERS
     #     self.shark_objects = [None] * MAX_SHARKS
     #     self.sub_objects = [None] * MAX_SUBS
     #     self.enemy_torpedo_objects = [None] * MAX_ENEMY_MISSILES
     #     self.surface_sub_objects = [None] * MAX_SURFACE_SUBS
     #     self.player_torpedo_object = None
 
-
-        
-    def render(self, state, counter):
+    @partial(jax.jit, static_argnums=(0,))
+    def render(self, state):
         raster = jnp.zeros((WIDTH, HEIGHT, 3))
-        
+
         # render background
         frame_bg = aj.get_sprite_frame(self.sprite_bg, 0)
-        raster = aj.render_at(raster, 0, 0, frame_bg)
-        
-        # render player submarine
-        frame_pl_sub = aj.get_sprite_frame(self.sprite_pl_sub, counter)
-        raster = aj.render_at(raster, state.player_y.item(), state.player_x.item(), frame_pl_sub, flip_horizontal = state.player_direction.item() == FACE_LEFT)
-        # render divers
-        frame_diver = aj.get_sprite_frame(self.sprite_diver, counter)
-        # convert diver positions to integers
-        diver_positions = state.diver_positions.astype(int)
-        for idx in range(MAX_DIVERS):
-            if state.diver_positions[idx][0] > 0: # indicates existence
-                raster = aj.render_at(raster, diver_positions[idx][1].item(),diver_positions[idx][0].item(), frame_diver, flip_horizontal = diver_positions[idx][2].item() == FACE_LEFT)
+        raster = aj.render_at(raster, 0, 0, frame_bg, flip_vertical=True)
 
-        return raster
+        # render player submarine
+        frame_pl_sub = aj.get_sprite_frame(self.sprite_pl_sub, state.step_counter)
+        raster = aj.render_at(raster, state.player_y, state.player_x, frame_pl_sub, flip_vertical = state.player_direction == FACE_LEFT)
+        # render divers
+        frame_diver = aj.get_sprite_frame(self.sprite_diver, state.step_counter)
+        diver_positions = state.diver_positions
+
+        # convert diver positions to integers
+        def render_diver(i, raster_carry):
+            should_render = diver_positions[i][0] > 0
+            return jax.lax.cond(
+                should_render,
+                lambda r: aj.render_at(
+                    r,
+                    diver_positions[i][1],
+                    diver_positions[i][0],
+                    frame_diver,
+                    flip_horizontal=(diver_positions[i][2] == FACE_LEFT)
+                ),
+                lambda r: r,
+                raster_carry
+            )
+
+        # Use fori_loop to render all divers
+        raster_rendered_diver = jax.lax.fori_loop(
+            0,
+            MAX_DIVERS,
+            render_diver,
+            raster
+        )
+
+        return raster_rendered_diver
 
 
     #     # update divers
@@ -1508,7 +1567,7 @@ if __name__ == "__main__":
                 curr_state = jitted_step(curr_state, action)
 
         # render and update pygame
-        raster = renderer_AtraJaxis.render(curr_state, counter)
+        raster = renderer_AtraJaxis.render(curr_state)
         aj.update_pygame(screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
         # renderer.render(curr_state)
         counter += 1

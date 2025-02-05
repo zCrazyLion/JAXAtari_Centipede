@@ -6,20 +6,37 @@ import jax
 from functools import partial
 import pygame
 from jax import lax
-class AgnosticPath(Path): # https://stackoverflow.com/questions/60291545/converting-windows-path-to-linux
+
+
+class AgnosticPath(Path):
     """A class that can handle input with Windows (\\) and/or posix (/) separators for paths"""
+
     def __new__(cls, *args, **kwargs):
-        new_path = PureWindowsPath(*args).parts
-        if (os.name != "nt") and (len(new_path) > 0) and (new_path[0] in ("/", "\\")):
-          new_path = ("/", *new_path[1:])
-        return super().__new__(Path, *new_path, **kwargs)
+        # Convert the input to a PureWindowsPath first to normalize backslashes
+        win_path = PureWindowsPath(*args)
+        # Get the parts of the path
+        parts = win_path.parts
+
+        # Handle root paths differently on non-Windows systems
+        if os.name != "nt" and len(parts) > 0:
+            # If the path started with a drive letter (e.g., 'C:'), remove it
+            if len(parts[0]) == 2 and parts[0][1] == ':':
+                parts = parts[1:]
+            # If it's an absolute path, ensure it starts with '/'
+            if parts and not parts[0] in ('/', '\\'):
+                parts = ('/',) + parts
+
+        # Use the superclass's __new__ to create the Path object
+        return super().__new__(cls, *parts, **kwargs)
 
 def loadFrame(fileName):
     # Load frame (np array) from a .npy file and convert to jnp array
-    frame = jnp.load(AgnosticPath(fileName))
+    frame = jnp.load(fileName)
     # Check if the frame's shape is [[[r, g, b, a], ...], ...]
     if frame.ndim != 3 or frame.shape[2] != 4:
         raise ValueError("Invalid frame format. The frame must have a shape of (height, width, 4).")
+    if frame.shape[0] > frame.shape[1]:  # Height > Width indicates wrong orientation
+        frame = jnp.transpose(frame, (1, 0, 2))
     return frame
 
 @partial(jax.jit, static_argnames=["flip_horizontal", "flip_vertical"])
@@ -35,37 +52,87 @@ def flipSprite(sprite, flip_horizontal=False, flip_vertical=False):
         return transposed
 
 
-
+@jax.jit
 def get_sprite_frame(frames, frame_idx, loop=True):
-    frame_idx_converted = jax.lax.cond(loop, lambda x: x % len(frames), lambda x: x, frame_idx)
-    if frame_idx_converted < 0 or frame_idx_converted >= len(frames):
-        return jnp.zeros((1,1,4))  # Return a blank frame if the index is out of bounds
-    return frames[frame_idx_converted] # get the frame as a jnp array
+    num_frames = frames.shape[0]
+
+    # Handle looping
+    frame_idx_looped = jnp.mod(frame_idx, num_frames)
+    frame_idx_converted = jax.lax.cond(loop,
+                                      lambda _: frame_idx_looped,
+                                      lambda _: frame_idx,
+                                      operand=None)
+
+    # Create bounds check using jax.lax.cond
+    valid_frame = jnp.logical_and(
+        frame_idx_converted >= 0,
+        frame_idx_converted < num_frames
+    )
+
+    # Get frame dimensions and create blank frame with matching dtype
+    frame_height = frames.shape[1]
+    frame_width = frames.shape[2]
+    frame_channels = frames.shape[3]
+    blank_frame = jnp.zeros((frame_height, frame_width, frame_channels), dtype=frames.dtype)
+
+    # Return either the frame or blank frame based on validity check
+    return jax.lax.cond(
+        valid_frame,
+        lambda _: frames[frame_idx_converted],  # removed unnecessary jnp.array() call
+        lambda _: blank_frame,
+        operand=None
+    )
 
 
-@partial(jax.jit, static_argnames=["flip_horizontal", "flip_vertical"])
-def render_at(raster, x, y, sprite_frame, flip_horizontal=False, flip_vertical=False, destroyed=False):
-    if destroyed:
-        return raster
-    sprite = flipSprite(sprite_frame, flip_horizontal, flip_vertical)
-    # Get the dimensions of the sprite
-    sprite_height, sprite_width, _ = sprite.shape
-    raster_height, raster_width, _ = raster.shape
+@partial(jax.jit)
+def render_at(raster, y, x, sprite_frame, flip_horizontal=False, flip_vertical=False):
+    """Renders a sprite onto a raster at position (x,y) with optional flipping.
 
-    # Ensure x and y are within valid range
+    Args:
+        raster: JAX array of shape (width, height, 3) for the target image
+        y: Integer y coordinate for sprite placement
+        x: Integer x coordinate for sprite placement
+        sprite_frame: JAX array of shape (height, width, 4) containing RGB + alpha
+    """
+    # Get dimensions correctly - sprite is in (height, width) format
+    sprite_height, sprite_width, _ = sprite_frame.shape
+    raster_width, raster_height, _ = raster.shape
+
+    # Clip coordinates
     x = jnp.clip(x, 0, raster_width - sprite_width)
     y = jnp.clip(y, 0, raster_height - sprite_height)
 
-    # Dynamically extract the raster crop
-    raster_crop = lax.dynamic_slice(raster, (y, x, 0), (sprite_height, sprite_width, 3))
-    sprite_crop = sprite[:, :, :3]  # Always take full sprite RGB channels
-    alpha = sprite[:, :, 3:] / 255  # Alpha channel normalization
+    # Create sprite array and handle flipping - axis 0 is height, axis 1 is width
+    sprite = jnp.array(sprite_frame)
+    sprite = jnp.where(
+        flip_horizontal,
+        jnp.flip(sprite, axis=1),  # Flip width dimension
+        sprite
+    )
+    sprite = jnp.where(
+        flip_vertical,
+        jnp.flip(sprite, axis=0),  # Flip height dimension
+        sprite
+    )
 
-    # Alpha blending (this should correctly handle transparency)
-    blended_crop = sprite_crop * (alpha) + raster_crop * (1 - alpha)
+    # Rest remains same but with corrected dimensions
+    sprite_rgb = sprite[..., :3]
+    alpha = sprite[..., 3:] / 255.0
 
-    # Dynamically update raster with blended crop
-    new_raster = lax.dynamic_update_slice(raster, blended_crop, (y, x, 0))
+    # Use correct dimension ordering in slicing
+    raster_region = jax.lax.dynamic_slice(
+        raster,
+        (x.astype(int), y.astype(int), 0),
+        (sprite_height, sprite_width, 3)  # Note width, height order to match raster
+    )
+
+    blended = sprite_rgb * alpha + raster_region * (1.0 - alpha)
+
+    new_raster = jax.lax.dynamic_update_slice(
+        raster,
+        blended,
+        (x.astype(int), y.astype(int), 0)
+    )
 
     return new_raster
 
