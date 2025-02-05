@@ -123,7 +123,7 @@ class State(NamedTuple):
     shark_positions: chex.Array  # (12, 3) array for sharks - separated into 4 lanes, 3 slots per lane [left to right]
     sub_positions: chex.Array  # (12, 3) array for enemy subs - separated into 4 lanes, 3 slots per lane [left to right]
     enemy_missile_positions: chex.Array  # (4, 3) array for enemy missiles (only the front boats can shoot)
-    surface_sub_position: chex.Array  # (1, 2) array for surface submarine
+    surface_sub_position: chex.Array  # (1, 3) array for surface submarine
     player_missile_position: chex.Array  # (1, 3) array for player missile (x, y, direction)
     step_counter: chex.Array
     just_surfaced: chex.Array  # Flag for tracking actual surfacing moment
@@ -307,12 +307,13 @@ def check_missile_collisions(
     )
 
 
-def check_player_collision(player_x, player_y, submarine_list, shark_list, enemy_projectile_list, score, successful_rescues) ->  Tuple[chex.Array, chex.Array]:
+def check_player_collision(player_x, player_y, submarine_list, shark_list, surface_sub_pos, enemy_projectile_list, score, successful_rescues) ->  Tuple[chex.Array, chex.Array]:
     # check if the player has collided with any of the three given lists
     # the player is a 16x11 rectangle
     # the submarine is a 8x11 rectangle
     # the shark is a 8x7 rectangle
     # the missile is a 8x1 rectangle
+    # the surface submarine is 8x11 as well
 
     # check if the player has collided with any of the submarines
     submarine_collisions = jnp.any(
@@ -334,6 +335,16 @@ def check_player_collision(player_x, player_y, submarine_list, shark_list, enemy
         )
     )
 
+    # check if the player collided with the surface submarine
+    surface_collision = jnp.any(
+        check_collision(
+            jnp.array([player_x, player_y]),
+            PLAYER_SIZE,
+            jnp.array([surface_sub_pos]),
+            ENEMY_SUB_SIZE
+        )
+    )
+
     # check if the player has collided with any of the enemy projectiles
     missile_collisions = jnp.any(
         check_collision(
@@ -349,10 +360,17 @@ def check_player_collision(player_x, player_y, submarine_list, shark_list, enemy
     collision_points = jnp.where(
         shark_collisions,
         calculate_kill_points(successful_rescues),
-        jnp.where(submarine_collisions, calculate_kill_points(successful_rescues), 0)
+        jnp.where(
+            submarine_collisions,
+            calculate_kill_points(successful_rescues),
+            jnp.where(
+                surface_collision,
+                calculate_kill_points(successful_rescues),
+                0
+            ))
     )
 
-    return jnp.any(jnp.array([submarine_collisions, shark_collisions, missile_collisions])), collision_points
+    return jnp.any(jnp.array([submarine_collisions, shark_collisions, missile_collisions, surface_collision])), collision_points
 
 
 def get_spawn_position(moving_left: chex.Array, slot: chex.Array) -> chex.Array:
@@ -1146,6 +1164,48 @@ def spawn_step(state, spawn_state: SpawnState, shark_positions: chex.Array, sub_
     return new_spawn_state, new_shark_positions, new_sub_positions, diver_positions
 
 
+def surface_sub_step(state: State) -> chex.Array:
+    # Check direction value specifically to get scalar boolean
+    sub_exists = state.surface_sub_position[2] != 0
+
+    def spawn_sub(_):
+        return jnp.array([159, 45, -1])  # Always spawns right facing left
+
+    def move_sub(carry):
+        sub_pos = carry
+        new_x = jnp.where(
+            state.step_counter % 4 == 0,
+            sub_pos[0] - 1,  # Direction always -1
+            sub_pos[0]
+        )
+
+        # Return either zeros or new position
+        return jnp.where(
+            jnp.logical_or(new_x < -8, sub_pos[2] == 0),
+            jnp.zeros(3),
+            jnp.array([new_x, 45, -1])
+        )
+
+    # Each condition needs to be scalar
+    enough_rescues = state.successful_rescues >= 2
+    enough_divers = state.divers_collected >= 1
+    correct_timing = jnp.logical_and(state.step_counter % 256 == 0, state.step_counter != 0)
+
+    # check if the submarine should spawn
+    should_spawn = jnp.logical_and(
+        jnp.logical_and(enough_rescues, enough_divers),
+        jnp.logical_and(correct_timing, ~sub_exists)
+    )
+
+    temp1 = spawn_sub(state.surface_sub_position)
+    temp2 = move_sub(state.surface_sub_position)
+
+    return jnp.where(
+        should_spawn,
+        temp1,
+        temp2
+    )
+
 def enemy_missiles_step(curr_sub_positions, curr_enemy_missile_positions, step_counter) -> chex.Array:
     def single_missile_step(i, carry):
         # Input i is the loop index, carry is the full array of missile positions
@@ -1498,7 +1558,7 @@ class Game:
             shark_positions=jnp.zeros((MAX_SHARKS, 3)),
             sub_positions=jnp.zeros((MAX_SUBS, 3)),  # x, y, direction
             enemy_missile_positions=jnp.zeros((MAX_ENEMY_MISSILES, 3)),  # 4 missiles
-            surface_sub_position=jnp.zeros((MAX_SURFACE_SUBS, 3)),  # 1 surface sub
+            surface_sub_position=jnp.zeros(3),  # 1 surface sub
             player_missile_position=jnp.zeros(3),  # x,y,direction
             step_counter=jnp.array(0),
             just_surfaced=jnp.array(-1),
@@ -1541,6 +1601,52 @@ class Game:
                     player_missile_position=jnp.zeros(3),
                     player_x=jnp.where(should_hide_player, -100, state.player_x),
                     step_counter=state.step_counter + 1
+                ),
+                operand=None
+            )
+
+        def handle_score_freeze():
+            # on scoring, the death counter will be set to -(oxygen * 2 + 16 * 6)
+            # thats when we get in here, so duplicate the death animation pattern, but decrease the oxygen until its 0
+            # Calculate new positions with frozen X coordinates
+            shark_y_positions, _, _ = step_enemy_movement(
+                state.spawn_state,
+                state.shark_positions,
+                state.sub_positions,
+                state.step_counter
+            )
+
+            # Keep X positions from original state, only update Y
+            new_shark_positions = state.shark_positions.at[:, 1].set(shark_y_positions[:, 1])
+
+            # calculate the new oxygen
+            new_ox = jnp.where(state.death_counter % 2 == 0, state.oxygen - 1, state.oxygen)
+
+            new_ox = jnp.where(
+                new_ox <= 0,
+                jnp.array(0),
+                state.oxygen
+            )
+
+            # Return either final reset or animation frame
+            return jax.lax.cond(
+                state.death_counter >= -1,
+                lambda _: self.reset()._replace(
+                    score=state.score,
+                    successful_rescues=state.successful_rescues + 1,
+                    divers_collected=jnp.array(0),
+                    spawn_state=soft_reset_spawn_state(state.spawn_state),
+                    surface_sub_position=state.surface_sub_position,
+                    oxygen=jnp.array(0)
+                ),
+                lambda _: state._replace(
+                    death_counter=state.death_counter + 1,
+                    shark_positions=new_shark_positions,
+                    sub_positions=state.sub_positions,
+                    enemy_missile_positions=state.enemy_missile_positions,
+                    player_missile_position=jnp.zeros(3),
+                    step_counter=state.step_counter + 1,
+                    oxygen=new_ox
                 ),
                 operand=None
             )
@@ -1601,6 +1707,12 @@ class Game:
                 state_updated.step_counter,
             )
 
+            new_surface_sub_pos = surface_sub_step(
+                state_updated
+            )
+
+            state_updated._replace(surface_sub_position=new_surface_sub_pos)
+
             # update the enemy missile positions
             new_enemy_missile_positions = enemy_missiles_step(
                 new_sub_positions,
@@ -1608,12 +1720,14 @@ class Game:
                 state_updated.step_counter
             )
 
+            # append the surface submarine to the other submarines for the collision check
             # check if the player has collided with any of the enemies
             player_collision, collision_points = check_player_collision(
                 player_x,
                 player_y,
                 new_sub_positions,
                 new_shark_positions,
+                new_surface_sub_pos,
                 state_updated.enemy_missile_positions,
                 new_score,
                 state_updated.successful_rescues
@@ -1642,12 +1756,22 @@ class Game:
             # Calculate total points for successful rescue
             total_rescue_points = total_diver_points + oxygen_bonus
 
+            # TODO: somewhere the oxygen is depleted on surfacing, this currently blocks the slow draining of oxygen (which is not gameplay relevant -> low priority)
+            # scoring freeze, 16 ticks per diver i.e. 6 * 16 and also 2 ticks per remaining oxygen (which is drained!)
             # Create the scoring state
-            scoring_state = self.reset()._replace(
+            scoring_state = state_updated._replace(
                 lives=state_updated.lives,
                 score=state_updated.score + total_rescue_points,
                 successful_rescues=state_updated.successful_rescues + 1,
-                spawn_state = soft_reset_spawn_state(state_updated.spawn_state)
+                spawn_state = soft_reset_spawn_state(state_updated.spawn_state),
+                death_counter=jnp.array(-(96 + state_updated.oxygen * 2))
+            )
+
+            # cap the step counter to 1024
+            new_step_counter = jnp.where(
+                state_updated.step_counter == 1024,
+                jnp.array(0),
+                state_updated.step_counter + 1
             )
 
             # Create the normal returned state
@@ -1664,9 +1788,9 @@ class Game:
                 shark_positions=new_shark_positions,
                 sub_positions=new_sub_positions,
                 enemy_missile_positions=new_enemy_missile_positions,
-                surface_sub_position=jnp.zeros((MAX_SURFACE_SUBS, 3)),
+                surface_sub_position=new_surface_sub_pos,
                 player_missile_position=player_missile_position,
-                step_counter=state_updated.step_counter + 1,
+                step_counter=new_step_counter,
                 just_surfaced=new_just_surfaced,
                 successful_rescues=state_updated.successful_rescues,
                 death_counter=jnp.array(0)
@@ -1702,7 +1826,7 @@ class Game:
             # Handle game over state
             return jax.lax.cond(
                 game_over,
-                lambda _: self.reset()._replace(score=final_state.score, lives=-1),
+                lambda _: self.reset()._replace(score=final_state.score, lives=jnp.array(-1)),
                 lambda _: final_state,
                 operand=None
             )
@@ -1711,7 +1835,12 @@ class Game:
         return jax.lax.cond(
             state.death_counter > 0,
             lambda _: handle_death_animation(),
-            lambda _: normal_game_step(),
+            lambda _: jax.lax.cond(
+                state.death_counter < 0,
+                lambda _: handle_score_freeze(),
+                lambda _: normal_game_step(),
+                operand=None
+            ),
             operand=None
         )
 
@@ -1759,7 +1888,7 @@ class Renderer:
         divers_text = self.font.render(f"Divers: {int(divers)}/6", True, SCORE_COLOR)
         self.screen.blit(divers_text, (WINDOW_WIDTH - 100, 40))
 
-    def draw_enemies(self, shark_positions, sub_positions, difficulty):
+    def draw_enemies(self, shark_positions, sub_positions, surface_sub_position, difficulty):
         """Draw sharks and submarines"""
         # Draw sharks
         for pos in shark_positions:
@@ -1782,6 +1911,14 @@ class Renderer:
                     ENEMY_SUB_SIZE[0] * 3, ENEMY_SUB_SIZE[1] * 3
                 )
                 pygame.draw.rect(self.screen, ENEMY_SUB_COLOR, sub_rect)
+
+        # draw surface sub
+        if surface_sub_position[0] > 0:
+            surface_sub_rect = pygame.Rect(
+                int(surface_sub_position[0]) * 3, int(surface_sub_position[1]) * 3,
+                ENEMY_SUB_SIZE[0] * 3, ENEMY_SUB_SIZE[1] * 3
+            )
+            pygame.draw.rect(self.screen, ENEMY_SUB_COLOR, surface_sub_rect)
 
     def draw_divers(self, diver_positions):
         """Draw divers"""
@@ -1834,7 +1971,7 @@ class Renderer:
 
         # Draw game objects
         self.draw_divers(state.diver_positions)
-        self.draw_enemies(state.shark_positions, state.sub_positions, state.spawn_state.difficulty)
+        self.draw_enemies(state.shark_positions, state.sub_positions, state.surface_sub_position, state.spawn_state.difficulty)
         self.draw_missiles(state.player_missile_position)
         self.draw_missiles(state.enemy_missile_positions)
         self.draw_player(state.player_x, state.player_y)
