@@ -123,9 +123,9 @@ def load_sprites():
     diver2 = jnp.array(aj.loadFrame('sprites/seaquest/diver/2.npy'))
     shark1 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/shark/1.npy')),  (1, 0, 2))
     shark2 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/shark/2.npy')),  (1, 0, 2))
-    enemy_sub1 = jnp.flip(jnp.flip(jnp.array(aj.loadFrame('sprites/seaquest/enemy_sub/1.npy')), axis=0), axis=1)
-    enemy_sub2 = jnp.flip(jnp.flip(jnp.array(aj.loadFrame('sprites/seaquest/enemy_sub/2.npy')), axis=0), axis=1)
-    enemy_sub3 = jnp.flip(jnp.flip(jnp.array(aj.loadFrame('sprites/seaquest/enemy_sub/3.npy')), axis=0), axis=1)
+    enemy_sub1 = jnp.array(aj.loadFrame('sprites/seaquest/enemy_sub/1.npy'))
+    enemy_sub2 = jnp.array(aj.loadFrame('sprites/seaquest/enemy_sub/2.npy'))
+    enemy_sub3 = jnp.array(aj.loadFrame('sprites/seaquest/enemy_sub/3.npy'))
     pl_torp = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/player_torp/1.npy')), (1, 0, 2))
     en_torp = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/enemy_torp/1.npy')), (1, 0, 2))
     
@@ -1212,11 +1212,15 @@ class Renderer_AtraJaxis:
         # render player submarine
         frame_pl_sub = aj.get_sprite_frame(SPRITE_PL_SUB, state.step_counter)
         raster = aj.render_at(raster, state.player_y, state.player_x, frame_pl_sub, flip_vertical = state.player_direction == FACE_LEFT)
+        
+        # render player torpedo
+        frame_pl_torp = aj.get_sprite_frame(SPRITE_PL_TORP, state.step_counter)
+        raster = aj.render_at(raster, state.player_missile_position[1], state.player_missile_position[0], frame_pl_torp)
+        
         # render divers
         frame_diver = aj.get_sprite_frame(SPRITE_DIVER, state.step_counter)
         diver_positions = state.diver_positions
 
-        # render diver
         def render_diver(i, raster_base):
             should_render = diver_positions[i][0] > 0
             return jax.lax.cond(
@@ -1232,7 +1236,6 @@ class Renderer_AtraJaxis:
                 raster_base
             )
 
-        # Use fori_loop to render all divers
         raster = jax.lax.fori_loop(
             0,
             MAX_DIVERS,
@@ -1264,72 +1267,80 @@ class Renderer_AtraJaxis:
             render_shark,
             raster
         )
-
+        
+        # render enemy subs
+        frame_enemy_sub = aj.get_sprite_frame(SPRITE_ENEMY_SUB, state.step_counter)
+        
+        def render_enemy_sub(i, raster_base):
+            should_render = state.sub_positions[i][0] > 0
+            return jax.lax.cond(
+                should_render,
+                lambda r: aj.render_at(
+                    r,
+                    state.sub_positions[i][1],
+                    state.sub_positions[i][0],
+                    frame_enemy_sub,
+                    flip_vertical=(state.sub_positions[i][2] == FACE_LEFT)
+                ),
+                lambda r: r,
+                raster_base
+            )
+        
+        raster = jax.lax.fori_loop(
+            0,
+            MAX_SUBS,
+            render_enemy_sub,
+            raster
+        )
+        
+        def render_enemy_surface_sub(i, raster_base):
+            should_render = state.surface_sub_position[i][0] > 0
+            return jax.lax.cond(
+                should_render,
+                lambda r: aj.render_at(
+                    r,
+                    state.surface_sub_position[i][1],
+                    state.surface_sub_position[i][0],
+                    frame_enemy_sub,
+                    flip_vertical=(state.surface_sub_position[i][2] == FACE_LEFT)
+                ),
+                lambda r: r,
+                raster_base
+            )   
+            
+        raster = jax.lax.fori_loop(
+            0,
+            MAX_SURFACE_SUBS,
+            render_enemy_surface_sub,
+            raster
+        )
+            
+        frame_enemy_torp = aj.get_sprite_frame(SPRITE_EN_TORP, state.step_counter)
+        
+        def render_enemy_torp (i, raster_base):
+            should_render = state.enemy_missile_positions[i][0] > 0
+            return jax.lax.cond(
+                should_render,
+                lambda r: aj.render_at(
+                    r,
+                    state.enemy_missile_positions[i][1],
+                    state.enemy_missile_positions[i][0],
+                    frame_enemy_torp,
+                    flip_vertical=(state.enemy_missile_positions[i][2] == FACE_LEFT)
+                ),
+                lambda r: r,
+                raster_base
+            )
+        raster = jax.lax.fori_loop(
+            0,
+            MAX_ENEMY_MISSILES,
+            render_enemy_torp,
+            raster
+        )  
+        
         return raster
 
-
-    #     # update divers
-    #     for idx in range(MAX_DIVERS):
-    #         if state.diver_positions[idx][0] > 0: # indicates existence
-    #             diver_x = int(state.diver_positions[idx][1].item())
-    #             diver_y = int(state.diver_positions[idx][0].item())
-    #             diver_direction = state.diver_positions[idx][2].item()
-    #             if self.diver_objects[idx] is None: # if object does not exist, create it
-    #                 self.diver_objects[idx] = GameObject(diver_x, diver_y, self.spriteLoader.getSprite('diver'))
-    #                 self.canvas.getLayer('divers').addGameObject(self.diver_objects[idx])
-    #                 self.canvas.getLayer('divers').gameObjects[idx].sprite.transform["flip_horizontal"] = diver_direction == FACE_LEFT # flip sprite if facing left
-
-    #             else: # if object exists, update its position
-    #                 self.diver_objects[idx].displace(diver_x, diver_y)
-    #                 if self.diver_objects[idx] is not None: # avoid error if diver object is killed on the same frame
-    #                     self.diver_objects[idx].sprite.transform["flip_horizontal"] = diver_direction == FACE_LEFT # flip sprite if facing left
-
-    #         else: # the diver no longer exists
-    #             if self.diver_objects[idx] is not None:
-    #                 self.canvas.getLayer('divers').removeGameObject(self.diver_objects[idx])
-    #                 self.diver_objects[idx] = None
-                    
-    #     # update sharks
-    #     for idx in range(MAX_SHARKS):
-    #         if state.shark_positions[idx][0] > 0: # indicates existence
-    #             shark_x = int(state.shark_positions[idx][1].item())
-    #             shark_y = int(state.shark_positions[idx][0].item())
-    #             shark_direction = state.shark_positions[idx][2].item()
-    #             if self.shark_objects[idx] is None: # if object does not exist, create it
-    #                 self.shark_objects[idx] = GameObject(shark_x, shark_y, self.spriteLoader.getSprite('shark'))
-    #                 self.canvas.getLayer('enemies').addGameObject(self.shark_objects[idx])
-    #                 self.shark_objects[idx].sprite.transform["flip_horizontal"] = shark_direction == FACE_LEFT # flip sprite if facing left
-
-    #             else: # if object exists, update its position
-    #                 self.shark_objects[idx].displace(shark_x, shark_y)
-    #                 if self.shark_objects[idx] is not None: # avoid error if shark object is killed on the same frame
-    #                     self.shark_objects[idx].sprite.transform["flip_horizontal"] = shark_direction == FACE_LEFT # flip sprite if facing left
-
-    #         else: # the shark no longer exists
-    #             if self.shark_objects[idx] is not None:
-    #                 self.canvas.getLayer('enemies').removeGameObject(self.shark_objects[idx])
-    #                 self.shark_objects[idx] = None
-                    
-    #     # update enemy submarines
-    #     for idx in range(MAX_SUBS):
-    #         if state.sub_positions[idx][0] > 0: # indicates existence
-    #             sub_x = int(state.sub_positions[idx][1].item())
-    #             sub_y = int(state.sub_positions[idx][0].item())
-    #             sub_direction = state.sub_positions[idx][2].item()
-    #             if self.sub_objects[idx] is None:
-    #                 self.sub_objects[idx] = GameObject(sub_x, sub_y, self.spriteLoader.getSprite('enemy_sub'))
-    #                 self.canvas.getLayer('enemies').addGameObject(self.sub_objects[idx])
-    #                 # update direction of submarine
-    #                 self.sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
-    #             else:
-    #                 self.sub_objects[idx].displace(sub_x, sub_y)
-    #                 if self.sub_objects[idx] is not None: # avoid error if submarine object is killed on the same frame
-    #                     self.sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
-    #         else: # the submarine no longer exists
-    #             if self.sub_objects[idx] is not None:
-    #                 self.canvas.getLayer('enemies').removeGameObject(self.sub_objects[idx])
-    #                 self.sub_objects[idx] = None
-                    
+        
     #     # update surface submarine
     #     for idx in range(MAX_SURFACE_SUBS):
     #         if state.surface_sub_position[idx][0] > 0: # indicates existence
@@ -1347,21 +1358,7 @@ class Renderer_AtraJaxis:
     #                 # update direction of submarine
     #                 self.surface_sub_objects[idx].sprite.transform["flip_horizontal"] = sub_direction == FACE_LEFT
             
-                    
-    #     # update player's torpedo
-    #     if state.player_missile_position[0] > 0: # exists
-    #         pltorp_x = int(state.player_missile_position[1].item())
-    #         pltorp_y = int(state.player_missile_position[0].item())
-    #         if self.player_torpedo_object is None: # if object does not exist, create it
-    #             self.player_torpedo_object = GameObject(pltorp_x, pltorp_y, self.spriteLoader.getSprite('player_torpedo'))
-    #             self.canvas.getLayer('torpedoes').addGameObject(self.player_torpedo_object)
-    #         else: # if object exists, update its position
-    #             self.player_torpedo_object.displace(pltorp_x, pltorp_y)   
-    #     else: # the torpedo no longer exists
-    #         if self.player_torpedo_object is not None:
-    #             self.canvas.getLayer('torpedoes').removeGameObject(self.player_torpedo_object)
-    #             self.player_torpedo_object = None
-                
+
     #     # update enemy torpedoes
     #     for idx in range(MAX_ENEMY_MISSILES):
     #         if state.enemy_missile_positions[idx][0] > 0: # indicates existence
