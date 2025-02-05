@@ -119,8 +119,16 @@ def load_sprites():
     pl_sub1 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/player_sub/1.npy')), (1, 0, 2))
     pl_sub2 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/player_sub/2.npy')), (1, 0, 2))
     pl_sub3 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/player_sub/3.npy')), (1, 0, 2))
-    diver1 = jnp.flip(jnp.flip(jnp.array(aj.loadFrame('sprites/seaquest/diver/1.npy')), axis=0), axis=1)
-    diver2 = jnp.flip(jnp.flip(jnp.array(aj.loadFrame('sprites/seaquest/diver/2.npy')), axis=0), axis=1)
+    diver1 = jnp.array(aj.loadFrame('sprites/seaquest/diver/1.npy'))
+    diver2 = jnp.array(aj.loadFrame('sprites/seaquest/diver/2.npy'))
+    shark1 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/shark/1.npy')),  (1, 0, 2))
+    shark2 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/shark/2.npy')),  (1, 0, 2))
+    enemy_sub1 = jnp.flip(jnp.flip(jnp.array(aj.loadFrame('sprites/seaquest/enemy_sub/1.npy')), axis=0), axis=1)
+    enemy_sub2 = jnp.flip(jnp.flip(jnp.array(aj.loadFrame('sprites/seaquest/enemy_sub/2.npy')), axis=0), axis=1)
+    enemy_sub3 = jnp.flip(jnp.flip(jnp.array(aj.loadFrame('sprites/seaquest/enemy_sub/3.npy')), axis=0), axis=1)
+    pl_torp = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/player_torp/1.npy')), (1, 0, 2))
+    en_torp = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/enemy_torp/1.npy')), (1, 0, 2))
+    
 
     # Only pad sprites of same type to match each other's dimensions
     def pad_to_match(sprites):
@@ -142,7 +150,20 @@ def load_sprites():
 
     # Pad diver sprites to match each other
     diver_sprites = pad_to_match([diver1, diver2])
-
+    
+    # Pad shark sprites to match each other
+    shark_sprites = pad_to_match([shark1, shark2])
+    
+    # Pad enemy submarine sprites to match each other
+    enemy_sub_sprites = pad_to_match([enemy_sub1, enemy_sub2, enemy_sub3])
+    
+    # Pad player torpedo sprites to match each other
+    pl_torp_sprites = [pl_torp]
+    
+    # Pad enemy torpedo sprites to match each other
+    en_torp_sprites = [en_torp]
+    
+    
     # Background sprite (no padding needed)
     SPRITE_BG = jnp.expand_dims(bg1, axis=0)
 
@@ -158,12 +179,31 @@ def load_sprites():
         jnp.repeat(diver_sprites[0][None], 16, axis=0),
         jnp.repeat(diver_sprites[1][None], 4, axis=0)
     ])
+    
+    # Shark sprites
+    SPRITE_SHARK = jnp.concatenate([
+        jnp.repeat(shark_sprites[0][None], 16, axis=0),
+        jnp.repeat(shark_sprites[1][None], 8, axis=0)
+    ])
+    
+    # Enemy submarine sprites
+    SPRITE_ENEMY_SUB = jnp.concatenate([
+        jnp.repeat(enemy_sub_sprites[0][None], 4, axis=0),
+        jnp.repeat(enemy_sub_sprites[1][None], 4, axis=0),
+        jnp.repeat(enemy_sub_sprites[2][None], 4, axis=0)
+    ])
+    
+    # Player torpedo sprites
+    SPRITE_PL_TORP = jnp.repeat(pl_torp_sprites[0][None], 1, axis=0)
+    
+    # Enemy torpedo sprites
+    SPRITE_EN_TORP = jnp.repeat(en_torp_sprites[0][None], 1, axis=0)
 
-    return SPRITE_BG, SPRITE_PL_SUB, SPRITE_DIVER
+    return SPRITE_BG, SPRITE_PL_SUB, SPRITE_DIVER, SPRITE_SHARK, SPRITE_ENEMY_SUB, SPRITE_PL_TORP, SPRITE_EN_TORP
 
 
 # Load sprites once at module level
-SPRITE_BG, SPRITE_PL_SUB, SPRITE_DIVER = load_sprites()
+SPRITE_BG, SPRITE_PL_SUB, SPRITE_DIVER, SPRITE_SHARK, SPRITE_ENEMY_SUB, SPRITE_PL_TORP, SPRITE_EN_TORP = load_sprites()
 
 
 # TODO: remove, for debugging purposes only
@@ -1159,174 +1199,25 @@ class Game:
         return final_state
 
 class Renderer_AtraJaxis:
-    def __init__(self):
-        self.sprite_bg = SPRITE_BG
-        self.sprite_pl_sub = SPRITE_PL_SUB
-        self.sprite_diver = SPRITE_DIVER
 
-    #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\1.npy', name='pl_sub1')
-    #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\2.npy', name='pl_sub2')
-    #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\3.npy', name='pl_sub3')
-    #     self.spriteLoader.loadSprite('player_sub', [('pl_sub1', 4), ('pl_sub2', 4), ('pl_sub3', 4)], RenderMode.LOOP)
-        
-    #     # enemy submarine
-    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\1.npy', name='en_sub1')
-    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\2.npy', name='en_sub2')
-    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\3.npy', name='en_sub3')
-    #     self.spriteLoader.loadSprite('enemy_sub', [('en_sub1', 4), ('en_sub2', 4), ('en_sub3', 4)], RenderMode.LOOP)
-        
-    #     # enemy shark
-    #     self.spriteLoader.loadFrame('sprites\seaquest\shark\\1.npy', name='shark1')
-    #     self.spriteLoader.loadFrame('sprites\seaquest\shark\\2.npy', name='shark2')
-    #     self.spriteLoader.loadSprite('shark', [('shark1', 16), ('shark2', 8)], RenderMode.LOOP)
-        
-    #     # diver
-    #     self.spriteLoader.loadFrame('sprites\seaquest\diver\\1.npy', name='diver1')
-    #     self.spriteLoader.loadFrame('sprites\seaquest\diver\\2.npy', name='diver2')
-    #     self.spriteLoader.loadSprite('diver', [('diver1', 16), ('diver2', 8)], RenderMode.LOOP)
-        
-    #     # player torpedo
-    #     self.spriteLoader.loadFrame('sprites\seaquest\player_torp\\1.npy', name='pl_torpedo1')
-    #     self.spriteLoader.loadSprite('player_torpedo', [('pl_torpedo1', 1)], RenderMode.LOOP)
-        
-    #     # enemy torpedo
-    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_torp\\1.npy', name='en_torpedo1')
-    #     self.spriteLoader.loadSprite('enemy_torpedo', [('en_torpedo1', 1)], RenderMode.LOOP)
-        
-        # initialize renderer
-
-        
-        
-
-    # def __init__(self):
-    #     # initialize renderer
-    #     self.window_width = 160
-    #     self.window_height = 210
-    #     self.scaling_factor = 3
-    #     pygame.init()
-    #     self.win = pygame.display.set_mode((self.window_width*self.scaling_factor, self.window_height*self.scaling_factor))
-    #     pygame.display.set_caption("Seaquest")
-    #     self.clock = pygame.time.Clock()
-    #     self.font = pygame.font.Font(None, 36)
-    #     running = True
-        
-    #     # initialize sprites
-    #     self.spriteLoader = SpriteLoader()
-        
-    #     # background
-    #     self.spriteLoader.loadFrame('sprites\seaquest\\bg\\1.npy', name='bg1')
-    #     self.spriteLoader.loadSprite('bg', [('bg1', 1)], RenderMode.LOOP)
-        
-    #     # player submarine
-    #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\1.npy', name='pl_sub1')
-    #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\2.npy', name='pl_sub2')
-    #     self.spriteLoader.loadFrame('sprites\seaquest\player_sub\\3.npy', name='pl_sub3')
-    #     self.spriteLoader.loadSprite('player_sub', [('pl_sub1', 4), ('pl_sub2', 4), ('pl_sub3', 4)], RenderMode.LOOP)
-        
-    #     # enemy submarine
-    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\1.npy', name='en_sub1')
-    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\2.npy', name='en_sub2')
-    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_sub\\3.npy', name='en_sub3')
-    #     self.spriteLoader.loadSprite('enemy_sub', [('en_sub1', 4), ('en_sub2', 4), ('en_sub3', 4)], RenderMode.LOOP)
-        
-    #     # enemy shark
-    #     self.spriteLoader.loadFrame('sprites\seaquest\shark\\1.npy', name='shark1')
-    #     self.spriteLoader.loadFrame('sprites\seaquest\shark\\2.npy', name='shark2')
-    #     self.spriteLoader.loadSprite('shark', [('shark1', 16), ('shark2', 8)], RenderMode.LOOP)
-        
-    #     # diver
-    #     self.spriteLoader.loadFrame('sprites\seaquest\diver\\1.npy', name='diver1')
-    #     self.spriteLoader.loadFrame('sprites\seaquest\diver\\2.npy', name='diver2')
-    #     self.spriteLoader.loadSprite('diver', [('diver1', 16), ('diver2', 8)], RenderMode.LOOP)
-        
-    #     # player torpedo
-    #     self.spriteLoader.loadFrame('sprites\seaquest\player_torp\\1.npy', name='pl_torpedo1')
-    #     self.spriteLoader.loadSprite('player_torpedo', [('pl_torpedo1', 1)], RenderMode.LOOP)
-        
-    #     # enemy torpedo
-    #     self.spriteLoader.loadFrame('sprites\seaquest\enemy_torp\\1.npy', name='en_torpedo1')
-    #     self.spriteLoader.loadSprite('enemy_torpedo', [('en_torpedo1', 1)], RenderMode.LOOP)
-        
-
-        
-    #     # digits
-    #     char_to_frame = {}
-    #     for i in range(10):
-    #         self.spriteLoader.loadFrame(f'sprites\seaquest\digits\\{i}.npy', name=f'digit{i}')
-    #         char_to_frame[str(i)] = self.spriteLoader.frames[f'digit{i}']
-            
-
-            
-    #     # life indicator
-    #     self.spriteLoader.loadFrame('sprites\seaquest\life_indicator\\1.npy', name='life1')
-    #     char_to_frame['l'] = self.spriteLoader.frames['life1']
-
-        
-    #     # diver indicator
-    #     self.spriteLoader.loadFrame('sprites\seaquest\diver_indicator\\1.npy', name='diver_indicator1')
-    #     char_to_frame['d'] = self.spriteLoader.frames['diver_indicator1']
-
-    #     # initialize canvas
-    #     self.canvas = Canvas(self.window_width, self.window_height)
-    #     self.canvas.addLayer(Layer('bg', self.window_width, self.window_height))
-    #     self.canvas.addLayer(Layer('torpedoes', self.window_width, self.window_height))
-    #     self.canvas.addLayer(Layer('player_sub', self.window_width, self.window_height))
-    #     self.canvas.addLayer(Layer('divers', self.window_width, self.window_height))
-    #     self.canvas.addLayer(Layer('enemies', self.window_width, self.window_height))
-    #     self.canvas.addLayer(Layer('waves', self.window_width, self.window_height))
-    #     self.canvas.addLayer(Layer('HUD', self.window_width, self.window_height))
-        
-    #     # initialize game objects
-    #     background = GameObject(0, 0, self.spriteLoader.getSprite('bg'))
-    #     self.canvas.getLayer('bg').addGameObject(background)
-        
-    #     pl_sub = GameObject(0, 0, self.spriteLoader.getSprite('player_sub'))
-    #     self.canvas.getLayer('player_sub').addGameObject(pl_sub)
-        
-    #     # HUD elements
-    #     # TODO: verify positioning and width between chars in the HUD
-
-    #     hud_score = TextHUD("00", 10, 10, char_to_frame, 2) # score indicator
-    #     self.hud_score = hud_score
-    #     self.canvas.getLayer('HUD').addGameObject(hud_score)
-        
-    #     hud_lives = TextHUD("lll", 20, 10, char_to_frame, 2) # lives indicator
-    #     self.hud_lives = hud_lives
-    #     self.canvas.getLayer('HUD').addGameObject(hud_lives)
-        
-    #     hud_divers = TextHUD("", 20, 40, char_to_frame, 2) # diver indicator
-    #     self.hud_divers = hud_divers
-    #     self.canvas.getLayer('HUD').addGameObject(hud_divers)
-
-    #     hud_oxygen = BarHUD(10, 60, 60, 5, 64, 64, (255,255,255,255)) # oxygen bar
-    #     self.hud_oxygen = hud_oxygen
-    #     self.canvas.getLayer('HUD').addGameObject(hud_oxygen)
-
-    #     # initialize arrays that map indices to game objects
-    #     self.diver_objects = [None] * MAX_DIVERS
-    #     self.shark_objects = [None] * MAX_SHARKS
-    #     self.sub_objects = [None] * MAX_SUBS
-    #     self.enemy_torpedo_objects = [None] * MAX_ENEMY_MISSILES
-    #     self.surface_sub_objects = [None] * MAX_SURFACE_SUBS
-    #     self.player_torpedo_object = None
 
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state):
         raster = jnp.zeros((WIDTH, HEIGHT, 3))
 
         # render background
-        frame_bg = aj.get_sprite_frame(self.sprite_bg, 0)
-        raster = aj.render_at(raster, 0, 0, frame_bg, flip_vertical=True)
+        frame_bg = aj.get_sprite_frame(SPRITE_BG, 0)
+        raster = aj.render_at(raster, 0, 0, frame_bg, flip_vertical = True)
 
         # render player submarine
-        frame_pl_sub = aj.get_sprite_frame(self.sprite_pl_sub, state.step_counter)
+        frame_pl_sub = aj.get_sprite_frame(SPRITE_PL_SUB, state.step_counter)
         raster = aj.render_at(raster, state.player_y, state.player_x, frame_pl_sub, flip_vertical = state.player_direction == FACE_LEFT)
         # render divers
-        frame_diver = aj.get_sprite_frame(self.sprite_diver, state.step_counter)
+        frame_diver = aj.get_sprite_frame(SPRITE_DIVER, state.step_counter)
         diver_positions = state.diver_positions
 
-        # convert diver positions to integers
-        def render_diver(i, raster_carry):
+        # render diver
+        def render_diver(i, raster_base):
             should_render = diver_positions[i][0] > 0
             return jax.lax.cond(
                 should_render,
@@ -1335,21 +1226,46 @@ class Renderer_AtraJaxis:
                     diver_positions[i][1],
                     diver_positions[i][0],
                     frame_diver,
-                    flip_horizontal=(diver_positions[i][2] == FACE_LEFT)
+                    flip_vertical=(diver_positions[i][2] == FACE_LEFT)
                 ),
                 lambda r: r,
-                raster_carry
+                raster_base
             )
 
         # Use fori_loop to render all divers
-        raster_rendered_diver = jax.lax.fori_loop(
+        raster = jax.lax.fori_loop(
             0,
             MAX_DIVERS,
             render_diver,
             raster
         )
+        
+        # render sharks
+        frame_shark = aj.get_sprite_frame(SPRITE_SHARK, state.step_counter)
 
-        return raster_rendered_diver
+        def render_shark(i, raster_base):
+            should_render = state.shark_positions[i][0] > 0
+            return jax.lax.cond(
+                should_render,
+                lambda r: aj.render_at(
+                    r,
+                    state.shark_positions[i][1],
+                    state.shark_positions[i][0],
+                    frame_shark,
+                    flip_vertical=(state.shark_positions[i][2] == FACE_LEFT)
+                ),
+                lambda r: r,
+                raster_base
+            )
+        # Use fori_loop to render all sharks
+        raster = jax.lax.fori_loop(
+            0,
+            MAX_DIVERS,
+            render_shark,
+            raster
+        )
+
+        return raster
 
 
     #     # update divers

@@ -43,10 +43,12 @@ def loadFrame(fileName):
 def flipSprite(sprite, flip_horizontal=False, flip_vertical=False):
     # Use jnp.transpose for JAX compatibility
     transposed = jnp.transpose(sprite, (1, 0, 2))  # Transpose x and y axes
+    if flip_vertical and flip_horizontal:
+        return transposed[::-1, ::-1, :]
 
-    if flip_vertical:
+    if flip_horizontal:
         return transposed[:, ::-1, :]
-    elif flip_horizontal:
+    elif flip_vertical:
         return transposed[::-1, :, :]
     else:
         return transposed
