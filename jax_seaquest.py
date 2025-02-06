@@ -1211,7 +1211,7 @@ class Renderer_AtraJaxis:
 
         # render player submarine
         frame_pl_sub = aj.get_sprite_frame(SPRITE_PL_SUB, state.step_counter)
-        raster = aj.render_at(raster, state.player_y, state.player_x, frame_pl_sub, flip_vertical = state.player_direction == FACE_LEFT)
+        raster = aj.render_at(raster, state.player_y, state.player_x, frame_pl_sub, flip_horizontal = state.player_direction == FACE_LEFT)
         
         # render player torpedo
         frame_pl_torp = aj.get_sprite_frame(SPRITE_PL_TORP, state.step_counter)
@@ -1230,7 +1230,7 @@ class Renderer_AtraJaxis:
                     diver_positions[i][1],
                     diver_positions[i][0],
                     frame_diver,
-                    flip_vertical=(diver_positions[i][2] == FACE_LEFT)
+                    flip_horizontal=(diver_positions[i][2] == FACE_LEFT)
                 ),
                 lambda r: r,
                 raster_base
@@ -1255,7 +1255,7 @@ class Renderer_AtraJaxis:
                     state.shark_positions[i][1],
                     state.shark_positions[i][0],
                     frame_shark,
-                    flip_vertical=(state.shark_positions[i][2] == FACE_LEFT)
+                    flip_horizontal=(state.shark_positions[i][2] == FACE_LEFT)
                 ),
                 lambda r: r,
                 raster_base
@@ -1280,7 +1280,7 @@ class Renderer_AtraJaxis:
                     state.sub_positions[i][1],
                     state.sub_positions[i][0],
                     frame_enemy_sub,
-                    flip_vertical=(state.sub_positions[i][2] == FACE_LEFT)
+                    flip_horizontal=(state.sub_positions[i][2] == FACE_LEFT)
                 ),
                 lambda r: r,
                 raster_base
@@ -1302,7 +1302,7 @@ class Renderer_AtraJaxis:
                     state.surface_sub_position[i][1],
                     state.surface_sub_position[i][0],
                     frame_enemy_sub,
-                    flip_vertical=(state.surface_sub_position[i][2] == FACE_LEFT)
+                    flip_horizontal=(state.surface_sub_position[i][2] == FACE_LEFT)
                 ),
                 lambda r: r,
                 raster_base
@@ -1326,7 +1326,7 @@ class Renderer_AtraJaxis:
                     state.enemy_missile_positions[i][1],
                     state.enemy_missile_positions[i][0],
                     frame_enemy_torp,
-                    flip_vertical=(state.enemy_missile_positions[i][2] == FACE_LEFT)
+                    flip_horizontal=(state.enemy_missile_positions[i][2] == FACE_LEFT)
                 ),
                 lambda r: r,
                 raster_base

@@ -66,18 +66,6 @@ def load_and_pad_digits(path_pattern):
     
     return jnp.array(padded_digits)
 
-@partial(jax.jit, static_argnames=["flip_horizontal", "flip_vertical"])
-def flipSprite(sprite, flip_horizontal=False, flip_vertical=False):
-    if flip_vertical and flip_horizontal:
-        return sprite[::-1, ::-1, :]
-
-    if flip_horizontal:
-        return sprite[:, ::-1, :]
-    elif flip_vertical:
-        return sprite[::-1, :, :]
-    else:
-        return sprite
-
 
 @jax.jit
 def get_sprite_frame(frames, frame_idx, loop=True):
@@ -133,12 +121,12 @@ def render_at(raster, y, x, sprite_frame, flip_horizontal=False, flip_vertical=F
     sprite = jnp.array(sprite_frame)
     sprite = jnp.where(
         flip_horizontal,
-        jnp.flip(sprite, axis=1),  # Flip width dimension
+        jnp.flip(sprite, axis=0),  # Flip width dimension
         sprite
     )
     sprite = jnp.where(
         flip_vertical,
-        jnp.flip(sprite, axis=0),  # Flip height dimension
+        jnp.flip(sprite, axis=1),  # Flip height dimension
         sprite
     )
 
@@ -179,21 +167,25 @@ def update_pygame(pygame_screen, raster, SCALING_FACTOR=3, WIDTH=400, HEIGHT=300
     pygame.display.flip()
 
 # TODO: make this function jaxxed
-def get_number_GUI(number,digits_array, spacing_width=5):
-    # get the corresponding digit sprite from the digits_array
-    # concatenate the digits (and spaces inbetween) to form the number
-    # return a sprite of the number with fixed width and height
+def get_number_GUI(number, digits_array, spacing=5):
     # Convert number to string and extract digits
     digits = [int(d) for d in str(number)]
 
     # Retrieve corresponding digit sprites
     sprites = [digits_array[d] for d in digits]
 
-    # Concatenate sprites with a fixed spacing (assuming horizontal layout)
-    spacing = jnp.zeros_like(digits_array[0])[:, :spacing_width]  # Assuming 5-pixel spacing
-    sprite_image = jnp.concatenate([sprites[i] if i == 0 else jnp.concatenate((spacing, sprites[i]), axis=1) for i in range(len(sprites))], axis=1)
+    # Create vertical spacing (empty rows)
+    spacing = jnp.zeros_like(digits_array[0])[:spacing, :]  # Vertical spacing
+
+    # Stack sprites vertically with spacing
+    sprite_image = jnp.concatenate(
+        [sprites[i] if i == 0 else jnp.concatenate((spacing, sprites[i]), axis=0)
+         for i in range(len(sprites))], 
+        axis=0
+    )
 
     return sprite_image
+
 
 
 # Only pad sprites of same type to match each other's dimensions
@@ -261,8 +253,8 @@ if __name__ == "__main__":
         shark_frame = get_sprite_frame(SPRITE_SHARK, frame_idx, loop=True)
         raster = render_at(raster, 140, 140, sub_frame, flip_horizontal=True)
         raster = render_at(raster, 100, 100, shark_frame)
-        number_sprite = get_number_GUI(1488, digits_array, spacing_width=10)
-        raster = render_at(raster, 0, 0, number_sprite)
+        number_sprite = get_number_GUI(1488, digits_array, spacing=10)
+        raster = render_at(raster, 25, 25, number_sprite)
         
         update_pygame(screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
         frame_idx += 1
