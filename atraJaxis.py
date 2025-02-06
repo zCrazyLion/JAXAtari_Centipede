@@ -38,12 +38,12 @@ def loadFrame(fileName, transpose = True):
     return jnp.transpose(frame, (1, 0, 2)) if transpose else frame
 
 @partial(jax.jit, static_argnames=["path_pattern"])
-def load_and_pad_digits(path_pattern):
+def load_and_pad_digits(path_pattern, num_chars = 10):
     digits = []
     max_height, max_width = 0, 0
     
     # Load digits and determine max dimensions
-    for i in range(10):
+    for i in range(num_chars):
         digit = loadFrame(path_pattern.format(i))
         max_height = max(max_height, digit.shape[0])
         max_width = max(max_width, digit.shape[1])
@@ -165,26 +165,18 @@ def update_pygame(pygame_screen, raster, SCALING_FACTOR=3, WIDTH=400, HEIGHT=300
 
     pygame_screen.blit(frame_surface, (0, 0))
     pygame.display.flip()
-
+    
+MAX_LABEL_WIDTH = 100
+MAX_LABEL_HEIGHT = 20
 # TODO: make this function jaxxed
-def get_number_GUI(number, digits_array, spacing=5):
-    # Convert number to string and extract digits
-    digits = [int(d) for d in str(number)]
-
-    # Retrieve corresponding digit sprites
-    sprites = [digits_array[d] for d in digits]
-
-    # Create vertical spacing (empty rows)
-    spacing = jnp.zeros_like(digits_array[0])[:spacing, :]  # Vertical spacing
-
-    # Stack sprites vertically with spacing
-    sprite_image = jnp.concatenate(
-        [sprites[i] if i == 0 else jnp.concatenate((spacing, sprites[i]), axis=0)
-         for i in range(len(sprites))], 
-        axis=0
-    )
-
-    return sprite_image
+@jax.jit
+def render_label(raster, y, x, text, char_sprites, spacing=15):
+    sprites = jnp.stack([char_sprites[d] for d in text])  # JAX-friendly
+    def render_char(i, r):
+       return render_at(r, y, x + i * spacing, sprites[i])
+    raster = jax.lax.fori_loop(0, sprites.shape[0], render_char, raster)
+    return raster
+    
 
 
 
@@ -253,8 +245,7 @@ if __name__ == "__main__":
         shark_frame = get_sprite_frame(SPRITE_SHARK, frame_idx, loop=True)
         raster = render_at(raster, 140, 140, sub_frame, flip_horizontal=True)
         raster = render_at(raster, 100, 100, shark_frame)
-        number_sprite = get_number_GUI(1488, digits_array, spacing=10)
-        raster = render_at(raster, 25, 25, number_sprite)
+        raster = render_label(raster, 10, 10, jnp.array([1,2,4]), digits_array)
         
         update_pygame(screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
         frame_idx += 1
