@@ -29,29 +29,54 @@ class AgnosticPath(Path):
         # Use the superclass's __new__ to create the Path object
         return super().__new__(cls, *parts, **kwargs)
 
-def loadFrame(fileName):
+def loadFrame(fileName, transpose = True):
     # Load frame (np array) from a .npy file and convert to jnp array
     frame = jnp.load(fileName)
     # Check if the frame's shape is [[[r, g, b, a], ...], ...]
     if frame.ndim != 3 or frame.shape[2] != 4:
         raise ValueError("Invalid frame format. The frame must have a shape of (height, width, 4).")
-    if frame.shape[0] > frame.shape[1]:  # Height > Width indicates wrong orientation
-        frame = jnp.transpose(frame, (1, 0, 2))
-    return frame
+    return jnp.transpose(frame, (1, 0, 2)) if transpose else frame
+
+@partial(jax.jit, static_argnames=["path_pattern"])
+def load_and_pad_digits(path_pattern):
+    digits = []
+    max_height, max_width = 0, 0
+    
+    # Load digits and determine max dimensions
+    for i in range(10):
+        digit = loadFrame(path_pattern.format(i))
+        max_height = max(max_height, digit.shape[0])
+        max_width = max(max_width, digit.shape[1])
+        digits.append(digit)
+    
+    # Pad digits to max dimensions
+    padded_digits = []
+    for digit in digits:
+        pad_h = max_height - digit.shape[0]
+        pad_w = max_width - digit.shape[1]
+        pad_top = pad_h // 2
+        pad_bottom = pad_h - pad_top
+        pad_left = pad_w // 2
+        pad_right = pad_w - pad_left
+        
+        padded_digit = jnp.pad(digit, 
+                               ((pad_top, pad_bottom), (pad_left, pad_right), (0, 0)),
+                               mode='constant', constant_values=0)
+        padded_digits.append(padded_digit)
+    
+    return jnp.array(padded_digits)
 
 @partial(jax.jit, static_argnames=["flip_horizontal", "flip_vertical"])
 def flipSprite(sprite, flip_horizontal=False, flip_vertical=False):
-    # Use jnp.transpose for JAX compatibility
-    transposed = jnp.transpose(sprite, (1, 0, 2))  # Transpose x and y axes
     if flip_vertical and flip_horizontal:
-        return transposed[::-1, ::-1, :]
+        return sprite[::-1, ::-1, :]
 
     if flip_horizontal:
-        return transposed[:, ::-1, :]
+        return sprite[:, ::-1, :]
     elif flip_vertical:
-        return transposed[::-1, :, :]
+        return sprite[::-1, :, :]
     else:
-        return transposed
+        return sprite
 
 
 @jax.jit
@@ -153,8 +178,39 @@ def update_pygame(pygame_screen, raster, SCALING_FACTOR=3, WIDTH=400, HEIGHT=300
     pygame_screen.blit(frame_surface, (0, 0))
     pygame.display.flip()
 
+# TODO: make this function jaxxed
+def get_number_GUI(number,digits_array, spacing_width=5):
+    # get the corresponding digit sprite from the digits_array
+    # concatenate the digits (and spaces inbetween) to form the number
+    # return a sprite of the number with fixed width and height
+    # Convert number to string and extract digits
+    digits = [int(d) for d in str(number)]
+
+    # Retrieve corresponding digit sprites
+    sprites = [digits_array[d] for d in digits]
+
+    # Concatenate sprites with a fixed spacing (assuming horizontal layout)
+    spacing = jnp.zeros_like(digits_array[0])[:, :spacing_width]  # Assuming 5-pixel spacing
+    sprite_image = jnp.concatenate([sprites[i] if i == 0 else jnp.concatenate((spacing, sprites[i]), axis=1) for i in range(len(sprites))], axis=1)
+
+    return sprite_image
 
 
+# Only pad sprites of same type to match each other's dimensions
+@jax.jit
+def pad_to_match(sprites):
+    max_height = max(sprite.shape[0] for sprite in sprites)
+    max_width = max(sprite.shape[1] for sprite in sprites)
+
+    def pad_sprite(sprite):
+        pad_height = max_height - sprite.shape[0]
+        pad_width = max_width - sprite.shape[1]
+        return jnp.pad(sprite,
+                        ((0, pad_height), (0, pad_width), (0, 0)),
+                        mode='constant',
+                        constant_values=0)
+
+    return [pad_sprite(sprite) for sprite in sprites]
 
     
 if __name__ == "__main__":
@@ -162,12 +218,25 @@ if __name__ == "__main__":
     sub1 = loadFrame("./sprites/seaquest/player_sub/1.npy")
     sub2 = loadFrame("./sprites/seaquest/player_sub/2.npy")
     sub3 = loadFrame("./sprites/seaquest/player_sub/3.npy")
-    sub_sprite = [sub1,sub1,sub1,sub1,sub2,sub2,sub2,sub2,sub3,sub3, sub3,sub3]
+    sub_sprite = pad_to_match([sub1,sub2,sub3])
+    SPRITE_PL_SUB = jnp.concatenate([
+        jnp.repeat(sub_sprite[0][None], 4, axis=0),
+        jnp.repeat(sub_sprite[1][None], 4, axis=0),
+        jnp.repeat(sub_sprite[2][None], 4, axis=0)
+    ])
 
     shark1 = loadFrame("./sprites/seaquest/shark/1.npy")
     shark2 = loadFrame("./sprites/seaquest/shark/2.npy")
-    shark_sprite = [shark1, shark1, shark2, shark2]
+    shark_sprite = pad_to_match([shark1, shark2])
+    SPRITE_SHARK = jnp.concatenate([
+        jnp.repeat(shark_sprite[0][None], 16, axis=0),
+        jnp.repeat(shark_sprite[1][None], 8, axis=0)
+    ])
     # render an 2d RGBA array in pygame and update at a frame rate of 60fps
+    
+    digits_array = load_and_pad_digits("./sprites/seaquest/digits/{}.npy")
+
+    
     pygame.init()
     
     SCALING_FACTOR = 3
@@ -188,10 +257,13 @@ if __name__ == "__main__":
         # render the frame
         raster = jnp.zeros((WIDTH, HEIGHT, 3))
         # render the 1st frame at (0, 0)
-        sub_frame = get_sprite_frame(sub_sprite, frame_idx, loop=True)
-        shark_frame = get_sprite_frame(shark_sprite, frame_idx, loop=True)
+        sub_frame = get_sprite_frame(SPRITE_PL_SUB, frame_idx, loop=True)
+        shark_frame = get_sprite_frame(SPRITE_SHARK, frame_idx, loop=True)
         raster = render_at(raster, 140, 140, sub_frame, flip_horizontal=True)
         raster = render_at(raster, 100, 100, shark_frame)
+        number_sprite = get_number_GUI(1488, digits_array, spacing_width=10)
+        raster = render_at(raster, 0, 0, number_sprite)
+        
         update_pygame(screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
         frame_idx += 1
         clock.tick(60)

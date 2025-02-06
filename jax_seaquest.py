@@ -115,19 +115,19 @@ class CarryState(NamedTuple):
 # RENDER CONSTANTS
 def load_sprites():
     # Load sprites - no padding needed for background since it's already full size
-    bg1 = jnp.flip(jnp.array(aj.loadFrame('sprites/seaquest/bg/1.npy')), axis=0)
-    pl_sub1 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/player_sub/1.npy')), (1, 0, 2))
-    pl_sub2 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/player_sub/2.npy')), (1, 0, 2))
-    pl_sub3 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/player_sub/3.npy')), (1, 0, 2))
-    diver1 = jnp.array(aj.loadFrame('sprites/seaquest/diver/1.npy'))
-    diver2 = jnp.array(aj.loadFrame('sprites/seaquest/diver/2.npy'))
-    shark1 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/shark/1.npy')),  (1, 0, 2))
-    shark2 = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/shark/2.npy')),  (1, 0, 2))
-    enemy_sub1 = jnp.array(aj.loadFrame('sprites/seaquest/enemy_sub/1.npy'))
-    enemy_sub2 = jnp.array(aj.loadFrame('sprites/seaquest/enemy_sub/2.npy'))
-    enemy_sub3 = jnp.array(aj.loadFrame('sprites/seaquest/enemy_sub/3.npy'))
-    pl_torp = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/player_torp/1.npy')), (1, 0, 2))
-    en_torp = jnp.transpose(jnp.array(aj.loadFrame('sprites/seaquest/enemy_torp/1.npy')), (1, 0, 2))
+    bg1 = aj.loadFrame('sprites/seaquest/bg/1.npy')
+    pl_sub1 = aj.loadFrame('sprites/seaquest/player_sub/1.npy')
+    pl_sub2 = aj.loadFrame('sprites/seaquest/player_sub/2.npy')
+    pl_sub3 = aj.loadFrame('sprites/seaquest/player_sub/3.npy')
+    diver1 = aj.loadFrame('sprites/seaquest/diver/1.npy')
+    diver2 = aj.loadFrame('sprites/seaquest/diver/2.npy')
+    shark1 = aj.loadFrame('sprites/seaquest/shark/1.npy')
+    shark2 = aj.loadFrame('sprites/seaquest/shark/2.npy')
+    enemy_sub1 = aj.loadFrame('sprites/seaquest/enemy_sub/1.npy')
+    enemy_sub2 = aj.loadFrame('sprites/seaquest/enemy_sub/2.npy')
+    enemy_sub3 = aj.loadFrame('sprites/seaquest/enemy_sub/3.npy')
+    pl_torp = aj.loadFrame('sprites/seaquest/player_torp/1.npy')
+    en_torp = aj.loadFrame('sprites/seaquest/enemy_torp/1.npy')
     
 
     # Only pad sprites of same type to match each other's dimensions
@@ -1207,7 +1207,7 @@ class Renderer_AtraJaxis:
 
         # render background
         frame_bg = aj.get_sprite_frame(SPRITE_BG, 0)
-        raster = aj.render_at(raster, 0, 0, frame_bg, flip_vertical = True)
+        raster = aj.render_at(raster, 0, 0, frame_bg)
 
         # render player submarine
         frame_pl_sub = aj.get_sprite_frame(SPRITE_PL_SUB, state.step_counter)
