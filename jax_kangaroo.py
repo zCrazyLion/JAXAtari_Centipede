@@ -1194,6 +1194,14 @@ class Game:
 
         # reset_current_level_progress()
 
+        # add score if levelup from lvl3 to lvl1
+        score_addition = jax.lax.cond(
+            new_current_level == 4,
+            lambda: score_addition + 1400,
+            lambda: score_addition,
+        )
+        new_current_level = jnp.where(new_current_level == 4, 1, new_current_level)
+
         new_level_state = jax.lax.cond(
             new_levelup,
             lambda: self.reset(new_current_level).level,
