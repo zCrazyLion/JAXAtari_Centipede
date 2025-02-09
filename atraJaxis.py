@@ -177,7 +177,13 @@ def render_label(raster, y, x, text, char_sprites, spacing=15):
     raster = jax.lax.fori_loop(0, sprites.shape[0], render_char, raster)
     return raster
     
-
+@jax.jit
+def render_indicator(raster, y, x, value, sprite, spacing=15):
+    # render "value" times of "sprite" in a row on raster.
+    # use fori loop.
+    def render_char(i, r):
+        return render_at(r, y, x + i * spacing, sprite)
+    return jax.lax.fori_loop(0, value, render_char, raster)
 
 
 # Only pad sprites of same type to match each other's dimensions
@@ -271,6 +277,7 @@ if __name__ == "__main__":
         raster = render_at(raster, 100, 100, shark_frame)
         digits = int_to_digits(114514)
         raster = render_label(raster, 10, 10, digits, digits_array)
+        raster = render_indicator(raster, 30, 10, 5, sub_frame)
         
         update_pygame(screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
         frame_idx += 1

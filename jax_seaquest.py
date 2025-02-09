@@ -181,8 +181,8 @@ def load_sprites():
     ])
     
     DIGITS = aj.load_and_pad_digits("./sprites/seaquest/digits/{}.npy")
-    LIFE_INDICATOR = aj.load_and_pad_digits("./sprites/seaquest/life_indicator/{}.npy", num_chars = 1)
-    DIVER_INDICATOR = aj.load_and_pad_digits("./sprites/seaquest/diver_indicator/{}.npy", num_chars = 1)
+    LIFE_INDICATOR = aj.loadFrame('sprites/seaquest/life_indicator/1.npy')
+    DIVER_INDICATOR = aj.loadFrame("./sprites/seaquest/diver_indicator/1.npy")
     
     
 
@@ -1339,7 +1339,8 @@ class Renderer_AtraJaxis:
         score_array = aj.int_to_digits(state.score)
         # convert the score to a list of digits
         raster = aj.render_label(raster, 10, 10, score_array, DIGITS, spacing=7)
-        
+        raster = aj.render_indicator(raster, 20, 10, state.lives, LIFE_INDICATOR, spacing=10)
+        raster = aj.render_indicator(raster, 30, 10, state.divers_collected, DIVER_INDICATOR, spacing=10)
         return raster
         
     #     # update HUD elements
