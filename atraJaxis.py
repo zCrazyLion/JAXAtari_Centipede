@@ -37,7 +37,7 @@ def loadFrame(fileName, transpose = True):
         raise ValueError("Invalid frame format. The frame must have a shape of (height, width, 4).")
     return jnp.transpose(frame, (1, 0, 2)) if transpose else frame
 
-@partial(jax.jit, static_argnames=["path_pattern"])
+@partial(jax.jit, static_argnames=["path_pattern", "num_chars"])
 def load_and_pad_digits(path_pattern, num_chars = 10):
     digits = []
     max_height, max_width = 0, 0
@@ -196,6 +196,30 @@ def pad_to_match(sprites):
 
     return [pad_sprite(sprite) for sprite in sprites]
 
+@jax.jit
+def int_to_digits(n, max_digits=10):
+    """Convert an integer to a fixed-length array of digits in JAX.
+    
+    If n exceeds the maximum expressible number, return all 9s.
+    """
+    def cond_fun(carry):
+        n, _, _ = carry
+        return n > 0  # Continue while n > 0
+
+    def body_fun(carry):
+        n, digits, i = carry
+        new_digit = n % 10
+        n = n // 10
+        digits = digits.at[max_digits - i - 1].set(new_digit)  # Fill from right
+        return n, digits, i + 1
+
+    # Initialize a zero-filled array for digits
+    digits = jnp.zeros(max_digits, dtype=jnp.int32)
+
+    # Run the while loop
+    _, digits, _ = jax.lax.while_loop(cond_fun, body_fun, (n, digits, 0))
+
+    return digits
     
 if __name__ == "__main__":
 
@@ -245,7 +269,8 @@ if __name__ == "__main__":
         shark_frame = get_sprite_frame(SPRITE_SHARK, frame_idx, loop=True)
         raster = render_at(raster, 140, 140, sub_frame, flip_horizontal=True)
         raster = render_at(raster, 100, 100, shark_frame)
-        raster = render_label(raster, 10, 10, jnp.array([1,2,4]), digits_array)
+        digits = int_to_digits(114514)
+        raster = render_label(raster, 10, 10, digits, digits_array)
         
         update_pygame(screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
         frame_idx += 1

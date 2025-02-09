@@ -130,32 +130,19 @@ def load_sprites():
     en_torp = aj.loadFrame('sprites/seaquest/enemy_torp/1.npy')
     
 
-    # Only pad sprites of same type to match each other's dimensions
-    def pad_to_match(sprites):
-        max_height = max(sprite.shape[0] for sprite in sprites)
-        max_width = max(sprite.shape[1] for sprite in sprites)
 
-        def pad_sprite(sprite):
-            pad_height = max_height - sprite.shape[0]
-            pad_width = max_width - sprite.shape[1]
-            return jnp.pad(sprite,
-                          ((0, pad_height), (0, pad_width), (0, 0)),
-                          mode='constant',
-                          constant_values=0)
-
-        return [pad_sprite(sprite) for sprite in sprites]
 
     # Pad player submarine sprites to match each other
-    pl_sub_sprites = pad_to_match([pl_sub1, pl_sub2, pl_sub3])
+    pl_sub_sprites = aj.pad_to_match([pl_sub1, pl_sub2, pl_sub3])
 
     # Pad diver sprites to match each other
-    diver_sprites = pad_to_match([diver1, diver2])
+    diver_sprites = aj.pad_to_match([diver1, diver2])
     
     # Pad shark sprites to match each other
-    shark_sprites = pad_to_match([shark1, shark2])
+    shark_sprites = aj.pad_to_match([shark1, shark2])
     
     # Pad enemy submarine sprites to match each other
-    enemy_sub_sprites = pad_to_match([enemy_sub1, enemy_sub2, enemy_sub3])
+    enemy_sub_sprites = aj.pad_to_match([enemy_sub1, enemy_sub2, enemy_sub3])
     
     # Pad player torpedo sprites to match each other
     pl_torp_sprites = [pl_torp]
@@ -193,17 +180,23 @@ def load_sprites():
         jnp.repeat(enemy_sub_sprites[2][None], 4, axis=0)
     ])
     
+    DIGITS = aj.load_and_pad_digits("./sprites/seaquest/digits/{}.npy")
+    LIFE_INDICATOR = aj.load_and_pad_digits("./sprites/seaquest/life_indicator/{}.npy", num_chars = 1)
+    DIVER_INDICATOR = aj.load_and_pad_digits("./sprites/seaquest/diver_indicator/{}.npy", num_chars = 1)
+    
+    
+
     # Player torpedo sprites
     SPRITE_PL_TORP = jnp.repeat(pl_torp_sprites[0][None], 1, axis=0)
     
     # Enemy torpedo sprites
     SPRITE_EN_TORP = jnp.repeat(en_torp_sprites[0][None], 1, axis=0)
 
-    return SPRITE_BG, SPRITE_PL_SUB, SPRITE_DIVER, SPRITE_SHARK, SPRITE_ENEMY_SUB, SPRITE_PL_TORP, SPRITE_EN_TORP
+    return SPRITE_BG, SPRITE_PL_SUB, SPRITE_DIVER, SPRITE_SHARK, SPRITE_ENEMY_SUB, SPRITE_PL_TORP, SPRITE_EN_TORP, DIGITS, LIFE_INDICATOR, DIVER_INDICATOR
 
 
 # Load sprites once at module level
-SPRITE_BG, SPRITE_PL_SUB, SPRITE_DIVER, SPRITE_SHARK, SPRITE_ENEMY_SUB, SPRITE_PL_TORP, SPRITE_EN_TORP = load_sprites()
+SPRITE_BG, SPRITE_PL_SUB, SPRITE_DIVER, SPRITE_SHARK, SPRITE_ENEMY_SUB, SPRITE_PL_TORP, SPRITE_EN_TORP, DIGITS, LIFE_INDICATOR, DIVER_INDICATOR = load_sprites()
 
 
 # TODO: remove, for debugging purposes only
@@ -1215,7 +1208,11 @@ class Renderer_AtraJaxis:
         
         # render player torpedo
         frame_pl_torp = aj.get_sprite_frame(SPRITE_PL_TORP, state.step_counter)
-        raster = aj.render_at(raster, state.player_missile_position[1], state.player_missile_position[0], frame_pl_torp)
+        should_render = state.player_missile_position[0] > 0
+        raster = jax.lax.cond(should_render, 
+                               lambda r: aj.render_at(r, state.player_missile_position[1], state.player_missile_position[0], frame_pl_torp, flip_horizontal = state.player_missile_position[2] == FACE_LEFT),
+                               lambda r: r,
+                               raster)
         
         # render divers
         frame_diver = aj.get_sprite_frame(SPRITE_DIVER, state.step_counter)
@@ -1337,6 +1334,11 @@ class Renderer_AtraJaxis:
             render_enemy_torp,
             raster
         )  
+        
+        # show the scores
+        score_array = aj.int_to_digits(state.score)
+        # convert the score to a list of digits
+        raster = aj.render_label(raster, 10, 10, score_array, DIGITS, spacing=7)
         
         return raster
         
