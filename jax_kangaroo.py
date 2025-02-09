@@ -28,7 +28,7 @@ NOOP, FIRE, UP, RIGHT, LEFT, DOWN, UPRIGHT, UPLEFT, DOWNRIGHT, DOWNLEFT = range(
 RESET = 18
 
 # -------- Game constants --------
-RENDER_SCALE_FACTOR = 5
+RENDER_SCALE_FACTOR = 4
 SCREEN_WIDTH, SCREEN_HEIGHT = 160, 210
 PLAYER_WIDTH, PLAYER_HEIGHT = 8, 24
 ENEMY_WIDTH, ENEMY_HEIGHT = 8, 24
@@ -98,6 +98,7 @@ class PlayerState(NamedTuple):
     chrash_timer: chex.Array
     punch_left: chex.Array
     punch_right: chex.Array
+    last_stood_on_platform_y: chex.Array
 
 
 class LevelState(NamedTuple):
@@ -901,8 +902,12 @@ def player_step(state: GameState, action: chex.Array):
 
     is_looking_left = state.player.orientation == -1
     is_looking_right = state.player.orientation == 1
-    is_punching_left = jnp.logical_and(press_fire, is_looking_left)
-    is_punching_right = jnp.logical_and(press_fire, is_looking_right)
+    is_punching_left = (
+        jnp.logical_and(press_fire, is_looking_left) & ~state.player.is_crashing
+    )
+    is_punching_right = (
+        jnp.logical_and(press_fire, is_looking_right) & ~state.player.is_crashing
+    )
 
     # check for any collision with standard threshold
     ladder_intersect_thresh = jnp.any(check_ladder_collisions(state, level_constants))
@@ -966,17 +971,19 @@ def player_step(state: GameState, action: chex.Array):
         is_crouching=new_is_crouching,
     )
     new_player_height = jnp.where(
-        state.levelup_timer > 0, PLAYER_HEIGHT, new_player_height
+        (state.levelup_timer > 0) | state.player.is_crashing,
+        PLAYER_HEIGHT,
+        new_player_height,
     )
     # If height changes, shift the player's top so the bottom remains consistent
     dy = old_height - new_player_height
-    y = new_y + dy
+    new_y = new_y + dy
 
     # x-axis movement
     x = jnp.where(
-        state.levelup_timer == 0,
-        jnp.clip(x + vel_x, LEFT_CLIP, RIGHT_CLIP - PLAYER_WIDTH),
+        state.player.is_crashing | state.levelup_timer != 0,
         x,
+        jnp.clip(x + vel_x, LEFT_CLIP, RIGHT_CLIP - PLAYER_WIDTH),
     )
 
     # y-axis movement
@@ -989,15 +996,23 @@ def player_step(state: GameState, action: chex.Array):
             jnp.logical_and(platform_bools[i], is_valid),
             jnp.where(
                 ~state.player.is_climbing & new_is_climbing & press_down,
-                y,
-                jnp.clip(y, 0, platform_ys[i] - new_player_height),
+                new_y,
+                jnp.clip(new_y, 0, platform_ys[i] - new_player_height),
             ),
             curr_y,
         )
         return platform_y
 
     # iterate the platform bools and check which is true, then return the corresponding y value
-    y = jax.lax.fori_loop(0, len(platform_bools), get_platform_dependent_y, y)
+    platform_dependent_y = jax.lax.fori_loop(
+        0, len(platform_bools), get_platform_dependent_y, new_y
+    )
+
+    y = jnp.where(
+        state.player.is_crashing,
+        jnp.where((y + new_player_height) > SCREEN_HEIGHT, y, y + 2),
+        platform_dependent_y,
+    )
 
     # check if player reached the final platform
     final_platform_y = 28
@@ -1065,20 +1080,38 @@ def lives_controller(state: GameState):
     # timer check
     is_time_over = state.level.timer <= 0
 
+    new_last_stood_on_platform_y = jnp.where(
+        get_y_of_platform_below_player(state) == (state.player.y + state.player.height),
+        get_y_of_platform_below_player(state),
+        state.player.last_stood_on_platform_y,
+    )
+
     # platform_drop_check()
+    # if player_y > last_platform_y: verreck the player
+
+    y_of_platform_below_player = get_y_of_platform_below_player(state)
+    player_is_falling = (
+        (state.player.y + state.player.height) == state.player.last_stood_on_platform_y
+    ) & (y_of_platform_below_player > state.player.last_stood_on_platform_y)
 
     # monkey touch check
 
     # coconut touch check
 
-    remove_live = is_time_over
+    remove_live = (is_time_over | player_is_falling) & ~state.player.is_crashing
     new_is_crashing = jnp.where(remove_live, True, state.player.is_crashing)
+
+    start_timer = (
+        state.player.is_crashing
+        & (state.player.chrash_timer == 0)
+        & ((state.player.y + state.player.height) > SCREEN_HEIGHT)
+    )
 
     # start counter
     RESPAWN_AFTER_TICKS = 40
 
     counter = state.player.chrash_timer
-    counter_start = state.player.is_crashing & (counter == 0)
+    counter_start = start_timer
     counter = jnp.where(counter_start, 1, counter)
     counter = jnp.where(counter > 0, counter + 1, counter)
     counter = jnp.where(counter == RESPAWN_AFTER_TICKS + 1, 0, counter)
@@ -1091,6 +1124,7 @@ def lives_controller(state: GameState):
         new_is_crashing,
         counter,
         crash_timer_done,
+        new_last_stood_on_platform_y,
     )
 
 
@@ -1125,6 +1159,7 @@ class Game:
                 cooldown_counter=jnp.array(0),
                 chrash_timer=jnp.array(0),
                 is_crashing=jnp.array(False),
+                last_stood_on_platform_y=jnp.array(1000),
             ),
             level=LevelState(
                 bell_position=level_constants.bell_position,
@@ -1188,9 +1223,13 @@ class Game:
         # Handle Main Timer
         new_main_timer = timer_controller(state)
 
-        new_lives, new_is_crashing, crash_timer, crash_timer_done = lives_controller(
-            state
-        )
+        (
+            new_lives,
+            new_is_crashing,
+            crash_timer,
+            crash_timer_done,
+            new_last_stood_on_platform_y,
+        ) = lives_controller(state)
 
         # reset_current_level_progress()
 
@@ -1205,48 +1244,67 @@ class Game:
         new_level_state = jax.lax.cond(
             new_levelup,
             lambda: self.reset(new_current_level).level,
-            lambda: LevelState(
-                bell_position=state.level.bell_position,
-                fruit_positions=state.level.fruit_positions,
-                ladder_positions=state.level.ladder_positions,
-                ladder_sizes=state.level.ladder_sizes,
-                platform_positions=state.level.platform_positions,
-                platform_sizes=state.level.platform_sizes,
-                child_position=jnp.array([new_child_x, new_child_y]),
-                timer=new_main_timer,
-                bell_timer=bell_timer,
-                child_timer=child_timer,
-                child_velocity=new_child_velocity,
-                fruit_actives=new_actives,
-                fruit_stages=new_fruit_stages,
+            lambda: jax.lax.cond(
+                crash_timer_done,
+                lambda: self.reset(state.current_level).level,
+                lambda: LevelState(
+                    bell_position=state.level.bell_position,
+                    fruit_positions=state.level.fruit_positions,
+                    ladder_positions=state.level.ladder_positions,
+                    ladder_sizes=state.level.ladder_sizes,
+                    platform_positions=state.level.platform_positions,
+                    platform_sizes=state.level.platform_sizes,
+                    child_position=jnp.array([new_child_x, new_child_y]),
+                    timer=new_main_timer,
+                    bell_timer=bell_timer,
+                    child_timer=child_timer,
+                    child_velocity=new_child_velocity,
+                    fruit_actives=new_actives,
+                    fruit_stages=new_fruit_stages,
+                ),
             ),
         )
+
+        new_player_state = jax.lax.cond(
+            crash_timer_done,
+            lambda: self.reset(state.current_level).player,
+            lambda: PlayerState(
+                x=player_x,
+                y=player_y,
+                vel_x=vel_x,
+                is_crouching=is_crouching,
+                is_jumping=is_jumping,
+                is_climbing=is_climbing,
+                jump_counter=jump_counter,
+                orientation=orientation,
+                jump_base_y=jump_base_y,
+                landing_base_y=landing_base_y,
+                height=new_player_height,
+                jump_orientation=new_jump_orientation,
+                climb_base_y=climb_base_y,
+                climb_counter=climb_counter,
+                punch_left=punch_left,
+                punch_right=punch_right,
+                cooldown_counter=cooldown_counter,
+                chrash_timer=crash_timer,
+                is_crashing=new_is_crashing,
+                last_stood_on_platform_y=new_last_stood_on_platform_y,
+            ),
+        )
+
+        # jax.debug.print(
+        #     "new_is_crashing={nic} | crash_timer={ct} | crash_timer_done={ctd} | new_last_stood_on_platform_y={ly}",
+        #     nic=new_is_crashing,
+        #     ct=crash_timer,
+        #     ctd=crash_timer_done,
+        #     ly=new_last_stood_on_platform_y,
+        # )
 
         return jax.lax.cond(
             reset_cond,
             lambda: self.reset(state.current_level),
             lambda: GameState(
-                player=PlayerState(
-                    x=player_x,
-                    y=player_y,
-                    vel_x=vel_x,
-                    is_crouching=is_crouching,
-                    is_jumping=is_jumping,
-                    is_climbing=is_climbing,
-                    jump_counter=jump_counter,
-                    orientation=orientation,
-                    jump_base_y=jump_base_y,
-                    landing_base_y=landing_base_y,
-                    height=new_player_height,
-                    jump_orientation=new_jump_orientation,
-                    climb_base_y=climb_base_y,
-                    climb_counter=climb_counter,
-                    punch_left=punch_left,
-                    punch_right=punch_right,
-                    cooldown_counter=cooldown_counter,
-                    chrash_timer=crash_timer,
-                    is_crashing=new_is_crashing,
-                ),
+                player=new_player_state,
                 level=new_level_state,
                 score=state.score + score_addition,
                 current_level=new_current_level,
@@ -1485,6 +1543,6 @@ if __name__ == "__main__":
 
         renderer.render(curr_state)
         counter += 1
-        pygame.time.Clock().tick(60)
+        pygame.time.Clock().tick(90)
 
     pygame.quit()
