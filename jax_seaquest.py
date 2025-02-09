@@ -1340,7 +1340,7 @@ class Renderer_AtraJaxis:
         # convert the score to a list of digits
         raster = aj.render_label(raster, 10, 10, score_array, DIGITS, spacing=7)
         raster = aj.render_indicator(raster, 20, 10, state.lives, LIFE_INDICATOR, spacing=10)
-        raster = aj.render_indicator(raster, 30, 10, state.divers_collected, DIVER_INDICATOR, spacing=10)
+        raster = aj.render_indicator(raster, 178, 49, state.divers_collected, DIVER_INDICATOR, spacing=10)
         
         raster = aj.render_bar(raster, 170, 49, state.oxygen, 64, 63, 5, OXYGEN_BAR_COLOR, (0, 0, 0, 0))
         return raster
