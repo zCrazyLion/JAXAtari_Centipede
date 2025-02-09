@@ -23,7 +23,7 @@ PLAYER_COLOR = (187, 187, 53)  # Yellow for player sub
 DIVER_COLOR = (66, 72, 200)  # Pink for divers
 SHARK_COLOR = (92, 186, 92)  # Green for sharks
 ENEMY_SUB_COLOR = (170, 170, 170)  # Gray for enemy subs
-OXYGEN_BAR_COLOR = (214, 214, 214)  # White for oxygen
+OXYGEN_BAR_COLOR = (214, 214, 214, 255)  # White for oxygen
 SCORE_COLOR = (210, 210, 64)  # Score color
 OXYGEN_TEXT_COLOR = (0, 0, 0)  # Black for oxygen text
 
@@ -1341,12 +1341,11 @@ class Renderer_AtraJaxis:
         raster = aj.render_label(raster, 10, 10, score_array, DIGITS, spacing=7)
         raster = aj.render_indicator(raster, 20, 10, state.lives, LIFE_INDICATOR, spacing=10)
         raster = aj.render_indicator(raster, 30, 10, state.divers_collected, DIVER_INDICATOR, spacing=10)
+        
+        raster = aj.render_bar(raster, 170, 49, state.oxygen, 64, 63, 5, OXYGEN_BAR_COLOR, (0, 0, 0, 0))
         return raster
         
-    #     # update HUD elements
-    #     self.hud_score.text = str(int(state.score.item())) 
-    #     self.hud_lives.text = "l" * int(state.lives.item()) 
-    #     self.hud_divers.text = "d" * int(state.divers_collected.item() % 7) 
+
     #     self.hud_oxygen.current_value = state.oxygen.item()
     #     # finally, update the canvas
     #     self.canvas.update()

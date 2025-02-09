@@ -113,12 +113,10 @@ def render_at(raster, y, x, sprite_frame, flip_horizontal=False, flip_vertical=F
     sprite_height, sprite_width, _ = sprite_frame.shape
     raster_width, raster_height, _ = raster.shape
 
-    # Clip coordinates
-    x = jnp.clip(x, 0, raster_width - sprite_width)
-    y = jnp.clip(y, 0, raster_height - sprite_height)
+
 
     # Create sprite array and handle flipping - axis 0 is height, axis 1 is width
-    sprite = jnp.array(sprite_frame)
+    sprite = sprite_frame
     sprite = jnp.where(
         flip_horizontal,
         jnp.flip(sprite, axis=0),  # Flip width dimension
@@ -185,6 +183,35 @@ def render_indicator(raster, y, x, value, sprite, spacing=15):
         return render_at(r, y, x + i * spacing, sprite)
     return jax.lax.fori_loop(0, value, render_char, raster)
 
+@partial (jax.jit, static_argnames=["width", "height"])
+def render_bar(raster, y, x, value, max, width, height, color, default_color):
+    # Create a bar as a (height, width, 4) array to match sprite orientation
+    bar = jnp.zeros((height, width, 4), dtype=jnp.float32)
+    
+    # Compute the filled portion width (ensuring it doesn't exceed bounds)
+    fill_width = jnp.clip((value / max) * width, 0, width).astype(jnp.int32)
+
+    def fill_row(i, bar):
+        # Fill the row with the color
+        return bar.at[:, i, :].set(color)
+    
+    # Apply the column loop over the filled portion
+    bar = jax.lax.fori_loop(0, fill_width, fill_row, bar)
+    
+    def fill_default(i, bar):
+        # Fill the row with the default color
+        return bar.at[:, i, :].set(default_color)
+    
+    # Fill the remaining portion with default color
+    bar = jax.lax.fori_loop(fill_width, width, fill_default, bar)
+        
+        
+    bar = jnp.transpose(bar, (1, 0, 2))  # Transpose to match raster orientation
+    # Overlay the bar onto the raster at (y, x)
+    raster = render_at(raster, y, x, bar)
+    
+    return raster
+    
 
 # Only pad sprites of same type to match each other's dimensions
 @jax.jit
@@ -273,12 +300,13 @@ if __name__ == "__main__":
         # render the 1st frame at (0, 0)
         sub_frame = get_sprite_frame(SPRITE_PL_SUB, frame_idx, loop=True)
         shark_frame = get_sprite_frame(SPRITE_SHARK, frame_idx, loop=True)
-        raster = render_at(raster, 140, 140, sub_frame, flip_horizontal=True)
+        raster = render_at(raster, 300, 140, sub_frame, flip_horizontal=True)
         raster = render_at(raster, 100, 100, shark_frame)
         digits = int_to_digits(114514)
         raster = render_label(raster, 10, 10, digits, digits_array)
         raster = render_indicator(raster, 30, 10, 5, sub_frame)
-        
+        raster = render_bar(raster, 300, 10, 5, 10, 10, 100, (255, 0, 0, 255), (0, 0, 255, 255))
+
         update_pygame(screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
         frame_idx += 1
         clock.tick(60)
