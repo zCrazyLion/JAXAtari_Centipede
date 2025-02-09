@@ -54,7 +54,7 @@ FRUIT_COLOR = [
     FRUIT_COLOR_STATE_3,
     FRUIT_COLOR_STATE_4,
 ]
-PLATFORM_COLOR = (162, 98, 33)
+COCONUT_COLOR = PLATFORM_COLOR = (162, 98, 33)
 LADDER_COLOR = (129, 78, 26)
 BELL_COLOR = (210, 164, 74)
 
@@ -63,6 +63,9 @@ MOVEMENT_SPEED = 1
 
 LEFT_CLIP = 16
 RIGHT_CLIP = 144
+
+COCONUT_WIDTH = 3
+COCONUT_HEIGHT = 4
 
 
 # -------- Entity Classes --------
@@ -115,6 +118,11 @@ class LevelState(NamedTuple):
     child_position: chex.Array
     child_velocity: chex.Array
     child_timer: chex.Array
+    falling_coco_position: chex.Array
+    falling_coco_dropping: chex.Array
+    falling_coco_counter: chex.Array
+    falling_coco_skip_update: chex.Array
+    step_counter: chex.Array
 
 
 class GameState(NamedTuple):
@@ -122,7 +130,6 @@ class GameState(NamedTuple):
     level: LevelState
     score: chex.Array
     current_level: chex.Array
-    step_counter: chex.Array
     level_finished: chex.Array
     levelup_timer: chex.Array
     reset_coords: chex.Array
@@ -1052,7 +1059,7 @@ def player_step(state: GameState, action: chex.Array):
 @partial(jax.jit, static_argnums=())
 def timer_controller(state: GameState):
     return jnp.where(
-        state.step_counter == 255, state.level.timer - 100, state.level.timer
+        state.level.step_counter == 255, state.level.timer - 100, state.level.timer
     )
 
 
@@ -1087,7 +1094,6 @@ def lives_controller(state: GameState):
     )
 
     # platform_drop_check()
-    # if player_y > last_platform_y: verreck the player
 
     y_of_platform_below_player = get_y_of_platform_below_player(state)
     player_is_falling = (
@@ -1098,7 +1104,20 @@ def lives_controller(state: GameState):
 
     # coconut touch check
 
-    remove_live = (is_time_over | player_is_falling) & ~state.player.is_crashing
+    crashed_falling_coco = entities_collide(
+        state.player.x,
+        state.player.y,
+        PLAYER_WIDTH,
+        state.player.height,
+        state.level.falling_coco_position[0],
+        state.level.falling_coco_position[1],
+        COCONUT_WIDTH,
+        COCONUT_HEIGHT,
+    )
+
+    remove_live = (
+        is_time_over | player_is_falling | crashed_falling_coco
+    ) & ~state.player.is_crashing
     new_is_crashing = jnp.where(remove_live, True, state.player.is_crashing)
 
     start_timer = (
@@ -1125,6 +1144,90 @@ def lives_controller(state: GameState):
         counter,
         crash_timer_done,
         new_last_stood_on_platform_y,
+    )
+
+
+@partial(jax.jit, static_argnums=(0))
+def falling_coconut_controller(state: GameState):
+    falling_coco_exists = (state.level.falling_coco_position[0] != 13) | (
+        state.level.falling_coco_position[1] != -1
+    )
+
+    # update coco position
+    spawn_new_coco = ~falling_coco_exists & (state.level.step_counter == 255)
+
+    update_positions = ~state.level.falling_coco_skip_update & (
+        ((state.level.step_counter % 8) == 0) | spawn_new_coco
+    )
+
+    # detect if coco is above player and switch from x-following state to dropping state
+    coco_first_time_above_player = (
+        ~state.level.falling_coco_dropping
+        & falling_coco_exists
+        & (
+            ((state.level.falling_coco_position[0] + COCONUT_WIDTH) > state.player.x)
+            & (state.level.falling_coco_position[0] < (state.player.x + PLAYER_WIDTH))
+        )
+        & update_positions
+    )
+
+    new_falling_coco_dropping = jnp.where(
+        coco_first_time_above_player, True, state.level.falling_coco_dropping
+    )
+
+    new_falling_coco_skip_update = coco_first_time_above_player
+
+    # reset skip update
+    new_falling_coco_skip_update = jnp.where(
+        state.level.falling_coco_skip_update
+        & (((state.level.step_counter % 8) == 0) | spawn_new_coco),
+        False,
+        new_falling_coco_skip_update | state.level.falling_coco_skip_update,
+    )
+
+    new_falling_coco_counter = jnp.where(
+        update_positions,
+        jnp.where(
+            spawn_new_coco,
+            0,
+            jnp.where(
+                state.level.falling_coco_dropping & update_positions,
+                state.level.falling_coco_counter + 1,
+                state.level.falling_coco_counter,
+            ),
+        ),
+        state.level.falling_coco_counter,
+    )
+
+    reset_coco = new_falling_coco_counter > 20
+    new_falling_coco_counter = jnp.where(reset_coco, 0, new_falling_coco_counter)
+
+    new_falling_coco_dropping = jnp.where(reset_coco, False, new_falling_coco_dropping)
+
+    new_falling_coco_position_x = jnp.where(
+        update_positions
+        & ~state.level.falling_coco_dropping
+        & (falling_coco_exists | spawn_new_coco),
+        state.level.falling_coco_position[0] + 2,
+        state.level.falling_coco_position[0],
+    )
+    new_falling_coco_position_y = jnp.where(
+        update_positions & (falling_coco_exists | spawn_new_coco),
+        8 * new_falling_coco_counter + 8,
+        state.level.falling_coco_position[1],
+    )
+
+    new_falling_coco_position = jnp.where(
+        reset_coco,
+        jnp.array([13, -1]),
+        jnp.array([new_falling_coco_position_x, new_falling_coco_position_y]),
+    )
+
+    return (
+        new_falling_coco_position,
+        new_falling_coco_dropping,
+        new_falling_coco_counter,
+        new_falling_coco_skip_update,
     )
 
 
@@ -1175,10 +1278,14 @@ class Game:
                 child_timer=jnp.array(0),
                 child_velocity=jnp.array(1),
                 timer=jnp.array(2000),
+                falling_coco_position=jnp.array([13, -1]),
+                falling_coco_dropping=jnp.array(False),
+                falling_coco_counter=jnp.array(0),
+                falling_coco_skip_update=jnp.array(False),
+                step_counter=jnp.array(0),
             ),
             score=jnp.array(0),
             current_level=jnp.array(next_level),
-            step_counter=jnp.array(0),
             level_finished=jnp.array(False),
             levelup_timer=jnp.array(0),
             reset_coords=jnp.array(False),
@@ -1224,6 +1331,13 @@ class Game:
         new_main_timer = timer_controller(state)
 
         (
+            new_falling_coco_position,
+            new_falling_coco_dropping,
+            new_falling_coco_counter,
+            new_falling_coco_skip_update,
+        ) = falling_coconut_controller(state)
+
+        (
             new_lives,
             new_is_crashing,
             crash_timer,
@@ -1261,6 +1375,11 @@ class Game:
                     child_velocity=new_child_velocity,
                     fruit_actives=new_actives,
                     fruit_stages=new_fruit_stages,
+                    falling_coco_position=new_falling_coco_position,
+                    falling_coco_dropping=new_falling_coco_dropping,
+                    falling_coco_counter=new_falling_coco_counter,
+                    falling_coco_skip_update=new_falling_coco_skip_update,
+                    step_counter=(state.level.step_counter + 1) % 256,
                 ),
             ),
         )
@@ -1308,7 +1427,6 @@ class Game:
                 level=new_level_state,
                 score=state.score + score_addition,
                 current_level=new_current_level,
-                step_counter=(state.step_counter + 1) % 256,
                 level_finished=level_finished,
                 levelup_timer=new_levelup_timer,
                 reset_coords=new_reset_coords,
@@ -1481,6 +1599,19 @@ class Renderer:
                     (int(state.player.y) + 8) * RENDER_SCALE_FACTOR,
                     2 * RENDER_SCALE_FACTOR,
                     4 * RENDER_SCALE_FACTOR,
+                ),
+            )
+
+        # Drawing falling coconut
+        if state.level.falling_coco_position[1] != -1:
+            pygame.draw.rect(
+                self.screen,
+                COCONUT_COLOR,
+                (
+                    int(state.level.falling_coco_position[0]) * RENDER_SCALE_FACTOR,
+                    int(state.level.falling_coco_position[1]) * RENDER_SCALE_FACTOR,
+                    int(COCONUT_WIDTH) * RENDER_SCALE_FACTOR,
+                    int(COCONUT_HEIGHT) * RENDER_SCALE_FACTOR,
                 ),
             )
 
