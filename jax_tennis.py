@@ -663,10 +663,31 @@ class Renderer_AJ:
 
        
     @partial(jax.jit, static_argnums=(0,)) 
-    def render(self, state):
+    def render(self, state, animator_state):
+        # translate state
+        player_x = state[0]
+        player_y = state[1]
+        enemy_x = state[2]
+        enemy_y = state[3]
+        ball_x = state[4]
+        ball_y = state[5]
+        ball_z = state[6]
+        ball_vel_x = state[7]
+        ball_vel_y = state[8]
+        ball_vel_z = state[9]
+        player_score = state[10]
+        enemy_score = state[11]
+        serving = state[12]
+        current_tick = state[13]
+        
         # render background
         raster = jnp.zeros((COURT_WIDTH, COURT_HEIGHT, 3))
         raster = aj.render_at(raster, 0, 0, BG)
+        
+        # render player1
+        raster = aj.render_at(raster, player_x, player_y, PL_R_1)
+        
+        
         return raster
             
 
