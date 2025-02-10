@@ -38,8 +38,8 @@ WALL_SIDE_WIDTH = 8
 # Initial positions
 PLAYER_START_X = 99
 PLAYER_START_Y = 189
-BALL_START_X = 127  # TODO add other starting positions and directions
-BALL_START_Y = 113
+BALL_START_X = jnp.array([16, 78, 80, 142])
+BALL_START_Y = 122
 
 # Game boundaries (adjusted for wall width)
 PLAYER_X_MIN = WALL_SIDE_WIDTH
@@ -55,7 +55,7 @@ BLOCK_START_Y = 57  # Starting Y position of first row
 BLOCK_START_X = 8  # Starting X position of blocks
 
 # Ball speed TODO adjust
-BALL_SPEED = jnp.array([-1, 1])
+BALL_SPEED = jnp.array([1, 1])
 
 NUM_LIVES = 5
 
@@ -184,59 +184,81 @@ def player_step(state_player_x: chex.Array,
 
 def ball_step(state, game_started, player_x):
     """Updates the ball's position, handles wall collisions, and paddle bounces."""
-    ball_x = jnp.where(game_started, state.ball_x + state.ball_vel_x, BALL_START_X)
-    ball_y = jnp.where(game_started, state.ball_y + state.ball_vel_y, BALL_START_Y)
+    # Compute spawn index and spawn position
+    idx = state.step_counter % 4
+    ball_start_x = BALL_START_X[idx]
+    ball_start_y = BALL_START_Y
 
-    # Ball collision with side walls
-    wall_left = ball_x <= WALL_SIDE_WIDTH
-    wall_right = ball_x >= 160 - WALL_SIDE_WIDTH - BALL_SIZE[0]
-    ball_x = jnp.where(
-        wall_left,
-        WALL_SIDE_WIDTH,
-        jnp.where(wall_right, 160 - WALL_SIDE_WIDTH - BALL_SIZE[0], ball_x),
-    )
-    ball_vel_x = jnp.where(wall_left | wall_right, -state.ball_vel_x, state.ball_vel_x)
+    # Spawn velocity based on the spawn position
+    spawn_vel_x = jnp.where(jnp.logical_or(idx == 0, idx == 2), 1, -1)
+    spawn_vel_y = 1
 
-    # Ball collision with top wall
-    wall_top = ball_y <= WALL_TOP_Y + WALL_TOP_HEIGHT
-    ball_y = jnp.where(wall_top, WALL_TOP_Y + WALL_TOP_HEIGHT, ball_y)
-    ball_vel_y = jnp.where(wall_top, -state.ball_vel_y, state.ball_vel_y)
+    def started_fn(_):
+        # Once the game has started, update ball position normally
+        ball_x = state.ball_x + state.ball_vel_x
+        ball_y = state.ball_y + state.ball_vel_y
+        ball_vel_x = state.ball_vel_x
+        ball_vel_y = state.ball_vel_y
 
-    # Paddle collision
-    paddle_hit = jnp.logical_and(
-        ball_y + BALL_SIZE[1] >= PLAYER_START_Y,
-        jnp.logical_and(
-            ball_x + BALL_SIZE[0] >= player_x, ball_x <= player_x + PLAYER_SIZE[0]
-        ),
-    )
+        # Collision handling with side walls
+        wall_left = ball_x <= WALL_SIDE_WIDTH
+        wall_right = ball_x >= 160 - WALL_SIDE_WIDTH - BALL_SIZE[0]
+        ball_x = jnp.where(
+            wall_left,
+            WALL_SIDE_WIDTH,
+            jnp.where(wall_right, 160 - WALL_SIDE_WIDTH - BALL_SIZE[0], ball_x),
+        )
+        ball_vel_x = jnp.where(wall_left | wall_right, -ball_vel_x, ball_vel_x)
 
-    section_width = PLAYER_SIZE[0] / 5  # Divide paddle into 5 sections
-    hit_section = jnp.where(
-        paddle_hit, jnp.floor((ball_x - player_x) / section_width).astype(jnp.int32), 0
-    )
+        # Collision handling with top wall
+        wall_top = ball_y <= WALL_TOP_Y + WALL_TOP_HEIGHT
+        ball_y = jnp.where(wall_top, WALL_TOP_Y + WALL_TOP_HEIGHT, ball_y)
+        ball_vel_y = jnp.where(wall_top, -ball_vel_y, ball_vel_y)
 
-    # Adjust ball velocity based on hit section
-    ball_vel_x = jnp.where(
-        paddle_hit,
-        jnp.where(
-            hit_section == 0,
-            -2,  # Leftmost section
+        # Paddle collision
+        paddle_hit = jnp.logical_and(
+            ball_y + BALL_SIZE[1] >= PLAYER_START_Y,
+            jnp.logical_and(
+                ball_x + BALL_SIZE[0] >= player_x, ball_x <= player_x + PLAYER_SIZE[0]
+            ),
+        )
+        section_width = PLAYER_SIZE[0] / 5  # Divide paddle into 5 sections
+        hit_section = jnp.where(
+            paddle_hit, jnp.floor((ball_x - player_x) / section_width).astype(jnp.int32), 0
+        )
+        ball_vel_x = jnp.where(
+            paddle_hit,
             jnp.where(
-                hit_section == 1,
-                -1,  # Second section from left
+                hit_section == 0,
+                -2,
                 jnp.where(
-                    hit_section == 3,
-                    1,  # Second section from right
-                    jnp.where(hit_section == 4, 2, ball_vel_x),
+                    hit_section == 1,
+                    -1,
+                    jnp.where(
+                        hit_section == 3,
+                        1,
+                        jnp.where(hit_section == 4, 2, ball_vel_x),
+                    ),
                 ),
             ),
-        ),  # Rightmost section
-        ball_vel_x,
-    )
+            ball_vel_x,
+        )
+        ball_vel_y = jnp.where(
+            paddle_hit, -jnp.abs(ball_vel_y), ball_vel_y
+        )  # Always bounce upward
 
-    ball_vel_y = jnp.where(
-        paddle_hit, -jnp.abs(ball_vel_y), ball_vel_y
-    )  # Always bounce upwards
+        return ball_x, ball_y, ball_vel_x, ball_vel_y
+
+    def not_started_fn(_):
+        # Before the game starts, use the spawn position and spawn velocity without
+        # collision handling.
+        return ball_start_x, ball_start_y, spawn_vel_x, spawn_vel_y
+
+    # Use a conditional: if game_started is true, run the normal update branch;
+    # otherwise, use the spawn values.
+    ball_x, ball_y, ball_vel_x, ball_vel_y = jax.lax.cond(
+        game_started, started_fn, not_started_fn, operand=None
+    )
 
     return ball_x, ball_y, ball_vel_x, ball_vel_y
 
@@ -300,7 +322,7 @@ class Game:
         return State(
             player_x=jnp.array(PLAYER_START_X),
             player_speed=jnp.array(0),
-            ball_x=jnp.array(BALL_START_X),
+            ball_x=jnp.array(BALL_START_X[0]),
             ball_y=jnp.array(BALL_START_Y),
             ball_vel_x=BALL_SPEED[0],
             ball_vel_y=BALL_SPEED[1],
@@ -448,6 +470,9 @@ if __name__ == "__main__":
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    print(f"Ball x position: {curr_state.ball_x}, step_counter: {curr_state.step_counter}")
 
         if counter % frameskip == 0:
             action = get_human_action()
