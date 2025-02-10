@@ -96,7 +96,7 @@ def main():
             print("Game over!")
             ale.reset_game()
 
-        clock.tick(60)  # Limit to 60 FPS
+        clock.tick(2)  # Limit to 60 FPS
 
     pygame.quit()
 

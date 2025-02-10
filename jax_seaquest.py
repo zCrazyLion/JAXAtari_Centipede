@@ -1450,7 +1450,7 @@ if __name__ == "__main__":
         # render and update pygame
         raster = renderer_AtraJaxis.render(curr_state)
         aj.update_pygame(screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
-        # renderer.render(curr_state)
+        # renderer.render(curr_state)   
         counter += 1
         clock.tick(60)
         # renderer.clock.tick(256)
