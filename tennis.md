@@ -29,9 +29,10 @@ STATE_TRANSLATOR = {
 }
 ```
 ## Animator State
-0: last_r_x
-1: last_r_y
-2: last_r_f
+0: r_x
+1: r_y
+2: r_f
+3: r_bat_f
 
 
 
