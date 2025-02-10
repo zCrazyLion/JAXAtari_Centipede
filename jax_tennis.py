@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import chex
 import numpy as np
 import pygame
-
+import atraJaxis as aj
 
 # Action constants (placeholders - to be defined according to ALE)
 NOOP = 0
@@ -28,6 +28,7 @@ BALL_START_Z = 7  # of course there is no real z, but using the shadow it is sug
 PLAYER_WIDTH = 13
 PLAYER_HEIGHT = 23
 BALL_SIZE = 2
+ZOOM_FACTOR = 3
 
 WAIT_AFTER_GOAL = 0  # number of ticks that are waited after a goal was scored
 
@@ -552,6 +553,21 @@ def before_serve(state: State) -> chex.Array:
     return ball_y
 
 
+
+def load_sprites():
+    BG = aj.loadFrame("sprites/tennis/bg/1.npy")
+    PL_R_1 = aj.loadFrame("sprites/tennis/pl_red/1.npy")
+    PL_R_2 = aj.loadFrame("sprites/tennis/pl_red/2.npy")
+    PL_R_3 = aj.loadFrame("sprites/tennis/pl_red/3.npy")
+    PL_R_4 = aj.loadFrame("sprites/tennis/pl_red/4.npy")
+    BAT_R_1 = aj.loadFrame("sprites/tennis/bat_r/1.npy")
+    BAT_R_2 = aj.loadFrame("sprites/tennis/bat_r/2.npy")
+    BAT_R_3 = aj.loadFrame("sprites/tennis/bat_r/3.npy")
+    BAT_R_4 = aj.loadFrame("sprites/tennis/bat_r/4.npy")
+    return BG, PL_R_1, PL_R_2, PL_R_3, PL_R_4, BAT_R_1, BAT_R_2, BAT_R_3, BAT_R_4
+
+BG, PL_R_1, PL_R_2, PL_R_3, PL_R_4, BAT_R_1, BAT_R_2, BAT_R_3, BAT_R_4 = load_sprites()
+    
 class Game:
     def __init__(self, frameskip=0):
         self.frameskip = frameskip
@@ -640,6 +656,19 @@ class Game:
             lambda: calculated_state
         )
 
+
+
+
+class Renderer_AJ:
+
+       
+    @partial(jax.jit, static_argnums=(0,)) 
+    def render(self, state):
+        # render background
+        raster = jnp.zeros((COURT_WIDTH, COURT_HEIGHT, 3))
+        raster = aj.render_at(raster, 0, 0, BG)
+        return raster
+            
 
 class Renderer:
     def __init__(self, jax_translator):
@@ -774,7 +803,7 @@ class Renderer:
 if __name__ == "__main__":
     # Initialize Pygame
     pygame.init()
-    screen = pygame.display.set_mode((COURT_WIDTH * 3, COURT_HEIGHT * 3))
+    screen = pygame.display.set_mode((COURT_WIDTH * ZOOM_FACTOR, COURT_HEIGHT * ZOOM_FACTOR))
     pygame.display.set_caption("Tennis Game")
     clock = pygame.time.Clock()
 
@@ -782,7 +811,7 @@ if __name__ == "__main__":
     game = Game(frameskip=1)
 
     # Initialize renderer
-    renderer = Renderer(STATE_TRANSLATOR)
+    renderer_aj = Renderer_AJ()
 
     # JIT compile main functions
     jitted_step = jax.jit(game.step)
@@ -817,8 +846,8 @@ if __name__ == "__main__":
                 action = get_human_action()
                 curr_state:State = jitted_step(curr_state, action)
 
-        renderer.display(screen, curr_state)
-
+        raster = renderer_aj.render(curr_state)
+        aj.update_pygame(screen, raster, ZOOM_FACTOR, COURT_WIDTH, COURT_HEIGHT)
         counter += 1
         clock.tick(60)
 
