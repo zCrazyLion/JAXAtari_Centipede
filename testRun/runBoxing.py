@@ -7,16 +7,15 @@ import os
 ale = ale_py.ALEInterface()
 
 # Set the path to your Boxing ROM file
-rom_path = "./Boxing.bin"
+rom_path = "./testRun/Boxing.bin"
 ale.loadROM(rom_path)
 
 # Create a directory for screenshots
-screenshot_dir = "screenshots"
+screenshot_dir = "./frames_boxings"
 os.makedirs(screenshot_dir, exist_ok=True)
 
-# Counter for screenshot filenames
-screenshot_counter = 1
-
+# Counter for frame filenames
+frame_counter = 1
 def get_action_from_key(key):
     """Map keyboard keys to ALE actions."""
     key_action_map = {
@@ -32,13 +31,13 @@ def get_current_render():
     """Return the current rendering pixel array."""
     return ale.getScreenRGB()
 
-def save_screenshot(frame):
-    """Save the given frame to a file with an auto-incremented filename."""
-    global screenshot_counter
-    filepath = os.path.join(screenshot_dir, f"{screenshot_counter}.png")
-    pygame.image.save(pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2))), filepath)
-    print(f"Screenshot saved: {filepath}")
-    screenshot_counter += 1
+def save_frame_as_numpy(frame):
+    """Save the given frame as a NumPy array with an auto-incremented filename."""
+    global frame_counter
+    filepath = os.path.join(screenshot_dir, f"frame_{frame_counter}.npy")
+    np.save(filepath, frame)
+    print(f"Frame saved as NumPy array: {filepath}")
+    frame_counter += 1
 
 def main():
     pygame.init()
@@ -63,7 +62,7 @@ def main():
                 running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_s:  # Save screenshot
-                    save_screenshot(frame)
+                    save_frame_as_numpy(frame)
                 else:
                     action = get_action_from_key(event.key)
 

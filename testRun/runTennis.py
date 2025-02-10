@@ -3,6 +3,7 @@ import ale_py
 import numpy as np
 import os
 
+
 # Initialize ALE
 ale = ale_py.ALEInterface()
 
@@ -46,7 +47,7 @@ def main():
     pygame.init()
     screen_width, screen_height = 160 * 4, 210 * 4
     screen = pygame.display.set_mode((screen_width, screen_height))
-    base_caption = "Seaquest Game"
+    base_caption = "Tennis Game"
     pygame.display.set_caption(base_caption)
     clock = pygame.time.Clock()
 
@@ -54,6 +55,7 @@ def main():
 
     running = True
     paused = False
+    
 
     while running:
         frame = get_current_render()
@@ -61,7 +63,6 @@ def main():
         frame_surface = pygame.transform.scale(frame_surface, (screen_width, screen_height))
         screen.blit(frame_surface, (0, 0))
         pygame.display.flip()
-
         action = 0  # Default action is no-op
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
