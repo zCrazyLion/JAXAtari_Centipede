@@ -41,6 +41,10 @@ BELL_HEIGHT = 11
 CHILD_WIDTH = 8
 CHILD_HEIGHT = 15
 
+MONKEY_WIDTH = 6
+MONKEY_HEIGHT = 15
+MONKEY_COLOR = (227, 159, 89)
+
 BACKGROUND_COLOR = (80, 0, 132)
 PLAYER_COLOR = (223, 183, 85)
 ENEMY_COLOR = (227, 151, 89)
@@ -105,6 +109,8 @@ class PlayerState(NamedTuple):
 
 
 class LevelState(NamedTuple):
+    """All level related state variables."""
+
     timer: chex.Array
     platform_positions: chex.Array
     platform_sizes: chex.Array
@@ -123,6 +129,19 @@ class LevelState(NamedTuple):
     falling_coco_counter: chex.Array
     falling_coco_skip_update: chex.Array
     step_counter: chex.Array
+    monkey_states: chex.Array
+    """
+    - 0: non-existent
+    - 1: moving down
+    - 2: moving left
+    - 3: throwing
+    - 4: moving right
+    - 5: moving up
+    """
+    monkey_positions: chex.Array
+    """2D array: [monkey_index, [x, y]]"""
+    monkey_throw_timers: chex.Array
+    spawn_protection: chex.Array
 
 
 class GameState(NamedTuple):
@@ -1231,6 +1250,142 @@ def falling_coconut_controller(state: GameState):
     )
 
 
+@partial(jax.jit, static_argnums=(0))
+def monkey_controller(state: GameState):
+    """Monkey controller function."""
+
+    def count_existing_monkeys(i, carry):
+        """Returns number of monkeys on screen."""
+        return jnp.where(state.level.monkey_states[i] != 0, carry + 1, carry)
+
+    current_monkeys_existing = jax.lax.fori_loop(
+        0, state.level.monkey_states.shape[0], count_existing_monkeys, 0
+    )
+
+    ## state 0 -> 1
+
+    spawn_new_monkey = (
+        ~state.level.spawn_protection
+        & (current_monkeys_existing < 4)
+        & (state.level.step_counter == 16)
+    )
+
+    def get_first_non_existing_monkey_index(i, carry):
+        """Returns index of first non-existing monkey."""
+        return jnp.where(
+            carry == -1, jnp.where(state.level.monkey_states[i] == 0, i, carry), carry
+        )
+
+    first_non_existing_monkey_index = jax.lax.fori_loop(
+        0, state.level.monkey_states.shape[0], get_first_non_existing_monkey_index, -1
+    )
+
+    # update monkey states
+    new_monkey_states = state.level.monkey_states
+    new_monkey_states = jax.lax.cond(
+        spawn_new_monkey,
+        lambda: new_monkey_states.at[first_non_existing_monkey_index].set(1),
+        lambda: new_monkey_states,
+    )
+
+    ## state 1 -> 2
+
+    ### check if monkey is on a platform AND the player is on the same platform or higher
+    ### if so, change state to 2
+    ### if not, keep state 1
+
+    ## state 2 -> 3
+
+    ### not sure about the correct condition but something like: is the monkey close to the player (x-wise)
+    ### OR the monkey is already too far left (there might be a max x coordinate)
+    ### if so, change state to 3
+    ### if not, keep state 2
+
+    ### It might be possible for the monkey to change from 2 to 5 if the player is on a higher platform...?
+
+    ## state 3 -> 4
+
+    ### If the waiting timer is over, change state to 4
+
+    ## state 4 -> 5
+
+    ### If the monkey is at x == 130 wait for 8 frames and then change state to 5
+
+    ## state 5 -> 0
+
+    ### If the monkey is at y == 5 change state to 0 and reset the position to the starting position
+
+    # update monkey positions
+
+    def update_monkey_positions(i, carry):
+        """Update monkey positions."""
+        new_monkey_position = jnp.where(
+            new_monkey_states[i] == 0,  # monkey does not exist
+            carry[i],
+            jnp.where(
+                new_monkey_states[i] == 1,  # monkey moving down
+                jnp.where(
+                    state.level.monkey_states[i] == 0,
+                    jnp.array([152, 5]),
+                    carry[i].at[1].set(carry[i][1] + 8),
+                ),
+                jnp.where(
+                    new_monkey_states[i] == 2,  # monkey moving left
+                    carry[i].at[0].set(carry[i][0] - 3),
+                    jnp.where(
+                        new_monkey_states[i] == 3,  # monkey waiting
+                        carry[i],
+                        jnp.where(
+                            new_monkey_states[i] == 4,  # monkey moving right
+                            carry[i].at[0].set(carry[i][0] + 3),
+                            carry[i].at[1].set(carry[i][1] - 16),  # monkey moving up
+                        ),
+                    ),
+                ),
+            ),
+        )
+        return carry.at[i].set(new_monkey_position)
+
+    new_monkey_positions = jax.lax.fori_loop(
+        0,
+        state.level.monkey_positions.shape[0],
+        update_monkey_positions,
+        state.level.monkey_positions,
+    )
+
+    # update monkey throw timers
+
+    def update_monkey_throw_timers(i, carry):
+        """Update monkey throw timers."""
+        new_timer = jnp.where(
+            new_monkey_states[i] == 3,
+            jnp.where(state.level.monkey_states[i] == 2, 4, carry[i] - 1),
+            carry[i],
+        )
+        return carry.at[i].set(new_timer)
+
+    new_monkey_throw_timers = jax.lax.fori_loop(
+        0,
+        state.level.monkey_throw_timers.shape[0],
+        update_monkey_throw_timers,
+        state.level.monkey_throw_timers,
+    )
+
+    return jax.lax.cond(
+        state.level.step_counter % 16 == 0,
+        lambda: (
+            new_monkey_states,
+            new_monkey_positions,
+            new_monkey_throw_timers,
+        ),
+        lambda: (
+            state.level.monkey_states,
+            state.level.monkey_positions,
+            state.level.monkey_throw_timers,
+        ),
+    )
+
+
 # -------- Game Interface for Reset and Step --------
 class Game:
     def __init__(self, frameskip: int = 1):
@@ -1283,6 +1438,10 @@ class Game:
                 falling_coco_counter=jnp.array(0),
                 falling_coco_skip_update=jnp.array(False),
                 step_counter=jnp.array(0),
+                monkey_states=jnp.zeros(4, dtype=jnp.int32),
+                monkey_positions=jnp.array([[152, 5], [152, 5], [152, 5], [152, 5]]),
+                monkey_throw_timers=jnp.zeros(4, dtype=jnp.int32),
+                spawn_protection=jnp.array(True),
             ),
             score=jnp.array(0),
             current_level=jnp.array(next_level),
@@ -1337,6 +1496,11 @@ class Game:
             new_falling_coco_skip_update,
         ) = falling_coconut_controller(state)
 
+        # update monkeys
+        new_monkey_states, new_monkey_positions, new_monkey_throw_timers = (
+            monkey_controller(state)
+        )
+
         (
             new_lives,
             new_is_crashing,
@@ -1380,6 +1544,15 @@ class Game:
                     falling_coco_counter=new_falling_coco_counter,
                     falling_coco_skip_update=new_falling_coco_skip_update,
                     step_counter=(state.level.step_counter + 1) % 256,
+                    monkey_positions=new_monkey_positions,
+                    monkey_states=new_monkey_states,
+                    monkey_throw_timers=new_monkey_throw_timers,
+                    spawn_protection=jnp.where(
+                        (state.level.step_counter == 255)
+                        & state.level.spawn_protection,
+                        False,
+                        state.level.spawn_protection,
+                    ),
                 ),
             ),
         )
@@ -1552,6 +1725,21 @@ class Renderer:
                 int(BELL_HEIGHT) * RENDER_SCALE_FACTOR,
             ),
         )
+
+        # Draw monkeys
+        for i in range(state.level.monkey_positions.shape[0]):
+            if state.level.monkey_states[i] != 0:
+                pos = state.level.monkey_positions[i]
+                pygame.draw.rect(
+                    self.screen,
+                    MONKEY_COLOR,
+                    (
+                        int(pos[0]) * RENDER_SCALE_FACTOR,
+                        int(pos[1]) * RENDER_SCALE_FACTOR,
+                        int(MONKEY_WIDTH) * RENDER_SCALE_FACTOR,
+                        int(MONKEY_HEIGHT) * RENDER_SCALE_FACTOR,
+                    ),
+                )
 
         # Draw player
         pygame.draw.rect(
