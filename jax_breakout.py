@@ -96,16 +96,20 @@ def get_human_action() -> chex.Array:
         return jnp.array(NOOP)
 
 
-def player_step(state_player_x: chex.Array,
-                state_player_speed: chex.Array,
-                acceleration_counter: chex.Array,
-                action: chex.Array) -> (chex.Array, chex.Array, chex.Array):
+def player_step(
+    state_player_x: chex.Array,
+    state_player_speed: chex.Array,
+    acceleration_counter: chex.Array,
+    action: chex.Array,
+) -> (chex.Array, chex.Array, chex.Array):
     """Updates the player position based on the action."""
-    left = (action == LEFT)
-    right = (action == RIGHT)
+    left = action == LEFT
+    right = action == RIGHT
 
     # Check if the paddle is touching the left or right wall.
-    touches_wall = jnp.logical_or(state_player_x <= PLAYER_X_MIN, state_player_x >= PLAYER_X_MAX)
+    touches_wall = jnp.logical_or(
+        state_player_x <= PLAYER_X_MIN, state_player_x >= PLAYER_X_MAX
+    )
 
     # Get the acceleration schedule based on whether the paddle is at a wall.
     # If touching a wall, use PLAYER_WALL_ACCELERATION, otherwise use PLAYER_ACCELERATION.
@@ -113,7 +117,7 @@ def player_step(state_player_x: chex.Array,
         touches_wall,
         lambda _: PLAYER_WALL_ACCELERATION[acceleration_counter],
         lambda _: PLAYER_ACCELERATION[acceleration_counter],
-        operand=None
+        operand=None,
     )
 
     # Apply deceleration if no button is pressed or if the paddle touches a wall.
@@ -314,12 +318,16 @@ class Game:
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: State, action: chex.Array) -> State:
-        new_player_x, new_paddle_v, new_acceleration_counter = player_step(state.player_x, state.player_speed, state.acceleration_counter, action)
+        new_player_x, new_paddle_v, new_acceleration_counter = player_step(
+            state.player_x, state.player_speed, state.acceleration_counter, action
+        )
 
         game_started = jnp.logical_or(state.game_started, action == FIRE)
 
         # Update ball, check collisions, etc., as before, but now pass new_player_x
-        ball_x, ball_y, ball_vel_x, ball_vel_y = ball_step(state, game_started, new_player_x)
+        ball_x, ball_y, ball_vel_x, ball_vel_y = ball_step(
+            state, game_started, new_player_x
+        )
         new_blocks, new_score, ball_x, ball_y, ball_vel_x, ball_vel_y = (
             check_block_collision(state, ball_x, ball_y, ball_vel_x, ball_vel_y)
         )
