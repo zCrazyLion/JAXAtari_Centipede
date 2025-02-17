@@ -6,7 +6,6 @@ import chex
 import numpy as np
 import pygame
 
-
 # Action constants (placeholders - to be defined according to ALE)
 NOOP = 0
 FIRE = 1
@@ -35,7 +34,20 @@ WAIT_AFTER_GOAL = 0  # number of ticks that are waited after a goal was scored
 NET_RANGE = (98, 113)
 
 # TODO: define the constraints of everyone (player, ball, enemy) according to the base implementation
+TOP_ENTITY_MAX_LEFT = 4
+TOP_ENTITY_MAX_RIGHT = 142
+TOP_ENTITY_MAX_TOP = 18
+TOP_ENTITY_MAX_BOTTOM = 75
 
+BOTTOM_ENTITY_MAX_LEFT = 4
+BOTTOM_ENTITY_MAX_RIGHT = 142
+BOTTOM_ENTITY_MAX_TOP = 18
+BOTTOM_ENTITY_MAX_BOTTOM = 75
+
+NET_TOP_LEFT = (40, 48)#(0, 48)  # x,y top left corner
+NET_TOP_RIGHT = (120, 48)# (120, 48)
+NET_BOTTOM_LEFT = (24, 178)
+NET_BOTTOM_RIGHT = (136, 178)
 
 # TODO: due to the movement properties of the ball in Tennis, the velocity values should probably represent how frequent ticks are skipped..
 # Define state container
@@ -53,6 +65,8 @@ class State(NamedTuple):
     player_score: chex.Array
     enemy_score: chex.Array
     serving: chex.Array  # boolean for serve state
+    player_side: chex.Array # 0 if player on top side; 1 if player on bottom side
+    ball_was_infield: chex.Array
     current_tick: chex.Array
 
 
@@ -71,7 +85,9 @@ STATE_TRANSLATOR = {
     10: "player_score",
     11: "enemy_score",
     12: "serving",
-    13: "current_tick",
+    13: "player_side",
+    14: "ball_was_infield",
+    15: "current_tick",
 }
 
 
@@ -230,7 +246,7 @@ def ball_step(
         - ball_vel_z: Ball vertical velocity (int32)
         - serving: Updated serving state
     """
-    BASE_Y_VEL = jnp.array(2, dtype=jnp.int32)
+    BASE_Y_VEL = jnp.array(1, dtype=jnp.int32)
 
     # Update z position first
     new_z = update_z_position(ball_z)
@@ -354,7 +370,7 @@ def ball_step(
 
 
 def player_step(
-    state_player_x: chex.Array, state_player_y: chex.Array, action: chex.Array
+    state_player_x: chex.Array, state_player_y: chex.Array, action: chex.Array, side: chex.Array
 ) -> Tuple[chex.Array, chex.Array]:
     """
     Updates player position based on current position and action.
@@ -371,6 +387,11 @@ def player_step(
     """
 
     # TODO: adjust the borders of the game according to base implementation
+    player_max_left, player_max_right, player_max_bottom, player_max_top = jax.lax.cond(jnp.equal(side, 0),
+                                                                                        lambda _: (TOP_ENTITY_MAX_LEFT, TOP_ENTITY_MAX_RIGHT, TOP_ENTITY_MAX_BOTTOM, TOP_ENTITY_MAX_TOP),
+                                                                                        lambda _: (BOTTOM_ENTITY_MAX_LEFT, BOTTOM_ENTITY_MAX_RIGHT, BOTTOM_ENTITY_MAX_BOTTOM, BOTTOM_ENTITY_MAX_TOP), operand=None)
+
+
     # check if the player is trying to move left
     player_x = jnp.where(
         jnp.logical_and(action == LEFT, state_player_x > 0),
@@ -385,6 +406,8 @@ def player_step(
         player_x,
     )
 
+    player_x = jnp.clip(player_x, player_max_left, player_max_right)
+
     # check if the player is trying to move up
     player_y = jnp.where(
         jnp.logical_and(action == UP, state_player_y > 0),
@@ -398,6 +421,8 @@ def player_step(
         state_player_y + 1,
         player_y,
     )
+
+    player_y = jnp.clip(player_y, player_max_top, player_max_bottom)
 
     return player_x, player_y
 
@@ -448,8 +473,33 @@ def check_scoring(state: State) -> Tuple[chex.Array, chex.Array, bool]:
             chex.Array: Updated enemy score
             bool: Whether a point was scored in this step
     """
-    return state.player_score, state.enemy_score, False
+    player_score, enemy_score, val = jax.lax.cond(jnp.logical_or(check_ball_in_field(state), state.serving) , lambda _: (state.player_score, state.enemy_score, False), lambda _: (state.player_score+1, state.enemy_score, True), operand=None)
 
+    return player_score, enemy_score, val
+
+
+def check_ball_in_field(state: State) -> chex.Array:
+    """
+    Checks if the ball is in the field
+    Args:
+        state: Current game state containing ball and player positions and scores
+
+    Returns:
+        Tuple containing:
+            bool: True if ball is in the field; False otherwise
+            int: 0 if ball left the ball in the top part of the field; 1 if the ball left on the bottom part of the field
+    """
+    thresh_hold = 1e-9
+    left_line_val = ((NET_BOTTOM_LEFT[0] - NET_TOP_LEFT[0]) * (state.ball_y - NET_TOP_LEFT[1]) - (NET_BOTTOM_LEFT[1] - NET_TOP_LEFT[1]) * (state.ball_x - NET_TOP_LEFT[0]))
+    right_line_val = ((NET_BOTTOM_RIGHT[0] - NET_TOP_RIGHT[0]) * (state.ball_y - NET_TOP_RIGHT[1]) - (NET_BOTTOM_RIGHT[1] - NET_TOP_RIGHT[1]) * (state.ball_x - NET_TOP_RIGHT[0]))
+
+    in_field_sides = jnp.logical_and(jnp.less_equal(left_line_val, -thresh_hold), jnp.greater_equal(right_line_val, thresh_hold))
+
+    in_field_top = (state.ball_y+state.ball_z) >= NET_TOP_LEFT[1]
+
+    in_field_bottom = (state.ball_y+state.ball_z) <= NET_BOTTOM_LEFT[1]
+
+    return jnp.logical_and(jnp.logical_and(in_field_sides, in_field_top), in_field_bottom)
 
 def check_collision(
     player_x, player_y, ball_x, ball_y, ball_z, enemy_x, enemy_y
@@ -604,6 +654,8 @@ class Game:
             player_score=jnp.array(0).astype(jnp.int32),
             enemy_score=jnp.array(0).astype(jnp.int32),
             serving=jnp.array(1).astype(jnp.bool),  # boolean for serve state
+            player_side=jnp.array(0).astype(jnp.int32),
+            ball_was_infield=jnp.array(0).astype(jnp.bool),
             current_tick=jnp.array(0).astype(jnp.int32),
         )
 
@@ -611,7 +663,7 @@ class Game:
     def step(self, state: State, action: chex.Array) -> State:
         """Executes one game step."""
         # Update player position
-        player_x, player_y = player_step(state.player_x, state.player_y, action)
+        player_x, player_y = player_step(state.player_x, state.player_y, action, state.player_side)
 
         # check if there was a collision
         collision = check_collision(
@@ -642,10 +694,22 @@ class Game:
             action,
         )
 
+        ball_was_infield = jax.lax.cond(
+            jnp.logical_or(state.ball_was_infield,
+                           jnp.logical_and(jnp.greater_equal(ball_y, NET_TOP_LEFT[1]),
+                                           jnp.less_equal(ball_y, NET_BOTTOM_LEFT[1]))),
+        lambda _: True,
+        lambda _: False,
+        operand=None)
+
         # Check scoring
         player_score, enemy_score, point_scored = check_scoring(state)
 
         enemy_x, enemy_y = enemy_step(state.enemy_x, state.enemy_y, ball_x, ball_y)
+
+        reset_state = self.reset()
+        jax.debug.print("{a}", a=reset_state.ball_y)
+
 
         # if nothing is happening, play the idle animation of the ball
         ball_y = jnp.where(serve, before_serve(state), ball_y)
@@ -655,6 +719,16 @@ class Game:
 
         # if its serve, block the y movement of player and enemy
         enemy_y = jnp.where(serve, ENEMY_START_Y, state.enemy_y)
+
+        serve = jax.lax.cond(jnp.logical_or(serve, jnp.logical_and(point_scored, ball_was_infield)), lambda _: True,
+                             lambda _: False, operand=None)
+        ball_x, ball_y, ball_z, player_x, player_y, enemy_x, enemy_y, ball_was_infield, current_tick = jax.lax.cond(
+            jnp.logical_and(point_scored, ball_was_infield),
+            lambda _: (
+            reset_state.ball_x, reset_state.ball_y, reset_state.ball_z, reset_state.player_x, reset_state.player_y, reset_state.enemy_x,
+            reset_state.enemy_y, False, -1),
+            lambda _: (ball_x, ball_y, ball_z, player_x, player_y, enemy_x, enemy_y, ball_was_infield, state.current_tick),
+            operand=None)
 
         # if the game is freezed, return the current state
         calculated_state = State(
@@ -671,7 +745,9 @@ class Game:
             player_score=player_score,
             enemy_score=enemy_score,
             serving=serve,
-            current_tick=state.current_tick + 1,
+            player_side=state.player_side,
+            ball_was_infield=ball_was_infield,
+            current_tick=current_tick + 1,
         )
         return jax.lax.cond(
             state.current_tick < WAIT_AFTER_GOAL,
@@ -691,9 +767,10 @@ class Renderer:
         canvas_np = np.flipud(np.rot90(canvas_np, k=1))
         pygame_surface = pygame.surfarray.make_surface(canvas_np)
         screen.blit(
-            pygame.transform.scale(pygame_surface, (COURT_WIDTH * 3, COURT_HEIGHT * 3)),
+            pygame.transform.scale(pygame_surface, ((COURT_WIDTH * 4), (COURT_HEIGHT * 4))),
             (0, 0),
         )
+
         pygame.display.flip()
 
     def get_rgb_img(self, state: jnp.ndarray) -> np.ndarray:
@@ -712,31 +789,18 @@ class Renderer:
         # Create dark green background
         canvas = np.full((COURT_HEIGHT, COURT_WIDTH, 3), [0, 100, 0], dtype=np.uint8)
 
-        # Court dimensions
-        court_top = 40
-        court_bottom = 180
-        center_x = COURT_WIDTH // 2
-
-        # Calculate trapezoid points for perspective
-        top_width = 100  # Width at top of court
-        bottom_width = 140  # Width at bottom of court
-        top_left = center_x - top_width // 2
-        top_right = center_x + top_width // 2
-        bottom_left = center_x - bottom_width // 2
-        bottom_right = center_x + bottom_width // 2
-
         # Draw court outline (white lines)
         # Top line
-        canvas[court_top, top_left:top_right] = [255, 255, 255]
+        canvas[NET_TOP_LEFT[1], NET_TOP_LEFT[0]:NET_TOP_RIGHT[0]] = [255, 255, 255]
         # Bottom line
-        canvas[court_bottom, bottom_left:bottom_right] = [255, 255, 255]
+        canvas[NET_BOTTOM_LEFT[1], NET_BOTTOM_LEFT[0]:NET_BOTTOM_RIGHT[0]] = [255, 255, 255]
 
         # Draw side lines with perspective
-        for y in range(court_top, court_bottom + 1):
+        for y in range(NET_TOP_LEFT[1], NET_BOTTOM_LEFT[1] + 1):
             # Calculate x positions for left and right lines
-            progress = (y - court_top) / (court_bottom - court_top)
-            left_x = int(top_left + (bottom_left - top_left) * progress)
-            right_x = int(top_right + (bottom_right - top_right) * progress)
+            progress = (y - NET_TOP_LEFT[1]) / (NET_BOTTOM_LEFT[1] - NET_TOP_LEFT[1])
+            left_x = int(NET_TOP_LEFT[0] + (NET_BOTTOM_LEFT[0] - NET_TOP_LEFT[0]) * progress)
+            right_x = int(NET_TOP_RIGHT[0] + (NET_BOTTOM_RIGHT[0] - NET_TOP_RIGHT[0]) * progress)
             canvas[y, left_x] = [255, 255, 255]
             canvas[y, right_x] = [255, 255, 255]
 
@@ -744,9 +808,9 @@ class Renderer:
         net_y = (NET_RANGE[0] + NET_RANGE[1]) // 2
         net_height = 15  # Adjust net height as needed
         for y in range(net_y - net_height // 2, net_y + net_height // 2):
-            progress = (y - court_top) / (court_bottom - court_top)
-            left_x = int(top_left + (bottom_left - top_left) * progress)
-            right_x = int(top_right + (bottom_right - top_right) * progress)
+            progress = (y - NET_TOP_LEFT[1]) / (NET_BOTTOM_LEFT[1] - NET_TOP_LEFT[1])
+            left_x = int(NET_TOP_LEFT[0] + (NET_BOTTOM_LEFT[0] - NET_TOP_LEFT[0]) * progress)
+            right_x = int(NET_TOP_RIGHT[0] + (NET_BOTTOM_RIGHT[0] - NET_TOP_RIGHT[0]) * progress)
             canvas[y, left_x:right_x] = [200, 200, 200]
 
         # Draw player and enemy (white rectangles)
@@ -767,15 +831,13 @@ class Renderer:
 
         if 0 <= ball_y < COURT_HEIGHT - 2 and 0 <= ball_x < COURT_WIDTH - 2:
             # Draw ball shadow (gray square on court surface)
-            canvas[ball_y : ball_y + 2, ball_x : ball_x + 2] = [100, 100, 100]
+            canvas[ball_y + ball_z: ball_y + ball_z + 2, ball_x : ball_x + 2] = [100, 100, 100]
 
             # Draw ball with height offset based on z value
-            ball_height_offset = ball_z // 2
-            if ball_y - ball_height_offset >= 0:
-                canvas[
-                    ball_y - ball_height_offset : ball_y - ball_height_offset + 2,
+            canvas[
+                    ball_y : ball_y + 2,
                     ball_x : ball_x + 2,
-                ] = [255, 255, 255]
+                ] = [25, 255, 255]
 
         # Draw scores as simple squares in top corners
         # Player score (right)
@@ -821,7 +883,7 @@ class Renderer:
 if __name__ == "__main__":
     # Initialize Pygame
     pygame.init()
-    screen = pygame.display.set_mode((COURT_WIDTH * 3, COURT_HEIGHT * 3))
+    screen = pygame.display.set_mode((COURT_WIDTH * 4, COURT_HEIGHT * 4))
     pygame.display.set_caption("Tennis Game")
     clock = pygame.time.Clock()
 
