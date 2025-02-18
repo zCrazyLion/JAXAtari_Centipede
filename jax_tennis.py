@@ -200,7 +200,7 @@ def update_y_position(y_pos: chex.Array, current_tick: chex.Array, direction: ch
     y_derivative = Y_DERIVATIVES[current_tick % Y_DERIVATIVES.shape[0]]
 
     y_derivative = jnp.where(
-        direction == -1,
+        direction == 1,
         y_derivative,
         -y_derivative
     )
@@ -260,10 +260,10 @@ def ball_step(state: State, top_collision: chex.Array,
         # find out in which direction the ball should go using top_collision and bottom_collision
         y_direction = jnp.where(
             top_collision,
-            -1,
+            1,
             jnp.where(
                 bottom_collision,
-                1,
+                -1,
                 0
             )
         )
@@ -300,7 +300,7 @@ def ball_step(state: State, top_collision: chex.Array,
             lambda: (0, 0),
         )
 
-        return serve_x, serve_y, new_z, delta_z, x_direction, y_direction, ~serve_hit, new_ball_movement_tick, state.ball_y_tick
+        return serve_x, serve_y, new_z, delta_z, x_direction, y_direction, ~serve_hit, new_ball_movement_tick, state.ball_y_tick.astype(jnp.int8)
 
     def handle_normal_play():
         # Apply movement
@@ -336,11 +336,11 @@ def ball_step(state: State, top_collision: chex.Array,
 
         final_ball_y_tick = jnp.where(
             jnp.logical_or(top_collision, bottom_collision),
-            0,
+            jnp.array(0).astype(jnp.int8),
             ball_y_tick
         )
 
-        return new_x, new_y, final_new_z, delta_z, x_direction, y_direction, state.serving, final_new_ball_movement_tick, final_ball_y_tick
+        return new_x, new_y, final_new_z, delta_z, x_direction, y_direction, state.serving, final_new_ball_movement_tick, final_ball_y_tick.astype(jnp.int8)
 
     return jax.lax.cond(
         state.serving,
@@ -590,14 +590,14 @@ def check_collision(
     # Direction checks also need to be flipped based on player side
     player_dir_valid = jnp.where(
         state.player_side == 0,
-        jnp.greater_equal(state.ball_y_dir, 0),
-        jnp.less_equal(state.ball_y_dir, 0)
+        jnp.less_equal(state.ball_y_dir, 0),
+        jnp.greater_equal(state.ball_y_dir, 0)
     )
 
     enemy_dir_valid = jnp.where(
         state.player_side == 0,
+        jnp.greater_equal(state.ball_y_dir, 0),
         jnp.less_equal(state.ball_y_dir, 0),
-        jnp.greater_equal(state.ball_y_dir, 0)
     )
 
     player_collision = jnp.logical_and(
@@ -696,7 +696,7 @@ class Game:
             player_side=jnp.array(0).astype(jnp.int32),
             ball_was_infield=jnp.array(0).astype(jnp.bool),
             current_tick=jnp.array(0).astype(jnp.int32),
-            ball_y_tick=jnp.array(0).astype(jnp.int32),
+            ball_y_tick=jnp.array(0).astype(jnp.int8),
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -739,7 +739,7 @@ class Game:
             ball_y
         )
         # TODO: this section of the code teleports the ball back after serve
-        '''
+
         ball_was_infield = jax.lax.cond(
             jnp.logical_or(
                 state.ball_was_infield,
@@ -752,8 +752,7 @@ class Game:
             lambda _: False,
             operand=None,
         )
-        '''
-        ball_was_infield = check_ball_in_field(state)
+
         # Check scoring
         player_score, enemy_score, point_scored = check_scoring(state)
 
@@ -786,6 +785,8 @@ class Game:
             enemy_y,
             ball_was_infield,
             current_tick,
+            new_ball_movement_tick,
+            new_ball_y_tick
         ) = jax.lax.cond(
             jnp.logical_and(point_scored, ball_was_infield),
             lambda _: (
@@ -798,6 +799,8 @@ class Game:
                 reset_state.enemy_y,
                 False,
                 -1,
+                reset_state.ball_movement_tick,
+                reset_state.ball_y_tick,
             ),
             lambda _: (
                 ball_x,
@@ -809,6 +812,8 @@ class Game:
                 enemy_y,
                 ball_was_infield,
                 state.current_tick,
+                new_ball_movement_tick,
+                new_ball_y_tick
             ),
             operand=None,
         )
@@ -833,7 +838,7 @@ class Game:
             player_side=state.player_side,
             ball_was_infield=ball_was_infield,
             current_tick=current_tick + 1,
-            ball_y_tick=new_ball_y_tick,
+            ball_y_tick=new_ball_y_tick.astype(jnp.int8),
         )
 
         return jax.lax.cond(
