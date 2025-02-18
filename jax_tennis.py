@@ -20,7 +20,7 @@ COURT_HEIGHT = 210
 PLAYER_START_X = 71
 PLAYER_START_Y = 24
 ENEMY_START_X = 71  # this is where he starts, but he instantly moves to:
-ENEMY_START_Y = 159
+ENEMY_START_Y = 140
 BALL_START_X = 75  # taken from the RAM extraction script (initial ram 77 - 2)
 BALL_START_Y = 44  # taken from the RAM extraction script (189 - initial ram 145)
 BALL_START_Z = 7  # of course there is no real z, but using the shadow it is suggested that there is a z
@@ -533,7 +533,7 @@ def check_ball_in_field(state: State) -> chex.Array:
 
 
 def check_collision(
-    player_x, player_y, ball_x, ball_y, ball_z, enemy_x, enemy_y
+    player_x, player_y, ball_x, ball_y, ball_z, ball_vel_y, enemy_x, enemy_y
 ) -> chex.Array:
     """
     Checks if a collision occurred between the ball and the player or enemy.
@@ -556,10 +556,11 @@ def check_collision(
     # The player is always turned towards the ball, therefore we can just check if the ball is intercepting with the player / enemy
 
     # Define valid hit zones
-    TOP_VALID_Y = (24, 32)
-    BOTTOM_VALID_Y = (138, 154)
-    TOP_VALID_Z = (16, 22)
-    BOTTOM_VALID_Z = (0, 15)
+    # TODO: Values to define
+    TOP_VALID_Y = (48, 113)
+    BOTTOM_VALID_Y = (113, 178)
+    TOP_VALID_Z = (0, 30)
+    BOTTOM_VALID_Z = (0, 30)
 
     def check_hit_zone(
         y_pos: chex.Array, z_pos: chex.Array, valid_y: tuple, valid_z: tuple
@@ -587,8 +588,12 @@ def check_collision(
     player_valid = check_hit_zone(ball_y, ball_z, TOP_VALID_Y, TOP_VALID_Z)
     enemy_valid = check_hit_zone(ball_y, ball_z, BOTTOM_VALID_Y, BOTTOM_VALID_Z)
 
-    player_collision = jnp.logical_and(player_overlap, player_valid)
-    enemy_collision = jnp.logical_and(enemy_overlap, enemy_valid)
+    player_collision = jnp.logical_and(
+        jnp.logical_and(player_overlap, player_valid), jnp.less_equal(ball_vel_y, 0)
+    )
+    enemy_collision = jnp.logical_and(
+        jnp.logical_and(enemy_overlap, enemy_valid), jnp.greater_equal(ball_vel_y, 0)
+    )
 
     return jnp.logical_or(player_collision, enemy_collision)
 
@@ -705,6 +710,7 @@ class Game:
             state.ball_x,
             state.ball_y,
             state.ball_z,
+            state.ball_vel_y,
             state.enemy_x,
             state.enemy_y,
         )
