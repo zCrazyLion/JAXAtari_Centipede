@@ -75,6 +75,77 @@ Y_DERIVATIVES = jnp.array([
     0, 2, 8, -4
 ])
 
+# all x patterns as global constants
+PATTERN_1 = jnp.array([1])  # Edge right
+PATTERN_2 = jnp.array([1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0])  # Near right
+PATTERN_3 = jnp.array([0, 1, 1, 0, 1, 1, 0, 1, 1])  # Right 3-4
+PATTERN_4 = jnp.array([1, 0, 0, 1, 0, 0, 0])  # Right 5
+PATTERN_5 = jnp.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])  # Right 6-7
+PATTERN_6 = jnp.array([-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])  # Position 8 & left 7-8
+PATTERN_7 = jnp.array([-1, 0, 0, -1, 0, 0, 0])  # Right 9
+PATTERN_8 = jnp.array([-1, 0])  # Right 10 & left 5
+PATTERN_9 = jnp.array([-1, -1, 0])  # Right 11-13, left 10, & left 1-4
+PATTERN_10 = jnp.array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1])  # Left 9
+PATTERN_11 = jnp.array([-1, 0, 0])  # Left 6
+
+# Create a 2D array where each row is a pattern, padded to the same length
+max_length = max(len(p) for p in [
+    PATTERN_1, PATTERN_2, PATTERN_3, PATTERN_4, PATTERN_5,
+    PATTERN_6, PATTERN_7, PATTERN_8, PATTERN_9, PATTERN_10, PATTERN_11
+])
+
+# Pad each pattern to max_length
+def pad_pattern(pattern, length):
+    return jnp.pad(pattern, (0, length - len(pattern)), mode='wrap')
+
+# Create a single 2D array of patterns
+STACKED_X_PATTERNS = jnp.stack([
+    pad_pattern(PATTERN_1, max_length),
+    pad_pattern(PATTERN_2, max_length),
+    pad_pattern(PATTERN_3, max_length),
+    pad_pattern(PATTERN_4, max_length),
+    pad_pattern(PATTERN_5, max_length),
+    pad_pattern(PATTERN_6, max_length),
+    pad_pattern(PATTERN_7, max_length),
+    pad_pattern(PATTERN_8, max_length),
+    pad_pattern(PATTERN_9, max_length),
+    pad_pattern(PATTERN_10, max_length),
+    pad_pattern(PATTERN_11, max_length)
+])
+
+jaxprint("full_patterns", STACKED_X_PATTERNS)
+
+# Store the length of each pattern for proper cycling
+PATTERN_LENGTHS = jnp.array([
+    len(PATTERN_1), len(PATTERN_2), len(PATTERN_3),
+    len(PATTERN_4), len(PATTERN_5), len(PATTERN_6),
+    len(PATTERN_7), len(PATTERN_8), len(PATTERN_9),
+    len(PATTERN_10), len(PATTERN_11)
+])
+
+jaxprint("pattern_lengths", PATTERN_LENGTHS)
+
+# Pre-compute first non-zero values for each pattern
+X_DIRECTION_ARRAY = jnp.array([
+    1,   # PATTERN_1 starts with 1
+    1,   # PATTERN_2 starts with 1
+    0,   # PATTERN_3 starts with 0, but first non-zero is 1
+    1,   # PATTERN_4 starts with 1
+    0,   # PATTERN_5 starts with many 0s, first non-zero is 1
+    -1,  # PATTERN_6 starts with -1
+    -1,  # PATTERN_7 starts with -1
+    -1,  # PATTERN_8 starts with -1
+    -1,  # PATTERN_9 starts with -1
+    0,   # PATTERN_10 starts with 0s, first non-zero is 1
+    -1   # PATTERN_11 starts with -1
+])
+
+TOPSIDE_STARTING_Z = 28
+BOTSIDE_STARTING_Z = 2 # approx
+TOPSIDE_BOUNCE = jnp.array([0,0,0,0,0,0,0,0,0,2,0,0,2,-2,-4,-4,-6,-4,-4,-4,-2,-4,-4,-4,-2,-4,-2,-4,-2,-2,-2,-2,-2,-2])
+BOTSIDE_BOUNCE = jnp.array([0,0,0,0,0,0,0,0,0,2,0,0,2,0,2])
+
+
 # Index to jump to after crossing net (skip the 18 value)
 NET_CROSS_INDEX = 35
 
@@ -108,8 +179,10 @@ NET_BOTTOM_RIGHT = (136, 178)
 class State(NamedTuple):
     player_x: chex.Array  # Player x position
     player_y: chex.Array  # Player y position
+    player_direction: chex.Array  # Player direction (0 for right, 1 for left)
     enemy_x: chex.Array  # Enemy x position
     enemy_y: chex.Array  # Enemy y position
+    enemy_direction: chex.Array  # Enemy direction (0 for right, 1 for left)
     ball_x: chex.Array  # Ball x position
     ball_y: chex.Array  # Ball y position
     ball_z: chex.Array  # Ball height/shadow
@@ -126,6 +199,8 @@ class State(NamedTuple):
     ball_was_infield: chex.Array
     current_tick: chex.Array
     ball_y_tick: chex.Array
+    ball_x_pattern_idx: chex.Array  # Array holding the x-movement pattern
+    ball_x_counter: chex.Array  # Current index in the pattern
 
 
 def get_human_action() -> chex.Array:
@@ -148,6 +223,84 @@ def get_human_action() -> chex.Array:
         return jnp.array(DOWN)
     else:
         return jnp.array(NOOP)
+
+
+@partial(jax.jit, static_argnums=())
+def get_ball_x_pattern(impact_point: chex.Array, player_direction: chex.Array) -> Tuple[chex.Array, chex.Array]:
+    """
+    Determines the ball's x-direction pattern based on where it hit the player's paddle.
+
+    Args:
+        impact_point: Position where the ball hit the paddle (0 is leftmost, 12 is rightmost)
+        player_direction: Direction player is facing (0 for right, 1 for left)
+
+    Returns:
+        Tuple containing:
+            chex.Array: X-pattern array for the ball movement
+            chex.Array: Index for tracking position in the pattern
+    """
+    EDGE_RIGHT = 0
+    NEAR_RIGHT = 1
+    RIGHT_3_4 = 2
+    RIGHT_5 = 3
+    RIGHT_6_7 = 4
+    RIGHT_LEFT_8 = 5
+    RIGHT_9 = 6
+    RIGHT_10_LEFT_5 = 7
+    RIGHT_11_13_LEFT_1_4_10 = 8
+    LEFT_9 = 9
+    LEFT_6 = 10
+
+    # Function to select pattern index when player is facing right
+    def select_right_facing_pattern_index(point):
+        return jax.lax.switch(
+            point,
+            [
+                lambda: EDGE_RIGHT,                # 0: Rightmost edge
+                lambda: NEAR_RIGHT,                # 1: 1-2 pixels from right
+                lambda: NEAR_RIGHT,                # 2: 1-2 pixels from right
+                lambda: RIGHT_3_4,                 # 3: 3 pixels from right
+                lambda: RIGHT_3_4,                 # 4: 4 pixels from right
+                lambda: RIGHT_5,                   # 5: 5 pixels from right
+                lambda: RIGHT_6_7,                 # 6: 6-7 pixels from right
+                lambda: RIGHT_6_7,                 # 7: 6-7 pixels from right
+                lambda: RIGHT_LEFT_8,              # 8: 8 pixels from right
+                lambda: RIGHT_9,                   # 9: 9 pixels from right
+                lambda: RIGHT_10_LEFT_5,           # 10: 10 pixels from right
+                lambda: RIGHT_11_13_LEFT_1_4_10,   # 11: 11-13 pixels from right
+                lambda: RIGHT_11_13_LEFT_1_4_10,   # 12: 11-13 pixels from right
+            ],
+        )
+
+    # Function to select pattern index when player is facing left
+    def select_left_facing_pattern_index(point):
+        return jax.lax.switch(
+            point,
+            [
+                lambda: RIGHT_11_13_LEFT_1_4_10,   # 0: 1-4 pixels from left
+                lambda: RIGHT_11_13_LEFT_1_4_10,   # 1: 1-4 pixels from left
+                lambda: RIGHT_11_13_LEFT_1_4_10,   # 2: 1-4 pixels from left
+                lambda: RIGHT_11_13_LEFT_1_4_10,   # 3: 1-4 pixels from left
+                lambda: RIGHT_10_LEFT_5,           # 4: 5 pixels from left
+                lambda: LEFT_6,                    # 5: 6 pixels from left
+                lambda: RIGHT_LEFT_8,              # 6: 7-8 pixels from left
+                lambda: RIGHT_LEFT_8,              # 7: 7-8 pixels from left
+                lambda: LEFT_9,                    # 8: 9 pixels from left
+                lambda: RIGHT_11_13_LEFT_1_4_10,   # 9: 10 pixels from left
+                lambda: RIGHT_11_13_LEFT_1_4_10,   # 10: After switch point
+                lambda: RIGHT_11_13_LEFT_1_4_10,   # 11: After switch point
+                lambda: RIGHT_11_13_LEFT_1_4_10,   # 12: After switch point
+            ],
+        )
+
+    # Select pattern index based on player direction and impact point
+    pattern_index = jax.lax.cond(
+        player_direction == 0,
+        lambda: select_right_facing_pattern_index(impact_point),
+        lambda: select_left_facing_pattern_index(impact_point)
+    )
+
+    return pattern_index
 
 
 @partial(jax.jit, static_argnums=())
@@ -241,7 +394,7 @@ def update_y_position(y_pos: chex.Array, current_tick: chex.Array, direction: ch
 
 def ball_step(state: State, top_collision: chex.Array,
               bottom_collision: chex.Array, action: chex.Array) -> Tuple[
-    chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array]:
+    chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array]:
     """Update ball state for one step.
     Returns:
         Tuple of (new_x, new_y, new_z, x_dir, y_dir, serving, ball_movement_tick)
@@ -253,37 +406,64 @@ def ball_step(state: State, top_collision: chex.Array,
     # Update Z position first
     new_z, delta_z, new_ball_movement_tick = update_z_position(state.ball_z, state.ball_movement_tick, serve_hit)
 
-    # Movement happens every other tick TODO: find real movement pattern
-    is_movement_frame = jnp.mod(state.current_tick, 2) == 1
-
     def get_directions():
-        # find out in which direction the ball should go using top_collision and bottom_collision
+        # Find out in which direction the ball should go using top_collision and bottom_collision
         y_direction = jnp.where(
             top_collision,
             1,
             jnp.where(
                 bottom_collision,
                 -1,
-                0
+                state.ball_y_dir
             )
         )
 
-        # for the x direction we need to check if the player is top or bottom and then check on which side the ball is
+        # Determine which player is involved in the collision
+        is_player_collision = jnp.logical_xor(
+            jnp.logical_and(top_collision, state.player_side == 0),
+            jnp.logical_and(bottom_collision, state.player_side == 1)
+        )
+
+        # Get the relevant player position and direction based on who was hit
+        player_pos = jnp.where(
+            is_player_collision,
+            state.player_x,
+            state.enemy_x
+        )
+
+        # Use the actual stored direction of the player/enemy that was hit
+        hitting_entity_dir = jnp.where(
+            is_player_collision,
+            state.player_direction,  # Use player's current direction
+            state.enemy_direction  # Use enemy's current direction
+        )
+
+        # impact point calculation
+        # - For right-facing (0): measure from RIGHT edge (player_pos + 13)
+        # - For left-facing (1): measure from LEFT edge (player_pos)
+        impact_point = jnp.where(
+            hitting_entity_dir == 0,
+            # Facing right: measure from right edge
+            (player_pos + PLAYER_WIDTH) - state.ball_x,  # Pixels from right edge
+            # Facing left: measure from left edge
+            state.ball_x - player_pos  # Pixels from left edge
+        )
+
+
+        jaxprint("impact_point", impact_point)
+
+        # Get the pattern index for the appropriate x-movement pattern
+        pattern_idx = get_ball_x_pattern(impact_point, hitting_entity_dir)
+
+        # Get the first value from the pattern for immediate use
         x_direction = jnp.where(
-            state.player_side == 0,
-            jnp.where(
-                state.ball_x < state.player_x,
-                1,
-                -1
-            ),
-            jnp.where(
-                state.ball_x < state.enemy_x,
-                -1,
-                1
-            )
+            jnp.logical_or(top_collision, bottom_collision),
+            X_DIRECTION_ARRAY[pattern_idx],
+            state.ball_x_dir
         )
 
-        return x_direction, y_direction
+        return x_direction, y_direction, pattern_idx
+
 
     def handle_serve():
 
@@ -294,17 +474,34 @@ def ball_step(state: State, top_collision: chex.Array,
             state.ball_y
         )
 
-        x_direction, y_direction = jax.lax.cond(
+        x_direction, y_direction, new_x_pattern = jax.lax.cond(
             serve_hit,
             lambda: get_directions(),
-            lambda: (0, 0),
+            lambda: (0, 0, state.ball_x_pattern_idx),
         )
 
-        return serve_x, serve_y, new_z, delta_z, x_direction, y_direction, ~serve_hit, new_ball_movement_tick, state.ball_y_tick.astype(jnp.int8)
+        new_x_counter_idx = jnp.where(
+            serve_hit,
+            0,
+            state.ball_x_counter
+        )
+
+        return serve_x, serve_y, new_z, delta_z, x_direction, y_direction, ~serve_hit, new_ball_movement_tick, state.ball_y_tick.astype(jnp.int8), new_x_pattern, new_x_counter_idx
 
     def handle_normal_play():
-        # Apply movement
-        new_x = state.ball_x + jnp.where(is_movement_frame, state.ball_x_dir, 0)
+        pattern_idx = state.ball_x_pattern_idx
+        pattern_length = PATTERN_LENGTHS[pattern_idx]
+        pattern_pos = state.ball_x_counter % pattern_length
+
+        # Get the value from the stacked array
+        pattern_x_dir = STACKED_X_PATTERNS[pattern_idx, pattern_pos]
+
+        # Increment pattern index
+        new_x_counter_idx = state.ball_x_counter + 1
+
+        # Apply x movement from pattern
+        new_x = state.ball_x + pattern_x_dir
+
         new_y, ball_y_tick = update_y_position(state.ball_y, state.ball_y_tick, state.ball_y_dir)
 
         # check if ball_y_tick is between -4 and 0, if so, mask x as well
@@ -315,10 +512,12 @@ def ball_step(state: State, top_collision: chex.Array,
         )
 
         # if there was a collision, get the new directions
-        x_direction, y_direction = jax.lax.cond(
+        x_direction, y_direction, new_ball_x_pattern_idx = jax.lax.cond(
             jnp.logical_or(top_collision, bottom_collision),
             lambda: get_directions(),
             lambda: (state.ball_x_dir, state.ball_y_dir),
+        )
+            lambda: (state.ball_x_dir, state.ball_y_dir, state.ball_x_pattern_idx),
         )
 
         # in case of collision reset z to 14, set the new_ball_movement_tick to SERVE_INDEX - 1 and the ball_y_tick to 0
@@ -340,7 +539,7 @@ def ball_step(state: State, top_collision: chex.Array,
             ball_y_tick
         )
 
-        return new_x, new_y, final_new_z, delta_z, x_direction, y_direction, state.serving, final_new_ball_movement_tick, final_ball_y_tick.astype(jnp.int8)
+        return new_x, new_y, final_new_z, delta_z, x_direction, y_direction, state.serving, final_new_ball_movement_tick, final_ball_y_tick.astype(jnp.int8), new_ball_x_pattern_idx, new_x_counter_idx
 
     return jax.lax.cond(
         state.serving,
@@ -353,9 +552,11 @@ def ball_step(state: State, top_collision: chex.Array,
 def player_step(
     state_player_x: chex.Array,
     state_player_y: chex.Array,
+    state_player_direction: chex.Array,
     action: chex.Array,
+    ball_x: chex.Array,
     side: chex.Array,
-) -> Tuple[chex.Array, chex.Array]:
+) -> Tuple[chex.Array, chex.Array, chex.Array]:
     """
     Updates player position based on current position and action.
 
@@ -369,6 +570,43 @@ def player_step(
             chex.Array: New player x position
             chex.Array: New player y position
     """
+
+    player_direction = state_player_direction
+
+    # Calculate if we need to switch direction (turn around)
+    # Switch when player is facing right (0) and ball is too far left
+    should_turn_left = jnp.logical_and(
+        player_direction == 0,  # Currently facing right
+        ball_x == state_player_x  # Ball is at the exact same position
+    )
+
+    # Switch when player is facing left (1) and ball is too far right
+    should_turn_right = jnp.logical_and(
+        player_direction == 1,  # Currently facing left
+        ball_x == state_player_x + 9
+    )
+
+    # Update direction
+    new_direction = jnp.where(
+        should_turn_left,
+        1,  # Switch to facing left
+        jnp.where(
+            should_turn_right,
+            0,  # Switch to facing right
+            player_direction  # Keep current direction
+        )
+    )
+
+    # Teleport player when turning
+    new_player_x = jnp.where(
+        should_turn_left,
+        state_player_x - 8,  # Teleport left by 7 pixels
+        jnp.where(
+            should_turn_right,
+            state_player_x + 8,  # Teleport right by 7 pixels
+            state_player_x  # Keep current position
+        )
+    )
 
     # TODO: adjust the borders of the game according to base implementation
     player_max_left, player_max_right, player_max_bottom, player_max_top = jax.lax.cond(
@@ -390,15 +628,15 @@ def player_step(
 
     # check if the player is trying to move left
     player_x = jnp.where(
-        jnp.logical_and(action == LEFT, state_player_x > 0),
-        state_player_x - 1,
-        state_player_x,
+        jnp.logical_and(action == LEFT, new_player_x > 0),
+        new_player_x - 1,
+        new_player_x,
     )
 
     # check if the player is trying to move right
     player_x = jnp.where(
-        jnp.logical_and(action == RIGHT, state_player_x < COURT_WIDTH - 13),
-        state_player_x + 1,
+        jnp.logical_and(action == RIGHT, new_player_x < COURT_WIDTH - 13),
+        new_player_x + 1,
         player_x,
     )
 
@@ -420,40 +658,111 @@ def player_step(
 
     player_y = jnp.clip(player_y, player_max_top, player_max_bottom)
 
-    return player_x, player_y
+    return player_x, player_y, new_direction
 
 
 def enemy_step(
     state_enemy_x: chex.Array,
     state_enemy_y: chex.Array,
+    state_enemy_direction: chex.Array,
     ball_x: chex.Array,
     ball_y: chex.Array,
-) -> Tuple[chex.Array, chex.Array]:
+    side: chex.Array,
+) -> Tuple[chex.Array, chex.Array, chex.Array]:
     """
-    Updates enemy position based on current position and ball position.
+    Updates enemy position based on current position, direction and ball position.
 
     Args:
         state_enemy_x: Current x coordinate of enemy
         state_enemy_y: Current y coordinate of enemy
+        state_enemy_direction: Current direction of enemy
         ball_x: Current x coordinate of ball
         ball_y: Current y coordinate of ball
+        side: Which side the enemy is on
 
     Returns:
         Tuple containing:
             chex.Array: New enemy x position
             chex.Array: New enemy y position
+            chex.Array: New enemy direction
     """
 
-    # TODO: basic implementation for now
+    enemy_direction = state_enemy_direction
 
-    # move 1 towards the ball in x
-    enemy_x = jnp.where(ball_x < state_enemy_x, state_enemy_x - 1, state_enemy_x)
+    # Calculate if enemy needs to switch direction (turn around)
+    # Switch when enemy is facing right (0) and ball is at the exact same position
+    should_turn_left = jnp.logical_and(
+        enemy_direction == 0,  # Currently facing right
+        ball_x == state_enemy_x  # Ball is at the exact same position
+    )
 
-    enemy_x = jnp.where(ball_x > state_enemy_x, state_enemy_x + 1, enemy_x)
+    # Switch when enemy is facing left (1) and ball is at specific offset
+    should_turn_right = jnp.logical_and(
+        enemy_direction == 1,  # Currently facing left
+        ball_x == state_enemy_x + 9
+    )
 
-    # for now dont move in y, I think there is some distance based movement happening
+    # Update direction
+    new_direction = jnp.where(
+        should_turn_left,
+        1,  # Switch to facing left
+        jnp.where(
+            should_turn_right,
+            0,  # Switch to facing right
+            enemy_direction  # Keep current direction
+        )
+    )
 
-    return enemy_x, state_enemy_y
+    # Teleport enemy when turning
+    new_enemy_x = jnp.where(
+        should_turn_left,
+        state_enemy_x - 8,  # Teleport left by 8 pixels
+        jnp.where(
+            should_turn_right,
+            state_enemy_x + 8,  # Teleport right by 8 pixels
+            state_enemy_x  # Keep current position
+        )
+    )
+
+    # Get appropriate bounds based on side
+    enemy_max_left, enemy_max_right, enemy_max_bottom, enemy_max_top = jax.lax.cond(
+        jnp.equal(side, 1),  # Opposite of player's side
+        lambda _: (
+            TOP_ENTITY_MAX_LEFT,
+            TOP_ENTITY_MAX_RIGHT,
+            TOP_ENTITY_MAX_BOTTOM,
+            TOP_ENTITY_MAX_TOP,
+        ),
+        lambda _: (
+            BOTTOM_ENTITY_MAX_LEFT,
+            BOTTOM_ENTITY_MAX_RIGHT,
+            BOTTOM_ENTITY_MAX_BOTTOM,
+            BOTTOM_ENTITY_MAX_TOP,
+        ),
+        operand=None,
+    )
+
+    # TODO: temporary fix for the enemy movement
+    ball_x = ball_x - 6 # force the enemy to move the ball to its center
+
+    # Basic AI movement - move towards the ball
+    enemy_x = jnp.where(
+        ball_x < new_enemy_x,
+        new_enemy_x - 1,
+        jnp.where(
+            ball_x > new_enemy_x,
+            new_enemy_x + 1,
+            new_enemy_x
+        )
+    )
+
+    # Apply bounds
+    enemy_x = jnp.clip(enemy_x, enemy_max_left, enemy_max_right)
+
+    # For now, maintain Y position
+    enemy_y = state_enemy_y
+
+    return enemy_x, enemy_y, new_direction
 
 
 def check_scoring(state: State) -> Tuple[chex.Array, chex.Array, bool]:
@@ -679,8 +988,10 @@ class Game:
         return State(
             player_x=jnp.array(PLAYER_START_X).astype(jnp.int32),
             player_y=jnp.array(PLAYER_START_Y).astype(jnp.int32),
+            player_direction=jnp.array(0).astype(jnp.int32),
             enemy_x=jnp.array(ENEMY_START_X).astype(jnp.int32),
             enemy_y=jnp.array(ENEMY_START_Y).astype(jnp.int32),
+            enemy_direction=jnp.array(0).astype(jnp.int32),
             ball_x=jnp.array(BALL_START_X).astype(jnp.int32),
             ball_y=jnp.array(BALL_START_Y).astype(jnp.int32),
             ball_z=jnp.array(BALL_START_Z).astype(jnp.int32),
@@ -697,14 +1008,16 @@ class Game:
             ball_was_infield=jnp.array(0).astype(jnp.bool),
             current_tick=jnp.array(0).astype(jnp.int32),
             ball_y_tick=jnp.array(0).astype(jnp.int8),
+            ball_x_pattern_idx=jnp.array(-1), # can be any value since this should be overwritten before being used (in case its not, it will throw an error now)
+            ball_x_counter=jnp.array(0),
         )
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: State, action: chex.Array) -> State:
         """Executes one game step."""
         # Update player position
-        player_x, player_y = player_step(
-            state.player_x, state.player_y, action, state.player_side
+        player_x, player_y, new_player_direction = player_step(
+            state.player_x, state.player_y, state.player_direction, action, state.ball_x, state.player_side
         )
 
         # check if there was a collision
@@ -717,7 +1030,7 @@ class Game:
         )
 
         # Update ball position and velocity (TODO: currently no side switching implemented)
-        ball_x, ball_y, ball_z, delta_z, new_ball_x_dir, new_ball_y_dir, serve, updated_ball_movement_tick, new_ball_y_tick = ball_step(
+        ball_x, ball_y, ball_z, delta_z, new_ball_x_dir, new_ball_y_dir, serve, updated_ball_movement_tick, new_ball_y_tick, new_x_ball_pattern_idx, new_x_ball_id = ball_step(
             state,
             top_collision,
             bottom_collision,
@@ -756,7 +1069,7 @@ class Game:
         # Check scoring
         player_score, enemy_score, point_scored = check_scoring(state)
 
-        enemy_x, enemy_y = enemy_step(state.enemy_x, state.enemy_y, ball_x, ball_y)
+        enemy_x, enemy_y, new_enemy_direction = enemy_step(state.enemy_x, state.enemy_y, state.enemy_direction, ball_x, ball_y, state.player_side)
 
         reset_state = self.reset()
 
@@ -821,8 +1134,10 @@ class Game:
         calculated_state = State(
             player_x=player_x,
             player_y=player_y,
+            player_direction=new_player_direction,
             enemy_x=enemy_x,
             enemy_y=enemy_y,
+            enemy_direction=new_enemy_direction,
             ball_x=ball_x,
             ball_y=ball_y,
             ball_z=ball_z,
@@ -839,6 +1154,8 @@ class Game:
             ball_was_infield=ball_was_infield,
             current_tick=current_tick + 1,
             ball_y_tick=new_ball_y_tick.astype(jnp.int8),
+            ball_x_pattern_idx=new_x_ball_pattern_idx,
+            ball_x_counter=new_x_ball_id,
         )
 
         return jax.lax.cond(
@@ -878,6 +1195,7 @@ class Renderer:
         GRAY = np.array([200, 200, 200], dtype=np.uint8)
         SHADOW = np.array([100, 100, 100], dtype=np.uint8)
         BALL = np.array([25, 255, 255], dtype=np.uint8)
+        RED = np.array([255, 0, 0], dtype=np.uint8)  # For direction indicators
 
         # Draw court outline (white lines)
         canvas[NET_TOP_LEFT[1], NET_TOP_LEFT[0]:NET_TOP_RIGHT[0]] = WHITE
@@ -909,13 +1227,49 @@ class Renderer:
         ball_y = int(state.ball_y)
         shadow_x = int(state.shadow_x)
         shadow_y = int(state.shadow_y)
+        player_direction = int(state.player_direction)
+        enemy_direction = int(state.enemy_direction)
 
         # Draw entities with bounds checking
         if player_y >= 0 and player_y < COURT_HEIGHT - 23 and player_x >= 0 and player_x < COURT_WIDTH - 13:
             canvas[player_y:player_y + 23, player_x:player_x + 13] = WHITE
 
+            # Add player direction arrow
+            arrow_start_y = player_y + 11  # Middle of player vertically
+            if player_direction == 0:  # Right-facing
+                arrow_start_x = player_x + 13  # Right edge
+                for i in range(5):  # Draw a 5-pixel arrow
+                    canvas[arrow_start_y, arrow_start_x + i] = RED
+                # Draw arrowhead
+                canvas[arrow_start_y - 1, arrow_start_x + 3] = RED
+                canvas[arrow_start_y + 1, arrow_start_x + 3] = RED
+            else:  # Left-facing
+                arrow_start_x = player_x  # Left edge
+                for i in range(5):  # Draw a 5-pixel arrow
+                    canvas[arrow_start_y, arrow_start_x - i] = RED
+                # Draw arrowhead
+                canvas[arrow_start_y - 1, arrow_start_x - 3] = RED
+                canvas[arrow_start_y + 1, arrow_start_x - 3] = RED
+
         if enemy_y >= 0 and enemy_y < COURT_HEIGHT - 23 and enemy_x >= 0 and enemy_x < COURT_WIDTH - 13:
             canvas[enemy_y:enemy_y + 23, enemy_x:enemy_x + 13] = WHITE
+
+            # Add enemy direction arrow
+            arrow_start_y = enemy_y + 11  # Middle of enemy vertically
+            if enemy_direction == 0:  # Right-facing
+                arrow_start_x = enemy_x + 13  # Right edge
+                for i in range(5):  # Draw a 5-pixel arrow
+                    canvas[arrow_start_y, arrow_start_x + i] = RED
+                # Draw arrowhead
+                canvas[arrow_start_y - 1, arrow_start_x + 3] = RED
+                canvas[arrow_start_y + 1, arrow_start_x + 3] = RED
+            else:  # Left-facing
+                arrow_start_x = enemy_x  # Left edge
+                for i in range(5):  # Draw a 5-pixel arrow
+                    canvas[arrow_start_y, arrow_start_x - i] = RED
+                # Draw arrowhead
+                canvas[arrow_start_y - 1, arrow_start_x - 3] = RED
+                canvas[arrow_start_y + 1, arrow_start_x - 3] = RED
 
         # Draw shadow
         if shadow_y >= 0 and shadow_y < COURT_HEIGHT - 2 and shadow_x >= 0 and shadow_x < COURT_WIDTH - 2:
@@ -931,7 +1285,6 @@ class Renderer:
         canvas[10:10 + score_size, 20:20 + score_size] = WHITE
 
         return canvas
-
     def draw_score(self, canvas, score, position):
         """Draw score with improved visibility."""
         x, y = position
