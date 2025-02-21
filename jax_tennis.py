@@ -515,8 +515,6 @@ def ball_step(state: State, top_collision: chex.Array,
         x_direction, y_direction, new_ball_x_pattern_idx = jax.lax.cond(
             jnp.logical_or(top_collision, bottom_collision),
             lambda: get_directions(),
-            lambda: (state.ball_x_dir, state.ball_y_dir),
-        )
             lambda: (state.ball_x_dir, state.ball_y_dir, state.ball_x_pattern_idx),
         )
 
