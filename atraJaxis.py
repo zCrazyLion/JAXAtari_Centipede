@@ -254,6 +254,8 @@ def int_to_digits(n, max_digits=10):
 
     return digits
     
+    
+# debug code
 if __name__ == "__main__":
 
     sub1 = loadFrame("./sprites/seaquest/player_sub/1.npy")
