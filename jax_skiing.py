@@ -351,6 +351,8 @@ class GameRenderer:
         """Clean up pygame resources"""
         pygame.quit()
 
+class Renderer:
+    
 
 # main.py
 def main():
