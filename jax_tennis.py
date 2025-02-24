@@ -1345,22 +1345,49 @@ class Renderer:
         canvas[NET_RANGE[0] : NET_RANGE[1], :] = [255, 255, 255]
 
 
+class AnimatorState(NamedTuple):
+    r_x: chex.Array
+    r_y: chex.Array
+    r_f: chex.Array
+    r_bat_f: chex.Array
+    b_x: chex.Array
+    b_y: chex.Array
+    b_f: chex.Array
+    b_bat_f: chex.Array
+
+
 class Renderer_AJ:
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def next_body_frame(self, diff_x, diff_y, frame):
+
+        # Condition 1: r_x - state.player_x > 0 or r_y - state.player_y > 0
+        condition1 = (diff_x > 0) | (diff_y > 0)
+        
+        # Condition 2: r_x - state.player_x == 0 and r_y - state.player_y == 0
+        condition2 = (diff_x == 0) & (diff_y == 0)
+
+        # Calculate next frame based on conditions
+        next_frame = jnp.where(condition1, (frame + 1) % 16,
+                            jnp.where(condition2, 12, (frame - 1) % 16))
+        
+        return next_frame
+
 
        
     @partial(jax.jit, static_argnums=(0,)) 
-    def render(self, state, animator_state):
-        
+    def render(self, state, animator_state):  
+
         
         # render background
         raster = jnp.zeros((COURT_WIDTH, COURT_HEIGHT, 3))
         raster = aj.render_at(raster, 0, 0, BG)
         
         # render player1
-        raster = aj.render_at(raster, state.player_y, state.player_x,  PL_R[3])
+        raster = aj.render_at(raster, state.player_y, state.player_x,  PL_R[animator_state.r_f // 4], flip_horizontal= state.player_direction)
         
         # render player2
-        raster = aj.render_at(raster, state.enemy_y, state.enemy_x,  PL_B[3])
+        raster = aj.render_at(raster, state.enemy_y, state.enemy_x,  PL_B[animator_state.b_f // 4], flip_horizontal= state.enemy_direction)
         
         # render ball
         raster = aj.render_at(raster, state.ball_y, state.ball_x,  BALL)
@@ -1368,9 +1395,26 @@ class Renderer_AJ:
         # render ball shade
         
         raster = aj.render_at(raster, state.shadow_y, state.shadow_x,  BALL_SHADE)
+            
+        # state transition
+
+        next_r_f = self.next_body_frame(state.player_x - animator_state.r_x, state.player_y - animator_state.r_y, animator_state.r_f)
+        next_b_f = self.next_body_frame(state.enemy_x - animator_state.b_x, state.enemy_y - animator_state.b_y, animator_state.b_f)
+        
+        new_animator_state = AnimatorState(
+            r_x = state.player_x,
+            r_y = state.player_y,
+            r_f = next_r_f,
+            r_bat_f = 0.,
+            b_x = state.enemy_x,
+            b_y = state.enemy_y,
+            b_f = next_b_f,
+            b_bat_f = 0.
+            
+        )
         
         
-        return raster
+        return raster, new_animator_state
 
     
     
@@ -1388,7 +1432,7 @@ if __name__ == "__main__":
 
     # Initialize renderer
     renderer = Renderer_AJ()
-
+    animator_state = AnimatorState(r_x=0, r_y=0, r_f=14, r_bat_f=0, b_x=0, b_y=0, b_f=12, b_bat_f=0)
 
 
     # JIT compile main functions
@@ -1433,7 +1477,7 @@ if __name__ == "__main__":
                 list_of_y.append(int(curr_state.ball_y))
                 list_of_z.append(int(curr_state.ball_z))
 
-        raster = renderer.render(curr_state, None)
+        raster, animator_state = renderer.render(curr_state, animator_state)
         aj.update_pygame(screen, raster, 4, COURT_WIDTH, COURT_HEIGHT)
 
         counter += 1
