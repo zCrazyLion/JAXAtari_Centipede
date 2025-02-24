@@ -1174,6 +1174,13 @@ class Game:
                 False
             )
         )
+        
+        # in serving state, player_hit is only true in case of firing
+        player_hit = jnp.where(
+            state.serving,
+            jnp.logical_and(action == FIRE, player_hit),
+            player_hit
+        )
 
         # check if the enemy hit using top/bot collision and the current player side
         enemy_hit = jnp.where(
@@ -1380,6 +1387,7 @@ class AnimatorState(NamedTuple):
     b_f: chex.Array
     b_bat_f: chex.Array
 
+OFFSET_BAT_Y = jnp.array([7, 7, 5, 3])
 
 class Renderer_AJ:
     
@@ -1399,9 +1407,13 @@ class Renderer_AJ:
         return next_frame
     
     @partial(jax.jit, static_argnums=(0,))
-    def bat_position(self, body_x, body_y, body_direction):
-        bat_x = jnp.where(body_direction, body_x - 8, body_x + 8)
-        bat_y = body_y + 7
+    def bat_position(self, body_x, body_y, body_direction, frame):
+        key_frame = frame // 4
+        offset_x = 8
+
+        offset_y = OFFSET_BAT_Y[key_frame]
+        bat_x = jnp.where(body_direction, body_x - offset_x, body_x + offset_x)
+        bat_y = body_y + offset_y
         return bat_x, bat_y
     
     @partial(jax.jit, static_argnums=(0,))
@@ -1433,11 +1445,15 @@ class Renderer_AJ:
         raster = aj.render_at(raster, state.shadow_y, state.shadow_x,  BALL_SHADE)
         
         # render player bat
-        r_bat_x, r_bat_y = self.bat_position(state.player_x, state.player_y, state.player_direction)
+        r_bat_x, r_bat_y = self.bat_position(state.player_x, state.player_y, state.player_direction, animator_state.r_bat_f)
                 
-        raster = aj.render_at(raster, r_bat_y, r_bat_x,  BAT_R[animator_state.r_bat_f // 4], flip_horizontal= state.player_direction)
+        raster = aj.render_at(raster, r_bat_y, r_bat_x,  BAT_R[animator_state.r_bat_f // 4], flip_horizontal=state.player_direction)
         
-        # render enemy bat                    
+        # render enemy bat
+        
+        b_bat_x, b_bat_y = self.bat_position(state.enemy_x, state.enemy_y, state.enemy_direction, animator_state.b_bat_f)
+        raster = aj.render_at(raster, b_bat_y, b_bat_x,  BAT_B[animator_state.b_bat_f // 4], flip_horizontal=state.enemy_direction)
+                            
         # state transition
 
         next_r_f = self.next_body_frame(state.player_x - animator_state.r_x, state.player_y - animator_state.r_y, animator_state.r_f)
@@ -1448,12 +1464,11 @@ class Renderer_AJ:
             r_x = state.player_x,
             r_y = state.player_y,
             r_f = next_r_f,
-            r_bat_f = self.next_bat_frame(animator_state.r_bat_f, 0),
+            r_bat_f = self.next_bat_frame(animator_state.r_bat_f, state.player_hit),
             b_x = state.enemy_x,
             b_y = state.enemy_y,
             b_f = next_b_f,
-            b_bat_f = self.next_bat_frame(animator_state.b_bat_f, 0),
-            
+            b_bat_f = self.next_bat_frame(animator_state.b_bat_f, state.enemy_hit),
         )
         
         
@@ -1520,6 +1535,6 @@ if __name__ == "__main__":
         aj.update_pygame(screen, raster, 4, COURT_WIDTH, COURT_HEIGHT)
 
         counter += 1
-        clock.tick(60)
+        clock.tick(15)
 
     pygame.quit()
