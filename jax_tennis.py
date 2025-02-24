@@ -235,6 +235,8 @@ class State(NamedTuple):
     ball_y_tick: chex.Array
     ball_x_pattern_idx: chex.Array  # Array holding the x-movement pattern
     ball_x_counter: chex.Array  # Current index in the pattern
+    player_hit: chex.Array
+    enemy_hit: chex.Array
 
 
 def get_human_action() -> chex.Array:
@@ -482,9 +484,6 @@ def ball_step(state: State, top_collision: chex.Array,
             # Facing left: measure from left edge
             state.ball_x - player_pos  # Pixels from left edge
         )
-
-
-        jaxprint("impact_point", impact_point)
 
         # Get the pattern index for the appropriate x-movement pattern
         pattern_idx = get_ball_x_pattern(impact_point, hitting_entity_dir)
@@ -1042,6 +1041,8 @@ class Game:
             ball_y_tick=jnp.array(0).astype(jnp.int8),
             ball_x_pattern_idx=jnp.array(-1), # can be any value since this should be overwritten before being used (in case its not, it will throw an error now)
             ball_x_counter=jnp.array(0),
+            player_hit=jnp.array(0).astype(jnp.bool),
+            enemy_hit=jnp.array(0).astype(jnp.bool),
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -1163,6 +1164,28 @@ class Game:
             operand=None,
         )
 
+        # check if the player hit using top/bot collision and the current player side
+        player_hit = jnp.where(
+            jnp.logical_and(top_collision, state.player_side == 0),
+            True,
+            jnp.where(
+                jnp.logical_and(bottom_collision, state.player_side == 1),
+                True,
+                False
+            )
+        )
+
+        # check if the enemy hit using top/bot collision and the current player side
+        enemy_hit = jnp.where(
+            jnp.logical_and(top_collision, state.player_side == 1),
+            True,
+            jnp.where(
+                jnp.logical_and(bottom_collision, state.player_side == 0),
+                True,
+                False
+            )
+        )
+
         calculated_state = State(
             player_x=player_x,
             player_y=player_y,
@@ -1188,6 +1211,8 @@ class Game:
             ball_y_tick=new_ball_y_tick.astype(jnp.int8),
             ball_x_pattern_idx=new_x_ball_pattern_idx,
             ball_x_counter=new_x_ball_id,
+            player_hit=player_hit,
+            enemy_hit=enemy_hit,
         )
 
         return jax.lax.cond(
@@ -1482,11 +1507,6 @@ if __name__ == "__main__":
                     if counter % frameskip == 0:
                         action = get_human_action()
                         curr_state = jitted_step(curr_state, action)
-                        print(f"x: {curr_state.ball_x}, y: {curr_state.ball_y}, z: {curr_state.ball_z}")
-                        #print(f"x_dir: {curr_state.ball_x_dir}, y_dir: {curr_state.ball_y_dir}")
-                        #print(f"shadow_x: {curr_state.shadow_x}, shadow_y: {curr_state.shadow_y}")
-                        #print(curr_state.ball_z)
-                        print(curr_state.just_hit)
 
         if not frame_by_frame:
             if counter % frameskip == 0:
