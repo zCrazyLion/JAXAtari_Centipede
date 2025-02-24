@@ -1380,8 +1380,8 @@ class Renderer_AJ:
         return bat_x, bat_y
     
     @partial(jax.jit, static_argnums=(0,))
-    def next_bat_frame(self, frame, serving):
-        cond = serving | (frame != 0)
+    def next_bat_frame(self, frame, hit):
+        cond = hit | (frame != 0)
         return jnp.where(cond, (frame + 1) % 16, 0)
 
 
@@ -1423,11 +1423,11 @@ class Renderer_AJ:
             r_x = state.player_x,
             r_y = state.player_y,
             r_f = next_r_f,
-            r_bat_f = self.next_bat_frame(animator_state.r_bat_f, state.serving),
+            r_bat_f = self.next_bat_frame(animator_state.r_bat_f, 0),
             b_x = state.enemy_x,
             b_y = state.enemy_y,
             b_f = next_b_f,
-            b_bat_f = self.next_bat_frame(animator_state.b_bat_f, state.serving),
+            b_bat_f = self.next_bat_frame(animator_state.b_bat_f, 0),
             
         )
         
