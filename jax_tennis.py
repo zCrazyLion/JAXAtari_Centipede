@@ -1456,6 +1456,10 @@ class Renderer_AJ:
         
         b_bat_x, b_bat_y = self.bat_position(state.enemy_x, state.enemy_y, state.enemy_direction, animator_state.b_bat_f)
         raster = aj.render_at(raster, b_bat_y, b_bat_x,  BAT_B[animator_state.b_bat_f // 4], flip_horizontal=state.enemy_direction)
+        
+        # render scores
+        
+        
                             
         # state transition
 
