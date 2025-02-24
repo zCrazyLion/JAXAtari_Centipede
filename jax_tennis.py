@@ -1164,12 +1164,15 @@ class Game:
             operand=None,
         )
 
+        top_coll_without_serve = jnp.logical_and(top_collision, ~serve)
+        bot_coll_without_serve = jnp.logical_and(bottom_collision, ~serve)
+
         # check if the player hit using top/bot collision and the current player side
         player_hit = jnp.where(
-            jnp.logical_and(top_collision, state.player_side == 0),
+            jnp.logical_and(top_coll_without_serve, state.player_side == 0),
             True,
             jnp.where(
-                jnp.logical_and(bottom_collision, state.player_side == 1),
+                jnp.logical_and(bot_coll_without_serve, state.player_side == 1),
                 True,
                 False
             )
@@ -1184,10 +1187,10 @@ class Game:
 
         # check if the enemy hit using top/bot collision and the current player side
         enemy_hit = jnp.where(
-            jnp.logical_and(top_collision, state.player_side == 1),
+            jnp.logical_and(top_coll_without_serve, state.player_side == 1),
             True,
             jnp.where(
-                jnp.logical_and(bottom_collision, state.player_side == 0),
+                jnp.logical_and(bot_coll_without_serve, state.player_side == 0),
                 True,
                 False
             )
