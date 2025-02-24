@@ -229,7 +229,7 @@ def pad_to_match(sprites):
 
     return [pad_sprite(sprite) for sprite in sprites]
 
-@jax.jit
+@partial (jax.jit, static_argnames=["max_digits"])
 def int_to_digits(n, max_digits=10):
     """Convert an integer to a fixed-length array of digits in JAX.
     

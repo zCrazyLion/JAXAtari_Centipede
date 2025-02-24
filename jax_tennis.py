@@ -36,9 +36,14 @@ def load_sprites():
     
     BALL = aj.loadFrame("sprites/tennis/ball/1.npy")
     BALL_SHADE = aj.loadFrame("sprites/tennis/ball_shade/1.npy")
-    return BG, PL_R, BAT_R, PL_B, BAT_B, BALL, BALL_SHADE
+    
+    DIGITS_R = aj.load_and_pad_digits("sprites/tennis/digits_r/{}.npy")
+    DIGITS_B = aj.load_and_pad_digits("sprites/tennis/digits_b/{}.npy")
 
-BG, PL_R, BAT_R, PL_B, BAT_B, BALL, BALL_SHADE = load_sprites()
+    
+    return BG, PL_R, BAT_R, PL_B, BAT_B, BALL, BALL_SHADE, DIGITS_R, DIGITS_B
+
+BG, PL_R, BAT_R, PL_B, BAT_B, BALL, BALL_SHADE, DIGITS_R, DIGITS_B = load_sprites()
 
 # TODO: remove, for debugging purposes only
 def jaxprint(arg1, arg2=None):
@@ -1458,6 +1463,13 @@ class Renderer_AJ:
         raster = aj.render_at(raster, b_bat_y, b_bat_x,  BAT_B[animator_state.b_bat_f // 4], flip_horizontal=state.enemy_direction)
         
         # render scores
+        
+        r_score_array = aj.int_to_digits(state.player_score, max_digits = 2)
+        b_score_array = aj.int_to_digits(state.enemy_score, max_digits = 2)
+        
+        raster = aj.render_label(raster, 10, 60, r_score_array, DIGITS_R, spacing=7)
+        raster = aj.render_label(raster, 10, 90, b_score_array, DIGITS_B, spacing=7)
+
         
         
                             
