@@ -166,8 +166,8 @@ TOP_ENTITY_MAX_BOTTOM = 75
 
 BOTTOM_ENTITY_MAX_LEFT = 4
 BOTTOM_ENTITY_MAX_RIGHT = 142
-BOTTOM_ENTITY_MAX_TOP = 18
-BOTTOM_ENTITY_MAX_BOTTOM = 75
+BOTTOM_ENTITY_MAX_TOP = -1
+BOTTOM_ENTITY_MAX_BOTTOM = -1
 
 NET_TOP_LEFT = (40, 48)  # (0, 48)  # x,y top left corner
 NET_TOP_RIGHT = (120, 48)  # (120, 48)
@@ -776,17 +776,25 @@ def check_scoring(state: State) -> Tuple[chex.Array, chex.Array, bool]:
             chex.Array: Updated enemy score
             bool: Whether a point was scored in this step
     """
-    player_score, enemy_score, val = jax.lax.cond(
-        jnp.logical_or(check_ball_in_field(state), state.serving),
-        lambda _: (state.player_score, state.enemy_score, False),
-        lambda _: (state.player_score + 1, state.enemy_score, True),
+    ball_in_field, side = check_ball_in_field(state)
+
+    player_score, enemy_score, add_point = jax.lax.cond(jnp.logical_or(ball_in_field, state.serving),
+                             lambda _: (state.player_score, state.enemy_score, False),
+                             lambda _: (state.player_score, state.enemy_score, True),
+                             operand=None,
+                             )
+
+    player_score, enemy_score = jax.lax.cond(
+        jnp.logical_and(add_point, jnp.equal(side, 0)),
+        lambda _: (state.player_score + 1, state.enemy_score),
+        lambda _: (state.player_score, state.enemy_score + 1),
         operand=None,
     )
 
-    return player_score, enemy_score, val
+    return player_score, enemy_score, add_point
 
 
-def check_ball_in_field(state: State) -> chex.Array:
+def check_ball_in_field(state: State) -> Tuple[chex.Array, chex.Array]:
     """
     Checks if the ball is in the field
     Args:
@@ -814,9 +822,11 @@ def check_ball_in_field(state: State) -> chex.Array:
 
     in_field_bottom = (state.ball_y + state.ball_z) <= NET_BOTTOM_LEFT[1]
 
-    return jnp.logical_and(
+    side = jax.lax.cond(jnp.less_equal((state.ball_y + state.ball_z), NET_RANGE[0]), lambda _: 0, lambda _: 1, operand=None)
+
+    return jnp.logical_or(jnp.logical_and(
         jnp.logical_and(in_field_sides, in_field_top), in_field_bottom
-    )
+    ), jnp.greater(state.ball_z, 0)), side
 
 
 def check_collision(
@@ -1355,11 +1365,6 @@ if __name__ == "__main__":
                     if counter % frameskip == 0:
                         action = get_human_action()
                         curr_state = jitted_step(curr_state, action)
-                        print(f"x: {curr_state.ball_x}, y: {curr_state.ball_y}, z: {curr_state.ball_z}")
-                        #print(f"x_dir: {curr_state.ball_x_dir}, y_dir: {curr_state.ball_y_dir}")
-                        #print(f"shadow_x: {curr_state.shadow_x}, shadow_y: {curr_state.shadow_y}")
-                        #print(curr_state.ball_z)
-                        print(curr_state.just_hit)
 
         if not frame_by_frame:
             if counter % frameskip == 0:
