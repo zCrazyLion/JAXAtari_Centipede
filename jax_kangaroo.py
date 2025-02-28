@@ -1288,35 +1288,50 @@ def monkey_controller(state: GameState):
         lambda: new_monkey_states,
     )
 
-    ## state 1 -> 2
 
-    ### check if monkey is on a platform AND the player is on the same platform or higher
-    ### if so, change state to 2
-    ### if not, keep state 1
+    # "Monkey StateMachine"
 
-    ## state 2 -> 3
+    # State 1 -> 2
+    ## Check if monkey is on a platform AND the player is on the same platform or higher
 
-    ### not sure about the correct condition but something like: is the monkey close to the player (x-wise)
-    ### OR the monkey is already too far left (there might be a max x coordinate)
-    ### if so, change state to 3
-    ### if not, keep state 2
+    # -> How to check if monkey is on a platform?
+        # -> Can we maybe get the index of platform for the current monkey like we do in the player (jump) controler?
 
-    ### It might be possible for the monkey to change from 2 to 5 if the player is on a higher platform...?
+    # -> How to check if player is on the same platform or higher? 
+        # Can we get the current platform (index of the platform) the player is on?
 
-    ## state 3 -> 4
+    # -> If so we can just compare these two values player_platform_index >= monkey_platform_index
 
-    ### If the waiting timer is over, change state to 4
+        ## If so, change state to 2
+        ## If not, keep state 1
 
-    ## state 4 -> 5
 
-    ### If the monkey is at x == 130 wait for 8 frames and then change state to 5
+    #State 2 -> 3
+    ## Not sure about the correct condition but something like: is the monkey close to the player (x-wise)
+    ## OR the monkey is already too far left (there might be a max x coordinate)
+        ### If so, change state to 3
+        ### If not, keep state 2
 
-    ## state 5 -> 0
+        ### It might be possible for the monkey to change from 2 to 5 if the player is on a higher platform...?
 
-    ### If the monkey is at y == 5 change state to 0 and reset the position to the starting position
 
-    # update monkey positions
+    # State 3 -> 4
+    ## If the waiting timer is over, change state to 4
 
+
+    # State 4 -> 5
+    ## If the monkey is at x == 130 wait for 8 frames and then change state to 5
+
+
+    # State 5 -> 0
+    ## If the monkey is at y == 5 change state to 0 and reset the position to the starting position
+
+
+    # Additional
+    ## If monkey is punched by player (collision with player + player punch in right direction) -> change state to 0 and reset position
+
+
+    # Update monkey positions
     def update_monkey_positions(i, carry):
         """Update monkey positions."""
         new_monkey_position = jnp.where(
