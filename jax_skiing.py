@@ -252,51 +252,45 @@ class SkiingGameLogic:
         for i in range(len(state.flags)):
             new_flags = new_flags.at[i, 1].set(state.flags[i][1] - new_skier_y_speed)
 
-        def check_collision_flag(flag_pos):
+        def check_pass_flag(flag_pos):
             fx, fy = flag_pos
             dx_0 = new_x - fx
-            dy_0 = jnp.abs(self.config.skier_y - fy)
+            dy_0 = jnp.abs(self.config.skier_y - jnp.round(fy))
             return (dx_0 > 0) & (dx_0 < self.config.flag_distance) & (dy_0 < 1)
 
-        def check_collision(obj_pos, x_distance=3, y_distance=1):
+        def check_collision_flag(obj_pos, x_distance=1, y_distance=1):
             x, y = obj_pos
+            dx_1 = jnp.abs(new_x - x)
+            dy_1 = jnp.abs(jnp.round(self.config.skier_y) - jnp.round(y))
+
+            dx_2 = jnp.abs(new_x - (x+self.config.flag_distance))
+            dy_2 = jnp.abs(jnp.round(self.config.skier_y) - jnp.round(y))
+
+            return jnp.logical_or(jnp.logical_and(dx_1 <= x_distance, dy_1 < y_distance), jnp.logical_and(dx_2 <= x_distance, dy_2 < y_distance))
+
+        def check_collision_tree(tree_pos, x_distance=3, y_distance=1):
+            x, y = tree_pos
             dx = jnp.abs(new_x - x)
-            dy = jnp.abs(self.config.skier_y - y)
+            dy = jnp.abs(jnp.round(self.config.skier_y) - jnp.round(y))
+
+            return jnp.logical_and(dx <= x_distance, dy < y_distance)
+
+        def check_collision_rock(rock_pos, x_distance=1, y_distance=1):
+            x, y = rock_pos
+            dx = jnp.abs(new_x - x)
+            dy = jnp.abs(jnp.round(self.config.skier_y) - jnp.round(y))
+
             return jnp.logical_and(dx < x_distance, dy < y_distance)
-
-        def check_collision_tree(tree_pos):
-            tree_x, tree_y = tree_pos
-            return jnp.logical_and(
-                state.skier_x < tree_x + self.config.tree_width,
-                jnp.logical_and(
-                    state.skier_x + self.config.skier_width > tree_x,
-                    jnp.logical_and(
-                        self.config.skier_y - self.config.skier_height < tree_y,
-                        self.config.skier_y > tree_y - self.config.tree_height,
-                    ),
-                ),
-            )
-
-        def check_collision_rock(rock_pos):
-            rock_x, rock_y = rock_pos
-            return jnp.logical_and(
-                state.skier_x < rock_x + self.config.rock_width,
-                jnp.logical_and(
-                    state.skier_x + self.config.skier_width > rock_x,
-                    jnp.logical_and(
-                        self.config.skier_y - self.config.skier_height < rock_y,
-                        self.config.skier_y > rock_y - self.config.rock_height,
-                    ),
-                ),
-            )
 
         new_flags, new_trees, new_rocks, new_key = self._create_new_objs(state, new_flags, new_trees, new_rocks)
 
-        passed_flags = jax.vmap(check_collision_flag)(jnp.array(new_flags))
-        collisions_tree = jax.vmap(check_collision)(jnp.array(new_trees))
-        collisions_rocks = jax.vmap(check_collision)(jnp.array(new_rocks))
+        passed_flags = jax.vmap(check_pass_flag)(jnp.array(new_flags))
 
-        num_colls = jnp.sum(collisions_tree) + jnp.sum(collisions_rocks)
+        collisions_flag = jax.vmap(check_collision_flag)(jnp.array(new_flags))
+        collisions_tree = jax.vmap(check_collision_tree)(jnp.array(new_trees))
+        collisions_rocks = jax.vmap(check_collision_rock)(jnp.array(new_rocks))
+
+        num_colls = jnp.sum(collisions_tree) + jnp.sum(collisions_rocks) + jnp.sum(collisions_flag)
 
         (
             new_x,
@@ -342,7 +336,7 @@ class SkiingGameLogic:
             operand=None,
         )
 
-        new_score = state.score - jnp.sum(passed_flags)
+        new_score = jax.lax.cond(jnp.equal(skier_fell, 0), lambda _: state.score - jnp.sum(passed_flags), lambda _:state.score, operand=None)
         game_over = jax.lax.cond(
             jnp.equal(new_score, 0),
             lambda _: jnp.array(True),
