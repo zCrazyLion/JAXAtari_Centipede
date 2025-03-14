@@ -1121,6 +1121,28 @@ def lives_controller(state: GameState):
 
     # monkey touch check
 
+    monkey_collision = jnp.zeros(state.level.monkey_states.shape[0], dtype=bool)
+
+    def check_monkey_collision(i, carry):
+        monkey_pos = state.level.monkey_positions[i]
+        collision = entities_collide(
+            state.player.x,
+            state.player.y,
+            PLAYER_WIDTH,
+            state.player.height,
+            monkey_pos[0],
+            monkey_pos[1],
+            MONKEY_WIDTH,
+            MONKEY_HEIGHT,
+        )
+        return carry.at[i].set(collision)
+
+    monkey_collision = jax.lax.fori_loop(
+        0, state.level.monkey_states.shape[0], check_monkey_collision, monkey_collision
+    )
+
+    player_collided_with_monkey = jnp.any(monkey_collision)
+
     # coconut touch check
 
     crashed_falling_coco = entities_collide(
@@ -1135,7 +1157,10 @@ def lives_controller(state: GameState):
     )
 
     remove_live = (
-        is_time_over | player_is_falling | crashed_falling_coco
+        is_time_over
+        | player_is_falling
+        | crashed_falling_coco
+        | player_collided_with_monkey
     ) & ~state.player.is_crashing
     new_is_crashing = jnp.where(remove_live, True, state.player.is_crashing)
 
