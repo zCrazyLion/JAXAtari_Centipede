@@ -1166,7 +1166,7 @@ def lives_controller(state: GameState):
     )
 
 
-@partial(jax.jit, static_argnums=(0))
+@partial(jax.jit, static_argnums=())
 def falling_coconut_controller(state: GameState):
     falling_coco_exists = (state.level.falling_coco_position[0] != 13) | (
         state.level.falling_coco_position[1] != -1
@@ -1250,7 +1250,7 @@ def falling_coconut_controller(state: GameState):
     )
 
 
-@partial(jax.jit, static_argnums=(0))
+@partial(jax.jit, static_argnums=())
 def monkey_controller(state: GameState):
     """Monkey controller function."""
 
@@ -1288,48 +1288,184 @@ def monkey_controller(state: GameState):
         lambda: new_monkey_states,
     )
 
-
-    # "Monkey StateMachine"
-
     # State 1 -> 2
-    ## Check if monkey is on a platform AND the player is on the same platform or higher
 
-    # -> How to check if monkey is on a platform?
-        # -> Can we maybe get the index of platform for the current monkey like we do in the player (jump) controler?
+    def check_transition_1_to_2(i, carry):
+        """Check if monkey should transition from state 1 to 2."""
+        monkey_lower_y = state.level.monkey_positions[i][1] + MONKEY_HEIGHT
+        monkey_on_p1 = monkey_lower_y == 172
+        monkey_on_p2 = monkey_lower_y == 124
+        monkey_on_p3 = monkey_lower_y == 76
 
-    # -> How to check if player is on the same platform or higher? 
-        # Can we get the current platform (index of the platform) the player is on?
+        # monke goes left if the player is in the same band between platforms as the monkey
+        # if the player is on a higher platform will go to a max y of <idk>, step left once
+        # and then transition to state 5
 
-    # -> If so we can just compare these two values player_platform_index >= monkey_platform_index
+        platform_y_under_player = get_y_of_platform_below_player(state)
 
-        ## If so, change state to 2
-        ## If not, keep state 1
+        transition_1_to_2 = (
+            (
+                monkey_on_p1
+                & (platform_y_under_player <= 172)
+                & (platform_y_under_player > 124)
+            )
+            | (
+                monkey_on_p2
+                & (platform_y_under_player <= 124)
+                & (platform_y_under_player > 76)
+            )
+            | (
+                monkey_on_p3
+                & (platform_y_under_player <= 76)
+                & (platform_y_under_player > 28)
+            )
+        )
 
+        new_state = jnp.where(
+            carry[i] == 1,
+            jnp.where(
+                transition_1_to_2,
+                2,
+                1,
+            ),
+            carry[i],
+        )
+        return carry.at[i].set(new_state)
 
-    #State 2 -> 3
+    new_monkey_states = jax.lax.fori_loop(
+        0,
+        state.level.monkey_states.shape[0],
+        check_transition_1_to_2,
+        new_monkey_states,
+    )
+
+    ### It might be possible for the monkey to change from 1 to 5 if the player is on a higher platform...?
+
+    # State 1 -> 5
+
+    def check_transition_1_to_5(i, carry):
+        """Check if monkey should transition from state 1 to 5."""
+        new_state = jnp.where(
+            carry[i] == 1,
+            jnp.where(
+                (state.level.monkey_positions[i][1] + MONKEY_HEIGHT) >= 172,
+                5,
+                1,
+            ),
+            carry[i],
+        )
+        return carry.at[i].set(new_state)
+
+    new_monkey_states = jax.lax.fori_loop(
+        0,
+        state.level.monkey_states.shape[0],
+        check_transition_1_to_5,
+        new_monkey_states,
+    )
+
+    # State 2 -> 3
     ## Not sure about the correct condition but something like: is the monkey close to the player (x-wise)
-    ## OR the monkey is already too far left (there might be a max x coordinate)
-        ### If so, change state to 3
-        ### If not, keep state 2
+    ## OR the monkey is already too far left (there might be a max x coordinate == 107)
+    ### If so, change state to 3
+    ### If not, keep state 2
 
-        ### It might be possible for the monkey to change from 2 to 5 if the player is on a higher platform...?
+    def check_transition_2_to_3(i, carry):
+        monkey_x = state.level.monkey_positions[i][0]
+        min_x_reached = monkey_x <= 107
+        transition_2_to_3 = min_x_reached  # | other_things
 
+        new_state = jnp.where(
+            carry[i] == 2,
+            jnp.where(
+                transition_2_to_3,
+                3,
+                2,
+            ),
+            carry[i],
+        )
+        return carry.at[i].set(new_state)
+
+    new_monkey_states = jax.lax.fori_loop(
+        0,
+        state.level.monkey_states.shape[0],
+        check_transition_2_to_3,
+        new_monkey_states,
+    )
 
     # State 3 -> 4
     ## If the waiting timer is over, change state to 4
 
+    def check_transition_3_to_4(i, carry):
+        new_state = jnp.where(
+            state.level.monkey_states[i] == 3,
+            jnp.where(
+                state.level.monkey_throw_timers[i] == 0,
+                4,
+                3,
+            ),
+            carry[i],
+        )
+        return carry.at[i].set(new_state)
+
+    new_monkey_states = jax.lax.fori_loop(
+        0,
+        state.level.monkey_states.shape[0],
+        check_transition_3_to_4,
+        new_monkey_states,
+    )
 
     # State 4 -> 5
     ## If the monkey is at x == 130 wait for 8 frames and then change state to 5
 
+    def check_transition_4_to_5(i, carry):
+        monkey_x = state.level.monkey_positions[i][0]
+        transition_4_to_5 = monkey_x >= 146
+
+        new_state = jnp.where(
+            carry[i] == 4,
+            jnp.where(
+                transition_4_to_5,
+                5,
+                4,
+            ),
+            carry[i],
+        )
+        return carry.at[i].set(new_state)
+
+    new_monkey_states = jax.lax.fori_loop(
+        0,
+        state.level.monkey_states.shape[0],
+        check_transition_4_to_5,
+        new_monkey_states,
+    )
 
     # State 5 -> 0
     ## If the monkey is at y == 5 change state to 0 and reset the position to the starting position
 
+    def check_transition_5_to_0(i, carry):
+        monkey_y = state.level.monkey_positions[i][1]
+        transition_5_to_0 = monkey_y <= 5
+
+        new_state = jnp.where(
+            carry[i] == 5,
+            jnp.where(
+                transition_5_to_0,
+                0,
+                5,
+            ),
+            carry[i],
+        )
+        return carry.at[i].set(new_state)
+
+    new_monkey_states = jax.lax.fori_loop(
+        0,
+        state.level.monkey_states.shape[0],
+        check_transition_5_to_0,
+        new_monkey_states,
+    )
 
     # Additional
     ## If monkey is punched by player (collision with player + player punch in right direction) -> change state to 0 and reset position
-
 
     # Update monkey positions
     def update_monkey_positions(i, carry):
@@ -1353,7 +1489,17 @@ def monkey_controller(state: GameState):
                         jnp.where(
                             new_monkey_states[i] == 4,  # monkey moving right
                             carry[i].at[0].set(carry[i][0] + 3),
-                            carry[i].at[1].set(carry[i][1] - 16),  # monkey moving up
+                            jnp.where(
+                                new_monkey_states[i] == 5,  # monkey moving up
+                                jnp.where(
+                                    state.level.monkey_states[i] == 1,
+                                    carry[i].at[0].set(146),
+                                    carry[i]
+                                    .at[1]
+                                    .set(carry[i][1] - 16),  # monkey moving up
+                                ),
+                                carry[i],
+                            ),
                         ),
                     ),
                 ),
