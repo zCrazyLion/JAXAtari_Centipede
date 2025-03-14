@@ -1135,7 +1135,7 @@ def lives_controller(state: GameState):
             MONKEY_WIDTH,
             MONKEY_HEIGHT,
         )
-        return carry.at[i].set(collision)
+        return carry.at[i].set(collision & (state.level.monkey_states[i] != 0))
 
     monkey_collision = jax.lax.fori_loop(
         0, state.level.monkey_states.shape[0], check_monkey_collision, monkey_collision
@@ -1276,7 +1276,7 @@ def falling_coconut_controller(state: GameState):
 
 
 @partial(jax.jit, static_argnums=())
-def monkey_controller(state: GameState):
+def monkey_controller(state: GameState, punching: chex.Array):
     """Monkey controller function."""
 
     def count_existing_monkeys(i, carry):
@@ -1492,42 +1492,93 @@ def monkey_controller(state: GameState):
     # Additional
     ## If monkey is punched by player (collision with player + player punch in right direction) -> change state to 0 and reset position
 
+    fist_x = jnp.where(
+        state.player.orientation > 0, state.player.x + PLAYER_WIDTH, state.player.x - 3
+    )
+    fist_y = state.player.y + 8
+    fist_w = 3
+    fist_h = 4
+
+    def check_punch(i, carry):
+        monkey_pos = state.level.monkey_positions[i]
+        collision = entities_collide(
+            fist_x,
+            fist_y,
+            fist_w,
+            fist_h,
+            monkey_pos[0],
+            monkey_pos[1],
+            MONKEY_WIDTH,
+            MONKEY_HEIGHT,
+        )
+        return carry.at[i].set(
+            collision & (state.level.monkey_states[i] != 0) & punching
+        )
+
+    monkeys_punched = jax.lax.fori_loop(
+        0,
+        state.level.monkey_states.shape[0],
+        check_punch,
+        jnp.zeros(state.level.monkey_states.shape[0], dtype=bool),
+    )
+
+    def reset_punched_monkeys(i, carry):
+        new_state = jnp.where(
+            monkeys_punched[i],
+            0,
+            carry[i],
+        )
+        return carry.at[i].set(new_state)
+
+    score_addition = jnp.sum(monkeys_punched) * 200
+
+    new_monkey_states = jax.lax.fori_loop(
+        0,
+        state.level.monkey_states.shape[0],
+        reset_punched_monkeys,
+        new_monkey_states,
+    )
+
     # Update monkey positions
     def update_monkey_positions(i, carry):
         """Update monkey positions."""
         new_monkey_position = jnp.where(
             new_monkey_states[i] == 0,  # monkey does not exist
-            carry[i],
+            jnp.array([152, 5]),
             jnp.where(
-                new_monkey_states[i] == 1,  # monkey moving down
+                state.level.step_counter % 16 == 0,
                 jnp.where(
-                    state.level.monkey_states[i] == 0,
-                    jnp.array([152, 5]),
-                    carry[i].at[1].set(carry[i][1] + 8),
-                ),
-                jnp.where(
-                    new_monkey_states[i] == 2,  # monkey moving left
-                    carry[i].at[0].set(carry[i][0] - 3),
+                    new_monkey_states[i] == 1,  # monkey moving down
                     jnp.where(
-                        new_monkey_states[i] == 3,  # monkey waiting
-                        carry[i],
+                        state.level.monkey_states[i] == 0,
+                        jnp.array([152, 5]),
+                        carry[i].at[1].set(carry[i][1] + 8),
+                    ),
+                    jnp.where(
+                        new_monkey_states[i] == 2,  # monkey moving left
+                        carry[i].at[0].set(carry[i][0] - 3),
                         jnp.where(
-                            new_monkey_states[i] == 4,  # monkey moving right
-                            carry[i].at[0].set(carry[i][0] + 3),
+                            new_monkey_states[i] == 3,  # monkey waiting
+                            carry[i],
                             jnp.where(
-                                new_monkey_states[i] == 5,  # monkey moving up
+                                new_monkey_states[i] == 4,  # monkey moving right
+                                carry[i].at[0].set(carry[i][0] + 3),
                                 jnp.where(
-                                    state.level.monkey_states[i] == 1,
-                                    carry[i].at[0].set(146),
-                                    carry[i]
-                                    .at[1]
-                                    .set(carry[i][1] - 16),  # monkey moving up
+                                    new_monkey_states[i] == 5,  # monkey moving up
+                                    jnp.where(
+                                        state.level.monkey_states[i] == 1,
+                                        carry[i].at[0].set(146),
+                                        carry[i]
+                                        .at[1]
+                                        .set(carry[i][1] - 16),  # monkey moving up
+                                    ),
+                                    carry[i],
                                 ),
-                                carry[i],
                             ),
                         ),
                     ),
                 ),
+                carry[i],
             ),
         )
         return carry.at[i].set(new_monkey_position)
@@ -1545,7 +1596,11 @@ def monkey_controller(state: GameState):
         """Update monkey throw timers."""
         new_timer = jnp.where(
             new_monkey_states[i] == 3,
-            jnp.where(state.level.monkey_states[i] == 2, 4, carry[i] - 1),
+            jnp.where(
+                state.level.monkey_states[i] == 2,
+                4,
+                jnp.where(state.level.step_counter % 16 == 0, carry[i] - 1, carry[i]),
+            ),
             carry[i],
         )
         return carry.at[i].set(new_timer)
@@ -1557,18 +1612,11 @@ def monkey_controller(state: GameState):
         state.level.monkey_throw_timers,
     )
 
-    return jax.lax.cond(
-        state.level.step_counter % 16 == 0,
-        lambda: (
-            new_monkey_states,
-            new_monkey_positions,
-            new_monkey_throw_timers,
-        ),
-        lambda: (
-            state.level.monkey_states,
-            state.level.monkey_positions,
-            state.level.monkey_throw_timers,
-        ),
+    return (
+        new_monkey_states,
+        new_monkey_positions,
+        new_monkey_throw_timers,
+        score_addition,
     )
 
 
@@ -1635,7 +1683,7 @@ class Game:
             levelup_timer=jnp.array(0),
             reset_coords=jnp.array(False),
             levelup=jnp.array(False),
-            lives=3,
+            lives=jnp.array(3),
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -1683,9 +1731,12 @@ class Game:
         ) = falling_coconut_controller(state)
 
         # update monkeys
-        new_monkey_states, new_monkey_positions, new_monkey_throw_timers = (
-            monkey_controller(state)
-        )
+        (
+            new_monkey_states,
+            new_monkey_positions,
+            new_monkey_throw_timers,
+            score_addition2,
+        ) = monkey_controller(state, (punch_left | punch_right))
 
         (
             new_lives,
@@ -1698,6 +1749,7 @@ class Game:
         # reset_current_level_progress()
 
         # add score if levelup from lvl3 to lvl1
+        score_addition = score_addition + score_addition2
         score_addition = jax.lax.cond(
             new_current_level == 4,
             lambda: score_addition + 1400,
@@ -1725,12 +1777,20 @@ class Game:
                     child_velocity=new_child_velocity,
                     fruit_actives=new_actives,
                     fruit_stages=new_fruit_stages,
-                    falling_coco_position=new_falling_coco_position,
+                    falling_coco_position=jnp.where(
+                        state.levelup_timer == 0,
+                        new_falling_coco_position,
+                        state.level.falling_coco_position,
+                    ),
                     falling_coco_dropping=new_falling_coco_dropping,
                     falling_coco_counter=new_falling_coco_counter,
                     falling_coco_skip_update=new_falling_coco_skip_update,
                     step_counter=(state.level.step_counter + 1) % 256,
-                    monkey_positions=new_monkey_positions,
+                    monkey_positions=jnp.where(
+                        state.levelup_timer == 0,
+                        new_monkey_positions,
+                        state.level.monkey_positions,
+                    ),
                     monkey_states=new_monkey_states,
                     monkey_throw_timers=new_monkey_throw_timers,
                     spawn_protection=jnp.where(
@@ -1769,14 +1829,6 @@ class Game:
                 last_stood_on_platform_y=new_last_stood_on_platform_y,
             ),
         )
-
-        # jax.debug.print(
-        #     "new_is_crashing={nic} | crash_timer={ct} | crash_timer_done={ctd} | new_last_stood_on_platform_y={ly}",
-        #     nic=new_is_crashing,
-        #     ct=crash_timer,
-        #     ctd=crash_timer_done,
-        #     ly=new_last_stood_on_platform_y,
-        # )
 
         return jax.lax.cond(
             reset_cond,
@@ -2048,6 +2100,6 @@ if __name__ == "__main__":
 
         renderer.render(curr_state)
         counter += 1
-        pygame.time.Clock().tick(90)
+        pygame.time.Clock().tick(120)
 
     pygame.quit()
