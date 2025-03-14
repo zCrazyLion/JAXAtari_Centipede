@@ -31,8 +31,8 @@ BALL_SIZE = (2, 4)  # Width, Height of ball
 BLOCK_SIZE = (8, 6)  # Width, Height of blocks
 
 # Wall positions and sizes
-WALL_TOP_Y = 24
-WALL_TOP_HEIGHT = 10
+WALL_TOP_Y = 17
+WALL_TOP_HEIGHT = 15
 WALL_SIDE_WIDTH = 8
 
 # Initial positions
@@ -41,9 +41,11 @@ PLAYER_START_Y = 189
 BALL_START_X = jnp.array([16, 78, 80, 142])
 BALL_START_Y = 122
 
-# Game boundaries (adjusted for wall width)
+# Game boundaries
 PLAYER_X_MIN = WALL_SIDE_WIDTH
 PLAYER_X_MAX = 160 - PLAYER_SIZE[0]
+
+# Player speed and acceleration
 PLAYER_MAX_SPEED = 6
 PLAYER_ACCELERATION = jnp.array([3, 2, -1, 1, 1])
 PLAYER_WALL_ACCELERATION = jnp.array([1, 2, 1, 1, 1])
@@ -216,12 +218,17 @@ def ball_step(state, game_started, player_x):
         ball_vel_y = jnp.where(wall_top, -ball_vel_y, ball_vel_y)
 
         # Paddle collision
-        paddle_hit = jnp.logical_and(
-            ball_y + BALL_SIZE[1] >= PLAYER_START_Y,
-            jnp.logical_and(
-                ball_x + BALL_SIZE[0] >= player_x, ball_x <= player_x + PLAYER_SIZE[0]
-            ),
+        paddle_hit_y = jnp.logical_and(
+            ball_y + BALL_SIZE[1] > PLAYER_START_Y,
+            ball_y + BALL_SIZE[1] <= PLAYER_START_Y + PLAYER_SIZE[1]
         )
+        paddle_hit_x = jnp.logical_and(
+            ball_x + BALL_SIZE[0] >= player_x,
+            ball_x <= player_x + PLAYER_SIZE[0]
+        )
+
+        paddle_hit = jnp.logical_and(paddle_hit_x, paddle_hit_y)
+
         section_width = PLAYER_SIZE[0] / 5  # Divide paddle into 5 sections
         hit_section = jnp.where(
             paddle_hit, jnp.floor((ball_x - player_x) / section_width).astype(jnp.int32), 0
@@ -394,7 +401,7 @@ class Renderer:
         pygame.draw.rect(
             self.screen,
             WALL_COLOR,
-            (0, WALL_TOP_Y * 3, WALL_SIDE_WIDTH * 3, WINDOW_HEIGHT),
+            (0, WALL_TOP_Y * 3, WALL_SIDE_WIDTH * 3, (196 - 17) * 3),
         )
 
         # Right wall
@@ -405,7 +412,7 @@ class Renderer:
                 WINDOW_WIDTH - WALL_SIDE_WIDTH * 3,
                 WALL_TOP_Y * 3,
                 WALL_SIDE_WIDTH * 3,
-                WINDOW_HEIGHT,
+                (196 - 18) * 3,
             ),
         )
 
@@ -431,7 +438,7 @@ class Renderer:
         pygame.draw.rect(self.screen, PLAYER_COLOR, player_rect)
 
         # Draw ball only if the game has started
-        if state.game_started:
+        if state.game_started and state.ball_y < 197:
             ball_rect = pygame.Rect(
                 int(state.ball_x) * 3,
                 int(state.ball_y) * 3,
@@ -470,13 +477,22 @@ if __name__ == "__main__":
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    print(f"Ball x position: {curr_state.ball_x}, step_counter: {curr_state.step_counter}")
 
         if counter % frameskip == 0:
             action = get_human_action()
             curr_state = jitted_step(curr_state, action)
+
+        # Print ball position
+        print(f"Timestep {counter}: Ball position: x={curr_state.ball_x}, y={curr_state.ball_y}")
+
+        # Check for paddle hit
+        paddle_hit = (
+                curr_state.ball_y + BALL_SIZE[1] > PLAYER_START_Y and
+                curr_state.ball_x + BALL_SIZE[0] >= curr_state.player_x and
+                curr_state.ball_x <= curr_state.player_x + PLAYER_SIZE[0]
+        )
+        if paddle_hit:
+            print(f"Timestep {counter}: Ball hit the paddle")
 
         # Check for game over
         if curr_state.lives < 0:
