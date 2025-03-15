@@ -94,7 +94,7 @@ class SpawnState(NamedTuple):
 def initialize_spawn_state() -> SpawnState:
     """Initialize spawn state with first wave matching original game."""
     return SpawnState(
-        difficulty=jnp.array(10),
+        difficulty=jnp.array(0),
         lane_dependent_pattern=jnp.zeros(4, dtype=jnp.int32),  # Each lane starts at wave 0
         to_be_spawned=jnp.zeros(12, dtype=jnp.int32),  # Track which enemies are still in the spawning cycle
         survived=jnp.zeros(12, dtype=jnp.int32),  # Track which enemies survived
@@ -1613,7 +1613,6 @@ def surface_sub_step(state: State) -> chex.Array:
         temp2
     )
 
-# TODO: at some point the missiles start going 2 pixel per frame instead of one (i.e. scaling together with enemy sub)
 def enemy_missiles_step(curr_sub_positions, curr_enemy_missile_positions, step_counter) -> chex.Array:
 
     def calculate_missile_speed(step_counter, difficulty):
