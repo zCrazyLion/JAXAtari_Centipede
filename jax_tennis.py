@@ -450,7 +450,9 @@ def ball_step(state: State, top_collision: chex.Array,
         )
         paddle_center_x = player_pos + PLAYER_WIDTH / 2  # Get player center
         offset_from_center = (paddle_center_x - (COURT_WIDTH // 2)) / 30
-        x_direction =  offset_from_center * -1
+        offset_from_player = (state.ball_x - paddle_center_x) / (PLAYER_WIDTH / 2)
+
+        x_direction =  (offset_from_center / -2) + (offset_from_player/2)
 
         return x_direction, y_direction, pattern_idx, 0
 
@@ -496,7 +498,6 @@ def ball_step(state: State, top_collision: chex.Array,
 
         ball_arc = state.ball_x_dir * jnp.abs(jnp.sin(B*state.ball_curve_counter))  # Creates slight bounce effect
         # Apply arc effect to ball position
-        jaxprint(ball_arc, state.ball_curve_counter)
         new_x = new_x + ball_arc
         new_y = new_y
 
@@ -567,6 +568,7 @@ def player_step(
 
     # Calculate if we need to switch direction (turn around)
     # Switch when player is facing right (0) and ball is too far left
+    ball_x = ball_x.astype(jnp.int32)
     should_turn_left = jnp.logical_and(
         player_direction == 0,  # Currently facing right
         ball_x == state_player_x,  # Ball is at the exact same position
