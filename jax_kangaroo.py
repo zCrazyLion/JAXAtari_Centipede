@@ -142,6 +142,18 @@ class LevelState(NamedTuple):
     """2D array: [monkey_index, [x, y]]"""
     monkey_throw_timers: chex.Array
     spawn_protection: chex.Array
+    morris_coco_positions: chex.Array
+    morris_coco_states: chex.Array
+    """
+    - 0: non existent
+    - 1: charging
+    - 2: yallaing
+    """
+    morris_spawn_position: chex.Array
+    """
+    - 0: foot
+    - 1: head
+    """
 
 
 class GameState(NamedTuple):
@@ -1123,7 +1135,7 @@ def lives_controller(state: GameState):
 
     monkey_collision = jnp.zeros(state.level.monkey_states.shape[0], dtype=bool)
 
-    def check_monkey_collision(i, carry):
+    def check_morris_collision(i, carry):
         monkey_pos = state.level.monkey_positions[i]
         collision = entities_collide(
             state.player.x,
@@ -1138,12 +1150,37 @@ def lives_controller(state: GameState):
         return carry.at[i].set(collision & (state.level.monkey_states[i] != 0))
 
     monkey_collision = jax.lax.fori_loop(
-        0, state.level.monkey_states.shape[0], check_monkey_collision, monkey_collision
+        0, state.level.monkey_states.shape[0], check_morris_collision, monkey_collision
     )
 
     player_collided_with_monkey = jnp.any(monkey_collision)
 
     # coconut touch check
+
+    morris_collision = jnp.zeros(state.level.morris_coco_states.shape[0], dtype=bool)
+
+    def check_morris_collision(i, carry):
+        morris_pos = state.level.morris_coco_positions[i]
+        collision = entities_collide(
+            state.player.x,
+            state.player.y,
+            PLAYER_WIDTH,
+            state.player.height,
+            morris_pos[0],
+            morris_pos[1],
+            COCONUT_WIDTH,
+            COCONUT_HEIGHT - 1,
+        )
+        return carry.at[i].set(collision & (state.level.morris_coco_states[i] != 0))
+
+    morris_collision = jax.lax.fori_loop(
+        0,
+        state.level.morris_coco_states.shape[0],
+        check_morris_collision,
+        morris_collision,
+    )
+
+    player_collided_with_morris = jnp.any(morris_collision)
 
     crashed_falling_coco = entities_collide(
         state.player.x,
@@ -1161,6 +1198,7 @@ def lives_controller(state: GameState):
         | player_is_falling
         | crashed_falling_coco
         | player_collided_with_monkey
+        | player_collided_with_morris
     ) & ~state.player.is_crashing
     new_is_crashing = jnp.where(remove_live, True, state.player.is_crashing)
 
@@ -1612,11 +1650,78 @@ def monkey_controller(state: GameState, punching: chex.Array):
         state.level.monkey_throw_timers,
     )
 
+    # Morris coco controller
+    def update_morris_coco_state(i, carry):
+        updated_state = jnp.where(
+            (state.level.monkey_states[i] != 3) & (new_monkey_states[i] == 3),
+            1,
+            jnp.where(
+                (state.level.morris_coco_states[i] == 1)
+                & (state.level.monkey_throw_timers[i] == 3)
+                & (new_monkey_throw_timers[i] == 2),
+                2,
+                jnp.where(state.level.morris_coco_positions[i][0] <= 15, 0, carry[i]),
+            ),
+        )
+
+        return carry.at[i].set(updated_state)
+
+    new_morris_coco_states = jax.lax.fori_loop(
+        0,
+        state.level.monkey_states.shape[0],
+        update_morris_coco_state,
+        state.level.morris_coco_states,
+    )
+
+    def update_morris_coco_positions(i, carry):
+        updated_pos = jnp.where(
+            new_morris_coco_states[i] == 2,
+            jnp.where(
+                state.level.step_counter % 2 == 0,
+                jnp.array([carry[i][0] - 2, carry[i][1]]),
+                carry[i],
+            ),
+            jnp.where(
+                (new_morris_coco_states[i] == 1)
+                & (state.level.morris_coco_states[i] == 0),
+                jnp.array(
+                    [
+                        new_monkey_positions[i][0] - 6,
+                        jnp.where(
+                            state.level.morris_spawn_position,
+                            new_monkey_positions[i][1] - 5,
+                            new_monkey_positions[i][1] + MONKEY_HEIGHT - COCONUT_HEIGHT,
+                        ),
+                    ]
+                ),
+                carry[i],
+            ),
+        )
+        return carry.at[i].set(updated_pos)
+
+    new_morris_coco_positions = jax.lax.fori_loop(
+        0,
+        state.level.monkey_positions.shape[0],
+        update_morris_coco_positions,
+        state.level.morris_coco_positions,
+    )
+
+    def detect_morris_spawn(i, carry):
+        spawned = (state.level.monkey_states[i] != 3) & (new_monkey_states[i] == 3)
+        return carry | spawned
+
+    morris_flip = jax.lax.fori_loop(
+        0, state.level.monkey_states.shape[0], detect_morris_spawn, False
+    )
+
     return (
         new_monkey_states,
         new_monkey_positions,
         new_monkey_throw_timers,
         score_addition,
+        new_morris_coco_positions,
+        new_morris_coco_states,
+        morris_flip,
     )
 
 
@@ -1676,6 +1781,11 @@ class Game:
                 monkey_positions=jnp.array([[152, 5], [152, 5], [152, 5], [152, 5]]),
                 monkey_throw_timers=jnp.zeros(4, dtype=jnp.int32),
                 spawn_protection=jnp.array(True),
+                morris_coco_positions=jnp.array(
+                    [[-10, -10], [-10, -10], [-10, -10], [-10, -10]]
+                ),
+                morris_coco_states=jnp.zeros(4, dtype=jnp.int32),
+                morris_spawn_position=jnp.array(False),
             ),
             score=jnp.array(0),
             current_level=jnp.array(next_level),
@@ -1736,6 +1846,9 @@ class Game:
             new_monkey_positions,
             new_monkey_throw_timers,
             score_addition2,
+            new_morris_coco_positions,
+            new_morris_coco_states,
+            morris_flip,
         ) = monkey_controller(state, (punch_left | punch_right))
 
         (
@@ -1798,6 +1911,13 @@ class Game:
                         & state.level.spawn_protection,
                         False,
                         state.level.spawn_protection,
+                    ),
+                    morris_coco_positions=new_morris_coco_positions,
+                    morris_coco_states=new_morris_coco_states,
+                    morris_spawn_position=jnp.where(
+                        morris_flip,
+                        ~state.level.morris_spawn_position,
+                        state.level.morris_spawn_position,
                     ),
                 ),
             ),
@@ -2040,6 +2160,21 @@ class Renderer:
                     int(COCONUT_HEIGHT) * RENDER_SCALE_FACTOR,
                 ),
             )
+
+        # Drawing Morris coconuts
+        for i in range(state.level.morris_coco_positions.shape[0]):
+            if state.level.morris_coco_states[i] != 0:
+                pos = state.level.morris_coco_positions[i]
+                pygame.draw.rect(
+                    self.screen,
+                    COCONUT_COLOR,
+                    (
+                        int(pos[0]) * RENDER_SCALE_FACTOR,
+                        int(pos[1]) * RENDER_SCALE_FACTOR,
+                        int(COCONUT_WIDTH) * RENDER_SCALE_FACTOR,
+                        int(COCONUT_HEIGHT) * RENDER_SCALE_FACTOR,
+                    ),
+                )
 
         # Draw UI
         font = pygame.font.Font(None, 36)
