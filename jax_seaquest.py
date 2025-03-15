@@ -94,7 +94,7 @@ class SpawnState(NamedTuple):
 def initialize_spawn_state() -> SpawnState:
     """Initialize spawn state with first wave matching original game."""
     return SpawnState(
-        difficulty=jnp.array(0),
+        difficulty=jnp.array(10),
         lane_dependent_pattern=jnp.zeros(4, dtype=jnp.int32),  # Each lane starts at wave 0
         to_be_spawned=jnp.zeros(12, dtype=jnp.int32),  # Track which enemies are still in the spawning cycle
         survived=jnp.zeros(12, dtype=jnp.int32),  # Track which enemies survived
@@ -252,7 +252,7 @@ def check_missile_collisions(
         # Remove missile if it hit anything
         new_missile_pos = jnp.where(
             jnp.logical_or(shark_collision, sub_collision),
-            jnp.array([0., 0., 0.]),
+            jnp.array([0, 0, 0]),
             missile_pos
         )
 
@@ -828,34 +828,6 @@ def step_enemy_movement(spawn_state: SpawnState,
     # Split RNG key for direction randomization
     rng, direction_rng = jax.random.split(rng)
 
-    def should_move_x(step_counter, difficulty):
-        # Base pattern length (8 or 16 steps)
-        cycle_len = jnp.where(
-            jnp.isin(difficulty, jnp.array([0, 2, 4, 6, 8, 12])),
-            8,
-            16
-        )
-
-        cycle_step = step_counter % cycle_len
-
-        # For constant movement at difficulty 10 TODO: this is capped, I think that represents it pretty well but more testing might be necessary..
-        constant_movement = difficulty >= 10
-
-        # For early difficulties (0-9)
-        # Now starts much slower:
-        base_frequency = 4 - (difficulty // 3)  # Starts at 4 and decreases
-        move_frequency = jnp.maximum(base_frequency, 1)  # Never slower than 1
-        basic_movement = (cycle_step % move_frequency) == 0
-
-        # Combine all cases using where
-        movement = jnp.where(
-            constant_movement,
-            True,
-            basic_movement
-        )
-
-        return movement
-
     def get_shark_offset(step_counter): # shark offset should be constant over the difficulty levels..
         phase = step_counter // 4
         cycle_position = phase % 32
@@ -868,14 +840,124 @@ def step_enemy_movement(spawn_state: SpawnState,
 
         return raw_offset - 4
 
-    def move_enemy(pos, is_shark, difficulty, slot_idx):
+    def calculate_movement_speed(step_counter, difficulty):
+        """Calculate movement speed with JIT-compatible operations.
+        Uses array indexing and jnp.select for cleaner, switch-case-like behavior.
+
+        Args:
+            step_counter: Current step counter
+            difficulty: Current difficulty level (0-255)
+
+        Returns:
+            Movement speed for the current frame
+        """
+        cycle_pos = step_counter % 12
+
+        # Handling difficulties 0-9 using array lookup
+
+        # Ensure difficulty is non-negative (safety check)
+        safe_difficulty = jnp.maximum(0, difficulty)
+
+        # Create a boolean array for each difficulty bracket (0-9)
+        diff_brackets = jnp.array([
+            safe_difficulty == 0,  # Difficulty 0
+            jnp.logical_and(safe_difficulty >= 1, safe_difficulty <= 2),  # Difficulty 1-2
+            jnp.logical_and(safe_difficulty >= 3, safe_difficulty <= 4),  # Difficulty 3-4
+            jnp.logical_and(safe_difficulty >= 5, safe_difficulty <= 6),  # Difficulty 5-6
+            jnp.logical_and(safe_difficulty >= 7, safe_difficulty <= 8),  # Difficulty 7-8
+            safe_difficulty == 9  # Difficulty 9
+        ])
+
+        # Create an array of movement patterns
+        should_move_patterns = jnp.array([
+            (cycle_pos % 3) == 0,  # Difficulty 0: 33% movement (1 in 3 frames)
+            (cycle_pos % 2) == 0,  # Difficulty 1-2: 50% movement (1 in 2 frames)
+            (cycle_pos % 3) != 2,  # Difficulty 3-4: 67% movement (2 in 3 frames)
+            (cycle_pos % 4) != 3,  # Difficulty 5-6: 75% movement (3 in 4 frames)
+            (cycle_pos % 6) != 5,  # Difficulty 7-8: 83% movement (5 in 6 frames)
+            cycle_pos != 11  # Difficulty 9: 92% movement (11 in 12 frames)
+        ])
+
+        # Use jnp.select to choose the correct movement pattern (like a switch-case)
+        # Default to False to ensure predictable behavior for unexpected difficulty values
+        should_move = jnp.select(diff_brackets, should_move_patterns, default=False)
+
+        # For difficulties 0-9, return 1 if should move, 0 otherwise
+        speed_for_diff_0_9 = jnp.where(should_move, 1, 0)
+
+        # For difficulty 10+
+        # Handle wrapping at difficulty 255
+        adjusted_difficulty = difficulty % 256
+
+        # Handle difficulty 10+ with tier-based speeds
+        # For difficulties < 10, these calculations aren't used
+        diff_above_threshold = jnp.maximum(0, adjusted_difficulty - 10)
+
+        # Base speed calculation (tier-based)
+        # Difficulty 10-25: Base speed 1
+        # Difficulty 26-41: Base speed 2, etc.
+        base_speed = 1 + (diff_above_threshold // 16)
+
+        # Calculate position within the current tier (0-15)
+        position_in_tier = diff_above_threshold % 16
+
+        # Create position bracket array (much cleaner than nested where statements)
+        pos_brackets = jnp.array([
+            position_in_tier == 0,  # Position 0
+            jnp.logical_and(position_in_tier >= 1, position_in_tier <= 3),  # Position 1-3
+            jnp.logical_and(position_in_tier >= 4, position_in_tier <= 6),  # Position 4-6
+            jnp.logical_and(position_in_tier >= 7, position_in_tier <= 9),  # Position 7-9
+            jnp.logical_and(position_in_tier >= 10, position_in_tier <= 12),  # Position 10-12
+            jnp.logical_and(position_in_tier >= 13, position_in_tier <= 14),  # Position 13-14
+            position_in_tier == 15  # Position 15
+        ])
+
+        # Create array of higher speed patterns
+        higher_speed_patterns = jnp.array([
+            (step_counter % 16) == 0,  # Position 0: 1 in 16 frames (6.25%)
+            (step_counter % 8) == 0,  # Position 1-3: 1 in 8 frames (12.5%)
+            (step_counter % 4) == 0,  # Position 4-6: 1 in 4 frames (25%)
+            (step_counter % 2) == 0,  # Position 7-9: 1 in 2 frames (50%)
+            (step_counter % 4) != 0,  # Position 10-12: 3 in 4 frames (75%)
+            (step_counter % 8) != 0,  # Position 13-14: 7 in 8 frames (87.5%)
+            (step_counter % 16) != 0  # Position 15: 15 in 16 frames (93.75%)
+        ])
+
+        # Use jnp.select to choose the pattern (like a switch-case)
+        use_higher_speed = jnp.select(pos_brackets, higher_speed_patterns, default=False)
+
+        # Higher speed is base_speed + 1
+        higher_speed = base_speed + 1
+
+        # Speed for difficulty 10+: either base_speed or higher_speed
+        speed_for_diff_10_plus = jnp.where(use_higher_speed, higher_speed, base_speed)
+
+        # Return appropriate speed based on difficulty
+        # Use safe_difficulty to ensure consistent behavior with negative inputs
+        return jnp.where(safe_difficulty < 10, speed_for_diff_0_9, speed_for_diff_10_plus)
+
+
+    def move_enemy(pos, is_shark, difficulty, slot_idx, step_counter):
+        """Move enemy based on difficulty and pattern.
+
+        Args:
+            pos: Current position (x, y, direction)
+            is_shark: Boolean indicating if this is a shark
+            difficulty: Current difficulty level (0-255)
+            slot_idx: Slot index (for lane determination)
+            step_counter: Current step counter
+
+        Returns:
+            New position and whether the enemy is out of bounds
+        """
         is_active = jnp.logical_not(is_slot_empty(pos))
         moving_left = pos[2] < 0
 
-        # X movement
-        should_move_now = should_move_x(step_counter, difficulty)
-        velocity_x = jnp.where(moving_left, -1, 1)
-        movement_x = jnp.where(should_move_now, velocity_x, 0)
+        # Calculate movement speed for this frame
+        movement_speed = calculate_movement_speed(step_counter, difficulty)
+
+        # Apply direction
+        velocity_x = jnp.where(moving_left, -movement_speed, movement_speed)
 
         # Base Y position comes from spawn positions
         base_y = SPAWN_POSITIONS_Y[slot_idx // 3]  # Divide by 3 to get lane index
@@ -884,27 +966,20 @@ def step_enemy_movement(spawn_state: SpawnState,
         y_position = jnp.where(
             is_shark,
             base_y + get_shark_offset(step_counter),
+            # Submarines are 2 pixels higher than their base position
             base_y - SUBMARINE_Y_OFFSET
         )
 
         # Apply movements
         new_pos = jnp.where(
             is_active,
-            jnp.array([pos[0] + movement_x, y_position, pos[2]]),
+            jnp.array([pos[0] + velocity_x, y_position, pos[2]]),
             pos
         )
 
-        # Check bounds and update survived status
-        out_of_bounds = jnp.logical_or(new_pos[0] < -8, new_pos[0] >= 168)
-
-        # if it is out of bounds, it is not active anymore. Set to 0,0,0
-        new_pos = jnp.where(
-            out_of_bounds,
-            jnp.zeros_like(new_pos),
-            new_pos
-        )
-
-        return new_pos, out_of_bounds
+        # Check bounds
+        out_of_bounds = jnp.logical_or(new_pos[0] <= -8, new_pos[0] >= 168)
+        return jnp.where(out_of_bounds, jnp.zeros_like(new_pos), new_pos), out_of_bounds
 
 
     new_shark_positions = jnp.zeros_like(shark_positions)
@@ -928,7 +1003,7 @@ def step_enemy_movement(spawn_state: SpawnState,
 
         for j in range(3):
             slot_idx = i * 3 + j
-            new_pos, survived = move_enemy(shark_positions[slot_idx], True, spawn_state.difficulty, slot_idx)
+            new_pos, survived = move_enemy(shark_positions[slot_idx], True, spawn_state.difficulty, slot_idx, step_counter)
             new_shark_positions = new_shark_positions.at[slot_idx].set(new_pos)
 
             new_survived = new_survived.at[slot_idx].set(
@@ -965,7 +1040,7 @@ def step_enemy_movement(spawn_state: SpawnState,
         )
         for j in range(3):
             slot_idx = i * 3 + j
-            new_pos, survived = move_enemy(sub_positions[slot_idx], False, spawn_state.difficulty, slot_idx)
+            new_pos, survived = move_enemy(sub_positions[slot_idx], False, spawn_state.difficulty, slot_idx, step_counter)
             new_sub_positions = new_sub_positions.at[slot_idx].set(new_pos)
 
             new_survived = new_survived.at[slot_idx].set(
@@ -1111,18 +1186,26 @@ def spawn_divers(spawn_state: SpawnState, diver_positions: chex.Array, shark_pos
         # Return the updated full arrays
         return new_positions_array, final_new_diver_array
 
-    # Only execute the spawn code if the step_counter is ~100
-    check_spawns = step_counter % 60 == 0
+    # Helper function to process a lane only if timer is at 60
+    def process_lane_if_ready(i, carry):
+        positions, diver_array = carry
 
-    # Update all diver positions
-    new_diver_positions, new_diver_array = jax.lax.cond(
-        check_spawns,
-        lambda: jax.lax.fori_loop(
-            0, diver_positions.shape[0],
-            spawn_diver,
-            (diver_positions, spawn_state.diver_array)
-        ),
-        lambda: (diver_positions, spawn_state.diver_array)
+        # Check if timer for this lane is exactly 60
+        timer_is_60 = spawn_state.spawn_timers[i] == 60
+
+        # Run spawn logic only if timer is 60
+        return jax.lax.cond(
+            timer_is_60,
+            lambda c: spawn_diver(i, c),  # Process the lane if timer is 60
+            lambda c: c,  # Skip processing if timer isn't 60
+            (positions, diver_array)
+        )
+
+    # Process all lanes, but only execute spawn logic for lanes with timer = 60
+    new_diver_positions, new_diver_array = jax.lax.fori_loop(
+        0, diver_positions.shape[0],
+        process_lane_if_ready,
+        (diver_positions, spawn_state.diver_array)
     )
 
     return new_diver_positions, spawn_state._replace(diver_array=new_diver_array)
@@ -1137,6 +1220,193 @@ def step_diver_movement(diver_positions: chex.Array, shark_positions: chex.Array
     Returns updated diver positions, number of collected divers, updated spawn state, and updated RNG key.
     """
     new_diver_array = spawn_state.diver_array
+
+    def calculate_diver_movement(step_counter, difficulty):
+        """Calculate diver movement based on difficulty level.
+
+        Args:
+            step_counter: Current step counter (frame number)
+            difficulty: Current difficulty level (0-255)
+
+        Returns:
+            Movement speed for the current frame (0, 1, or 2+)
+            0 = no movement, 1 = normal speed, 2+ = higher speeds
+        """
+        # Ensure difficulty is non-negative and handle wrapping
+        safe_difficulty = jnp.clip(difficulty % 256, 0, 255)
+
+        # For difficulties 0-27, we have specific movement patterns
+        is_high_difficulty = safe_difficulty >= 28
+
+        # For difficulties 0-27, determine if we should move and use speed 1
+        low_diff_should_move = determine_low_difficulty_movement(step_counter, safe_difficulty)
+        low_diff_speed = jnp.where(low_diff_should_move, 1, 0)
+
+        # For difficulties 28+, always move but with varying speed
+        high_diff_speed = determine_high_difficulty_speed(step_counter, safe_difficulty)
+
+        # Return appropriate speed based on difficulty
+        return jnp.where(is_high_difficulty, high_diff_speed, low_diff_speed)
+
+    def determine_low_difficulty_movement(step_counter, difficulty):
+        """Determine if the diver should move for difficulties 0-27."""
+        # Create boolean masks for each difficulty bracket
+        diff_0_1 = jnp.logical_and(difficulty >= 0, difficulty <= 1)
+        diff_2_3 = jnp.logical_and(difficulty >= 2, difficulty <= 3)
+        diff_4_5 = jnp.logical_and(difficulty >= 4, difficulty <= 5)
+        diff_6_7 = jnp.logical_and(difficulty >= 6, difficulty <= 7)
+        diff_8_9 = jnp.logical_and(difficulty >= 8, difficulty <= 9)
+        diff_10_11 = jnp.logical_and(difficulty >= 10, difficulty <= 11)
+        diff_12_13 = jnp.logical_and(difficulty >= 12, difficulty <= 13)
+        diff_14_15 = jnp.logical_and(difficulty >= 14, difficulty <= 15)
+        diff_16_17 = jnp.logical_and(difficulty >= 16, difficulty <= 17)
+        diff_18_19 = jnp.logical_and(difficulty >= 18, difficulty <= 19)
+        diff_20_21 = jnp.logical_and(difficulty >= 20, difficulty <= 21)
+        diff_22_23 = jnp.logical_and(difficulty >= 22, difficulty <= 23)
+        diff_24_25 = jnp.logical_and(difficulty >= 24, difficulty <= 25)
+        diff_26_27 = jnp.logical_and(difficulty >= 26, difficulty <= 27)
+
+        # Movement patterns for each bracket based on paste.txt
+        # Difficulty 0-1: Move every 5th frame (20% movement)
+        move_0_1 = (step_counter % 5) == 0
+
+        # Difficulty 2-3: Move every 4th frame (25% movement)
+        move_2_3 = (step_counter % 4) == 0
+
+        # Difficulty 4-5: Move every 3rd frame (33.3% movement)
+        move_4_5 = (step_counter % 3) == 0
+
+        # Difficulty 6-7: Move in pattern [1,0,0,1,0,1,0,0] (37.5% movement)
+        cycle_6_7 = step_counter % 8
+        move_6_7 = jnp.logical_or(
+            cycle_6_7 == 0,
+            jnp.logical_or(cycle_6_7 == 3, cycle_6_7 == 5)
+        )
+
+        # Difficulty 8-9: Move in pattern [1,0,1,0,1,0,0,1,0,1] (50% movement)
+        cycle_8_9 = step_counter % 10
+        move_8_9 = jnp.logical_or(
+            jnp.logical_or(cycle_8_9 == 0, cycle_8_9 == 2),
+            jnp.logical_or(cycle_8_9 == 4, cycle_8_9 == 7)
+        )
+        move_8_9 = jnp.logical_or(move_8_9, cycle_8_9 == 9)
+
+        # Difficulty 10-11: Move every other frame (50% movement)
+        move_10_11 = (step_counter % 2) == 0
+
+        # Difficulty 12-13: Complex pattern with ~60% movement
+        cycle_12_13 = step_counter % 8
+        move_12_13 = jnp.logical_or(
+            jnp.logical_or(cycle_12_13 == 0, cycle_12_13 == 2),
+            jnp.logical_or(cycle_12_13 == 4, cycle_12_13 == 6)
+        )
+        move_12_13 = jnp.logical_or(move_12_13, cycle_12_13 == 7)
+
+        # Difficulty 14-15: Complex pattern with ~65% movement
+        cycle_14_15 = step_counter % 7
+        move_14_15 = jnp.logical_or(
+            jnp.logical_or(cycle_14_15 == 0, cycle_14_15 == 1),
+            jnp.logical_or(cycle_14_15 == 3, cycle_14_15 == 5)
+        )
+        move_14_15 = jnp.logical_or(move_14_15, cycle_14_15 == 6)
+
+        # Difficulty 16-17: Complex pattern with ~70% movement
+        cycle_16_17 = step_counter % 10
+        move_16_17 = jnp.logical_or(
+            jnp.logical_or(cycle_16_17 == 0, cycle_16_17 == 1),
+            jnp.logical_or(cycle_16_17 == 3, cycle_16_17 == 4)
+        )
+        move_16_17 = jnp.logical_or(
+            move_16_17,
+            jnp.logical_or(cycle_16_17 == 6, cycle_16_17 == 8)
+        )
+        move_16_17 = jnp.logical_or(move_16_17, cycle_16_17 == 9)
+
+        # Difficulty 18-19: Move 3 out of 4 frames (75% movement)
+        move_18_19 = (step_counter % 4) != 3
+
+        # Difficulty 20-21: Move 4 out of 5 frames (80% movement)
+        move_20_21 = (step_counter % 5) != 4
+
+        # Difficulty 22-23: Move 7 out of 8 frames (87.5% movement)
+        move_22_23 = (step_counter % 8) != 7
+
+        # Difficulty 24-25: Move 15 out of 16 frames (93.75% movement)
+        move_24_25 = (step_counter % 16) != 15
+
+        # Difficulty 26-27: Always move (100% movement)
+        move_26_27 = True
+
+        # Combine all patterns using jnp.select which is cleaner for many conditions
+        # Create condition array - only the first True condition will be used
+        conditions = jnp.array([
+            diff_0_1, diff_2_3, diff_4_5, diff_6_7, diff_8_9,
+            diff_10_11, diff_12_13, diff_14_15, diff_16_17, diff_18_19,
+            diff_20_21, diff_22_23, diff_24_25, diff_26_27
+        ])
+
+        # Create corresponding values array
+        values = jnp.array([
+            move_0_1, move_2_3, move_4_5, move_6_7, move_8_9,
+            move_10_11, move_12_13, move_14_15, move_16_17, move_18_19,
+            move_20_21, move_22_23, move_24_25, move_26_27
+        ])
+
+        # Select the appropriate pattern based on which condition is True
+        should_move = jnp.select(conditions, values, default=False)
+
+        return should_move
+
+    def determine_high_difficulty_speed(step_counter, difficulty):
+        """Determine the speed (1 or 2+) for difficulties 28+."""
+        # Adjust difficulty to start from 0 for easier tier calculations
+        diff_above_27 = difficulty - 28
+
+        # Each 16 difficulty levels form a tier (just like in shark/submarine algorithm)
+        tier = diff_above_27 // 16
+        position_in_tier = diff_above_27 % 16
+
+        # Base speed for each tier (increases by 1 for each tier)
+        base_speed = tier + 1
+        higher_speed = tier + 2
+
+        # Position brackets within tier (matches the pattern observed in paste.txt)
+        pos_0 = position_in_tier == 0
+        pos_1_3 = jnp.logical_and(position_in_tier >= 1, position_in_tier <= 3)
+        pos_4_6 = jnp.logical_and(position_in_tier >= 4, position_in_tier <= 6)
+        pos_7_9 = jnp.logical_and(position_in_tier >= 7, position_in_tier <= 9)
+        pos_10_12 = jnp.logical_and(position_in_tier >= 10, position_in_tier <= 12)
+        pos_13_14 = jnp.logical_and(position_in_tier >= 13, position_in_tier <= 14)
+        pos_15 = position_in_tier == 15
+
+        # Determine higher speed frequency based on position in tier
+        # These frequencies match the observed patterns in paste.txt
+        use_higher_speed_pos_0 = (step_counter % 16) == 15  # 1 in 16 frames (6.25%)
+        use_higher_speed_pos_1_3 = (step_counter % 8) == 7  # 1 in 8 frames (12.5%)
+        use_higher_speed_pos_4_6 = (step_counter % 4) == 3  # 1 in 4 frames (25%)
+        use_higher_speed_pos_7_9 = (step_counter % 2) == 1  # 1 in 2 frames (50%)
+        use_higher_speed_pos_10_12 = (step_counter % 4) != 0  # 3 in 4 frames (75%)
+        use_higher_speed_pos_13_14 = (step_counter % 8) != 0  # 7 in 8 frames (87.5%)
+        use_higher_speed_pos_15 = (step_counter % 16) != 0  # 15 in 16 frames (93.75%)
+
+        # Select the appropriate higher speed frequency based on position
+        # Use jnp.select for cleaner code with multiple conditions
+        position_conditions = jnp.array([
+            pos_0, pos_1_3, pos_4_6, pos_7_9,
+            pos_10_12, pos_13_14, pos_15
+        ])
+
+        speed_values = jnp.array([
+            use_higher_speed_pos_0, use_higher_speed_pos_1_3,
+            use_higher_speed_pos_4_6, use_higher_speed_pos_7_9,
+            use_higher_speed_pos_10_12, use_higher_speed_pos_13_14,
+            use_higher_speed_pos_15
+        ])
+
+        use_higher_speed = jnp.select(position_conditions, speed_values, default=False)
+
+        # Calculate final speed: higher_speed or base_speed
+        return jnp.where(use_higher_speed, higher_speed, base_speed)
 
     def move_single_diver(i, carry):
         # Unpack carry state - (positions, collected_count, diver_array)
@@ -1161,11 +1431,7 @@ def step_diver_movement(diver_positions: chex.Array, shark_positions: chex.Array
         can_collect = state_divers_collected < 6
         should_collect = jnp.logical_and(player_collision, can_collect)
 
-        # Calculate the cycle position within the pattern
-        cycle = step_counter % 14  # Total cycle length: 4 + 1 + 4 + 1 + 5 + 1 = 14
-
-        curr_range = jnp.array([i * 3, i * 3 + 1, i * 3 + 2])
-        # get the three sharks in the lane
+        # Get the three sharks in the lane
         all_shark_lane_pos = jax.lax.dynamic_slice(shark_positions, (i * 3, 0), (3, 3))
 
         # Get shark in the same lane for collision check
@@ -1187,29 +1453,26 @@ def step_diver_movement(diver_positions: chex.Array, shark_positions: chex.Array
             shark_lane_pos[2]
         )
 
-        # If colliding with shark, match shark's position and direction
+        # Calculate movement based on difficulty
+        movement_speed = calculate_diver_movement(step_counter, spawn_state.difficulty)
+        should_move = movement_speed > 0
+
+        # Calculate movement direction (with speed factor)
+        # If colliding with shark, use shark's direction/speed
+        # Otherwise use diver's direction with appropriate speed factor
         movement_x = jnp.where(
             shark_collision,
             shark_lane_pos[2],  # Use shark's direction/speed
-            diver_pos[2]  # Use diver's normal direction
+            diver_pos[2] * movement_speed  # Apply difficulty-based speed
         )
 
-        # Determine if we should move in this frame when not pushed by shark
-        should_move = jnp.logical_or(
-            cycle == 4,  # First move after 4 frames
-            jnp.logical_or(
-                cycle == 9,  # Second move after 4 more frames
-                cycle == 13  # Third move after 5 more frames
-            )
-        )
-
-        # Calculate new position - move every frame if pushed by shark, otherwise follow pattern
+        # Calculate new position
         new_x = jnp.where(
             shark_collision,
             diver_pos[0] + movement_x,  # Move with shark
             jnp.where(
                 should_move,
-                diver_pos[0] + movement_x,  # Normal movement
+                diver_pos[0] + movement_x,  # Move with calculated speed
                 diver_pos[0]  # Stay still
             )
         )
@@ -1350,7 +1613,56 @@ def surface_sub_step(state: State) -> chex.Array:
         temp2
     )
 
+# TODO: at some point the missiles start going 2 pixel per frame instead of one (i.e. scaling together with enemy sub)
 def enemy_missiles_step(curr_sub_positions, curr_enemy_missile_positions, step_counter) -> chex.Array:
+
+    def calculate_missile_speed(step_counter, difficulty):
+        """JAX-compatible missile speed calculation function"""
+        # Base tier size is 16 difficulty levels
+        tier_size = 16
+
+        # Determine base speed (1, 2, 3, etc.) based on difficulty tier
+        base_speed = 1 + (difficulty // tier_size)
+
+        # Calculate position within the current tier (0-15)
+        position_in_tier = difficulty % tier_size
+
+        # Special case for difficulty 0
+        is_diff_0 = difficulty == 0
+
+        # Create position bracket array for each pattern
+        pos_brackets = jnp.array([
+            jnp.logical_and(position_in_tier >= 0, position_in_tier <= 2),  # 0-2: 6.25%
+            jnp.logical_and(position_in_tier >= 3, position_in_tier <= 4),  # 3-4: 12.5%
+            jnp.logical_and(position_in_tier >= 5, position_in_tier <= 6),  # 5-6: 25%
+            jnp.logical_and(position_in_tier >= 7, position_in_tier <= 8),  # 7-8: 50%
+            jnp.logical_and(position_in_tier >= 9, position_in_tier <= 10),  # 9-10: 75%
+            jnp.logical_and(position_in_tier >= 11, position_in_tier <= 12),  # 11-12: 87.5%
+            jnp.logical_and(position_in_tier >= 13, position_in_tier <= 14),  # 13-14: 93.75%
+            position_in_tier == 15  # 15: 100%
+        ])
+
+        # Create array of higher speed patterns
+        higher_speed_patterns = jnp.array([
+            (step_counter % 16) == 0,  # 6.25%
+            (step_counter % 8) == 0,  # 12.5%
+            (step_counter % 4) == 0,  # 25%
+            (step_counter % 2) == 0,  # 50%
+            (step_counter % 4) != 0,  # 75%
+            (step_counter % 8) != 0,  # 87.5%
+            (step_counter % 16) != 0,  # 93.75%
+            True  # 100%
+        ])
+
+        # Use jnp.select to choose the pattern
+        use_higher_speed = jnp.select(pos_brackets, higher_speed_patterns, default=False)
+
+        # Higher speed is base_speed + 1
+        higher_speed = base_speed + 1
+
+        # Handle difficulty 0 special case
+        return jnp.where(is_diff_0, 1, jnp.where(use_higher_speed, higher_speed, base_speed))
+
     def single_missile_step(i, carry):
         # Input i is the loop index, carry is the full array of missile positions
         # Get current submarine and missile for this index
@@ -1389,10 +1701,12 @@ def enemy_missiles_step(curr_sub_positions, curr_enemy_missile_positions, step_c
             missile_pos
         )
 
-        # Move existing missile
+        movement_speed = calculate_missile_speed(step_counter, curr_state.spawn_state.difficulty)
+        velocity = movement_speed * new_missile[2]
+
         new_missile = jnp.where(
             missile_exists,
-            jnp.array([new_missile[0] + new_missile[2], new_missile[1], new_missile[2]]),
+            jnp.array([new_missile[0] + velocity, new_missile[1], new_missile[2]]),
             new_missile
         )
 
@@ -1808,6 +2122,15 @@ class Game:
             needs_oxygen = state.oxygen < 64
             should_block = jnp.logical_and(at_surface, needs_oxygen)
 
+            # while player is frozen, keep resetting the spawn counter
+            new_spawn_state = jax.lax.cond(
+                should_block,
+                lambda: state.spawn_state._replace(spawn_timers=jnp.array([80, 80, 80, 120])),
+                lambda: state.spawn_state
+            )
+
+            state_updated = state._replace(spawn_state=new_spawn_state)
+
             # If blocked, force position and disable actions
             player_x = jnp.where(should_block, state.player_x, state.player_x)
             player_y = jnp.where(should_block, jnp.array(46, dtype=jnp.int32), state.player_y)
@@ -1824,7 +2147,7 @@ class Game:
             )
 
             # Update divers collected count from oxygen mechanics
-            state_updated = state._replace(divers_collected=new_divers_collected)
+            state_updated = state_updated._replace(divers_collected=new_divers_collected)
 
             # update the spawn state with the new difficulty
             new_spawn_state = state_updated.spawn_state._replace(difficulty=new_difficulty)
