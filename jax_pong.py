@@ -5,7 +5,6 @@ import jax.numpy as jnp
 import chex
 import numpy as np
 import pygame
-from numpy.random.mtrand import operator
 
 from numbers_impl import digits
 
@@ -115,6 +114,22 @@ class State(NamedTuple):
     step_counter: chex.Array
     acceleration_counter: chex.Array
     buffer: chex.Array
+
+class EntityPosition(NamedTuple):
+    x: jnp.ndarray
+    y: jnp.ndarray
+    width: jnp.ndarray
+    height: jnp.ndarray
+
+class PongObservation(NamedTuple):
+    player: EntityPosition
+    enemy: EntityPosition
+    ball: EntityPosition
+    score_player: jnp.ndarray
+    score_enemy: jnp.ndarray
+
+class PongInfo(NamedTuple):
+    time: jnp.ndarray
 
 
 def player_step(
@@ -394,7 +409,7 @@ class Game:
         Resets the game state to the initial state.
         Returns the initial state and the reward (i.e. 0)
         """
-        return State(
+        state = State(
             player_y=jnp.array(96).astype(jnp.int32),
             player_speed=jnp.array(0.0).astype(jnp.int32),
             ball_x=jnp.array(78).astype(jnp.int32),
@@ -409,6 +424,7 @@ class Game:
             acceleration_counter=jnp.array(0).astype(jnp.int32),
             buffer=jnp.array(96).astype(jnp.int32),
         )
+        return state, self._get_observation(state)
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: State, action: chex.Array) -> State:
@@ -503,7 +519,7 @@ class Game:
             operand=ball_y_final,
         )
 
-        return State(
+        new_state = State(
             player_y=player_y,
             player_speed=player_speed,
             ball_x=ball_x_final,
@@ -518,6 +534,51 @@ class Game:
             acceleration_counter=new_acceleration_counter,
             buffer=buffer,
         )
+
+        done = self._get_done(new_state)
+        reward = self._get_reward(state, new_state)
+        obs = self._get_observation(new_state)
+        info = self._get_info(new_state)
+
+        return new_state, obs, reward, done, info
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_observation(self, state: State):
+        # create player
+        player = EntityPosition(
+            x=jnp.array(PLAYER_X),
+            y=state.player_y,
+            width=jnp.array(PLAYER_SIZE[0]),
+            height=jnp.array(PLAYER_SIZE[1]),
+        )
+
+        # create enemy
+        enemy = EntityPosition(
+            x=jnp.array(ENEMY_X),
+            y=state.enemy_y,
+            width=jnp.array(ENEMY_SIZE[0]),
+            height=jnp.array(ENEMY_SIZE[1]),
+        )
+
+        ball = EntityPosition(
+            x=state.ball_x,
+            y=state.ball_y,
+            width=jnp.array(BALL_SIZE[0]),
+            height=jnp.array(BALL_SIZE[1]),
+        )
+        return PongObservation(player=player, enemy=enemy, ball=ball, score_player=state.player_score, score_enemy=state.enemy_score)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_info(self, state: State) -> PongInfo:
+        return PongInfo(time=state.step_counter)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_reward(self, previous_state: State, state: State):
+        return (state.player_score - state.enemy_score) - (previous_state.player_score - previous_state.enemy_score)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_done(self, state: State) -> bool:
+        return jnp.logical_or(jnp.greater_equal(state.player_score, 20), jnp.greater_equal(state.enemy_score, 20))
 
 
 class Renderer:
@@ -640,7 +701,7 @@ if __name__ == "__main__":
     jitted_step = jax.jit(game.step)
     jitted_reset = jax.jit(game.reset)
 
-    curr_state = jitted_reset()
+    curr_state, obs = jitted_reset()
     # Run the game until the user quits
     running = True
     frame_by_frame = False
@@ -659,12 +720,12 @@ if __name__ == "__main__":
                 if event.key == pygame.K_n and frame_by_frame:
                     if counter % frameskip == 0:
                         action = get_human_action()
-                        curr_state = jitted_step(curr_state, action)
+                        curr_state, obs, reward, done, info = jitted_step(curr_state, action)
 
         if not frame_by_frame:
             if counter % frameskip == 0:
                 action = get_human_action()
-                curr_state = jitted_step(curr_state, action)
+                curr_state, obs, reward, done, info = jitted_step(curr_state, action)
 
         renderer.display(screen, curr_state)
         counter += 1
