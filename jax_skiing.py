@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Tuple, NamedTuple
 import random
 
+from environment import JaxEnvironment
+
 NOOP = 0
 LEFT = 1
 RIGHT = 2
@@ -56,13 +58,30 @@ class GameState(NamedTuple):
     game_over: chex.Array
     key: chex.Array
 
+class EntityPosition(NamedTuple):
+    x: jnp.ndarray
+    y: jnp.ndarray
+    width: jnp.ndarray
+    height: jnp.ndarray
 
-class SkiingGameLogic:
-    def __init__(self, config: GameConfig):
-        self.config = config
+class SkiingObservation(NamedTuple):
+    skier: EntityPosition
+    flags: jnp.ndarray
+    trees: jnp.ndarray
+    rocks: jnp.ndarray
+    score: jnp.ndarray
+
+class SkiingInfo(NamedTuple):
+    time: jnp.ndarray
+
+
+class SkiingGameLogic(JaxEnvironment[GameState, SkiingObservation, SkiingInfo]):
+    def __init__(self):
+        super().__init__()
+        self.config = GameConfig()
         self.state = self.reset()
 
-    def reset(self) -> GameState:
+    def reset(self) -> Tuple[GameState, SkiingObservation]:
         """Initialize a new game state"""
         flags = []
         y_spacing = (
@@ -102,7 +121,7 @@ class SkiingGameLogic:
             )
             rocks.append((float(x), float(y)))
 
-        return GameState(
+        state = GameState(
             skier_x=jnp.array(76.0),
             skier_pos=jnp.array(4),
             skier_fell=jnp.array(0),
@@ -117,6 +136,9 @@ class SkiingGameLogic:
             game_over=jnp.array(False),
             key=RANDOM_KEY,
         )
+        obs = self._get_observation(state)
+
+        return state, obs
 
     def _create_new_objs(self, state, new_flags, new_trees, new_rocks):
         k, k1, k2, k3, k4 = jax.random.split(state.key, num=5)
@@ -350,7 +372,7 @@ class SkiingGameLogic:
             operand=None,
         )
 
-        return GameState(
+        new_state = GameState(
             skier_x=new_x,
             skier_pos=jnp.array(skier_pos),
             skier_fell=skier_fell,
@@ -365,6 +387,71 @@ class SkiingGameLogic:
             game_over=game_over,
             key=new_key,
         )
+
+        done = self._get_done(new_state)
+        reward = self._get_reward(state, new_state)
+        obs = self._get_observation(new_state)
+        info = self._get_info(new_state)
+
+        return new_state, obs, reward, done, info
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_observation(self, state: GameState):
+        # create skier
+        skier = EntityPosition(
+            x=state.skier_x,
+            y=jnp.array(self.config.skier_y),
+            width=jnp.array(self.config.skier_width),
+            height=jnp.array(self.config.skier_height),
+        )
+
+        # create trees
+        trees = jnp.zeros((self.config.max_num_trees, 4))
+        for i in range(self.config.max_num_trees):
+            tree_pos = state.trees.at[i].get()
+            trees = trees.at[i].set(jnp.array([
+                tree_pos.at[0].get(),  # x position
+                tree_pos.at[1].get(),  # y position
+                self.config.tree_width,  # width
+                self.config.tree_height,  # height
+            ]))
+
+        # create flags
+        flags = jnp.zeros((self.config.max_num_flags, 4))
+        for i in range(self.config.max_num_flags):
+            flag_pos = state.flags.at[i].get()
+            flags = flags.at[i].set(jnp.array([
+                flag_pos.at[0].get(),  # x position
+                flag_pos.at[1].get(),  # y position
+                self.config.flag_width,  # width
+                self.config.flag_height,  # height
+            ]))
+
+        # create rocks
+        rocks = jnp.zeros((self.config.max_num_rocks, 4))
+        for i in range(self.config.max_num_rocks):
+            rock_pos = state.rocks.at[i].get()
+            rocks = rocks.at[i].set(jnp.array([
+                rock_pos.at[0].get(),  # x position
+                rock_pos.at[1].get(),  # y position
+                self.config.rock_width,  # width
+                self.config.rock_height,  # height
+            ]))
+
+        return SkiingObservation(skier=skier, trees=trees, flags=flags, rocks=rocks, score=state.score)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_info(self, state: GameState) -> SkiingInfo:
+        return SkiingInfo(time=state.time)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_reward(self, previous_state: GameState, state: GameState):
+        return previous_state.score - state.score
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_done(self, state: GameState) -> bool:
+        return jnp.equal(state.score, 0)
+
 
 
 @dataclass
@@ -653,14 +740,15 @@ def main():
     render_config = RenderConfig()
 
     # Initialize game and renderer
-    game = SkiingGameLogic(game_config)
+    game = SkiingGameLogic()
+    state, _ = game.reset()
     renderer = GameRenderer(game_config, render_config)
 
     # Setup game loop
     clock = pygame.time.Clock()
     running = True
 
-    while running and not game.state.game_over:
+    while running and not state.game_over:
         # Handle events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -676,16 +764,16 @@ def main():
             action = NOOP
 
         # Update game state
-        game.state = game.step(game.state, action)
+        state, obs, reward, done, info = game.step(state, action)
 
         # Render
-        renderer.render(game.state)
+        renderer.render(state)
 
         # Cap at 60 FPS
         clock.tick(60)
 
     # If game over, wait before closing
-    if game.state.game_over:
+    if state.game_over:
         pygame.time.wait(2000)
 
     renderer.close()

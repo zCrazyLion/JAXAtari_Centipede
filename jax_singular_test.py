@@ -82,7 +82,7 @@ def run_parallel_jax(
 
     @partial(jax.vmap, in_axes=(0, 0))
     def parallel_step(states, actions):
-        return jaxgame.step(states, actions)
+        return jaxgame.step_state_only(states, actions)
 
     jit_parallel_step = jax.jit(parallel_step)
     rng_key = jax.random.PRNGKey(0)
