@@ -6,7 +6,7 @@ from jax_pong import Game as JaxPong
 from jax_breakout import Game as JaxBreakout
 from jax_freeway import FreewayGameLogic as JaxFreeway
 from jax_freeway import GameConfig as JaxFreewayConfig
-from jax_seaquest import Game as JaxSeaquest
+from jax_seaquest import JaxSeaquest
 from jax_skiing import SkiingGameLogic as JaxSkiing
 from jax_skiing import GameConfig as JaxSkiingConfig
 from jax_tennis import Game as JaxTennis

@@ -1,11 +1,14 @@
 import sys
 from functools import partial
-from typing import Tuple, NamedTuple
+from typing import Tuple, NamedTuple, Any
 import jax
 import jax.numpy as jnp
 import chex
 import pygame
+from jax import Array
+from numpy import ndarray, dtype, bool_
 
+from environment import JaxEnvironment
 
 # TODO: is it implemented that you get a submarine at 10000 points?
 # TODO: surface submarine at 6 divers collected + difficulty 1
@@ -112,7 +115,7 @@ def soft_reset_spawn_state(spawn_state: SpawnState) -> SpawnState:
     )
 
 # Game state container
-class State(NamedTuple):
+class SeaquestState(NamedTuple):
     player_x: chex.Array
     player_y: chex.Array
     player_direction: chex.Array  # 0 for right, 1 for left
@@ -134,11 +137,32 @@ class State(NamedTuple):
     rng_key: chex.PRNGKey
 
 
-# TODO: remove, for debugging purposes only
-def jaxprint(arg1, arg2=None):
-    jax.debug.print("{x}: {y}", x=arg1, y=arg2)
+class EntityPosition(NamedTuple):
+    x: jnp.ndarray
+    y: jnp.ndarray
+    width: jnp.ndarray
+    height: jnp.ndarray
+    active: jnp.ndarray
 
-# TODO: there is some pixel overlap in the OG implementation, analyse and implement
+class SeaquestObservation(NamedTuple):
+    player: EntityPosition
+    sharks: jnp.ndarray  # Shape (12, 5) - 12 sharks, each with x,y,w,h,active
+    submarines: jnp.ndarray  # Shape (12, 5)
+    divers: jnp.ndarray  # Shape (4, 5)
+    enemy_missiles: jnp.ndarray  # Shape (4, 5)
+    surface_submarine: EntityPosition
+    player_missile: EntityPosition
+    collected_divers: jnp.ndarray  # Number of divers collected (0-6)
+    player_score: jnp.ndarray
+    lives: jnp.ndarray
+    oxygen_level: jnp.ndarray # Oxygen level (0-255)
+
+class SeaquestInfo(NamedTuple):
+    difficulty: jnp.ndarray  # Current difficulty level
+    successful_rescues: jnp.ndarray  # Number of successful rescues
+    step_counter: jnp.ndarray  # Current step count
+
+
 def check_collision(pos1, size1, pos2, size2):
     """
     Check for collision between rectangles.
@@ -1571,7 +1595,7 @@ def spawn_step(state, spawn_state: SpawnState, shark_positions: chex.Array, sub_
     return final_spawn_state, new_shark_positions, new_sub_positions, new_diver_positions, new_key
 
 
-def surface_sub_step(state: State) -> chex.Array:
+def surface_sub_step(state: SeaquestState) -> chex.Array:
     # Check direction value specifically to get scalar boolean
     sub_exists = state.surface_sub_position[2] != 0
 
@@ -1733,7 +1757,7 @@ def enemy_missiles_step(curr_sub_positions, curr_enemy_missile_positions, step_c
 
     return new_missile_positions
 
-def player_missile_step(state: State, curr_player_x, curr_player_y, action: chex.Array) -> chex.Array:
+def player_missile_step(state: SeaquestState, curr_player_x, curr_player_y, action: chex.Array) -> chex.Array:
     # check if the player shot this frame
     fire = jnp.any(jnp.array([action == FIRE, action == UPRIGHTFIRE, action == UPLEFTFIRE, action == DOWNFIRE, action == DOWNRIGHTFIRE, action == DOWNLEFTFIRE, action == RIGHTFIRE, action == LEFTFIRE, action == UPFIRE]))
 
@@ -1921,7 +1945,7 @@ def update_oxygen(state, player_x, player_y, player_missile_position):
     return (new_oxygen, player_x, player_y, player_missile_position,
             oxygen_depleted, lose_life, new_divers_collected, should_reset, new_just_surfaced, new_difficulty)
 
-def player_step(state: State, action: chex.Array) -> tuple[chex.Array, chex.Array, chex.Array]:
+def player_step(state: SeaquestState, action: chex.Array) -> tuple[chex.Array, chex.Array, chex.Array]:
     # implement all the possible movement directions for the player, the mapping is:
     # anything with left in it, add -1 to the x position
     # anything with right in it, add 1 to the x position
@@ -1994,22 +2018,138 @@ def calculate_kill_points(successful_rescues: chex.Array) -> chex.Array:
     additional_points = 10 * successful_rescues
     return jnp.minimum(base_points + additional_points, max_points)
 
-class Game:
+
+class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInfo]):
     def __init__(self, frameskip: int = 1):
+        super().__init__()
         self.frameskip = frameskip
-        pass
 
     @partial(jax.jit, static_argnums=(0,))
-    def reset(self) -> State:
+    def _get_observation(self, state: SeaquestState) -> SeaquestObservation:
+        # create Player
+        player = EntityPosition(
+            x=state.player_x,
+            y=state.player_y,
+            width=jnp.array(PLAYER_SIZE[0]),
+            height=jnp.array(PLAYER_SIZE[1]),
+            active=jnp.array(1),  # Player is always active
+        )
+
+        # create sharks
+        sharks = jnp.zeros((MAX_SHARKS, 5))
+        for i in range(MAX_SHARKS):
+            shark_pos = state.shark_positions[i]
+            is_active = shark_pos[2] != 0
+            sharks = sharks.at[i].set(jnp.array([
+                shark_pos[0],  # x position
+                shark_pos[1],  # y position
+                SHARK_SIZE[0],  # width
+                SHARK_SIZE[1],  # height
+                is_active  # active flag
+            ]))
+
+        # create submarines
+        submarines = jnp.zeros((MAX_SUBS, 5))
+        for i in range(MAX_SUBS):
+            sub_pos = state.sub_positions[i]
+            is_active = sub_pos[2] != 0
+            submarines = submarines.at[i].set(jnp.array([
+                sub_pos[0],  # x position
+                sub_pos[1],  # y position
+                ENEMY_SUB_SIZE[0],  # width
+                ENEMY_SUB_SIZE[1],  # height
+                is_active  # active flag
+            ]))
+
+        # create divers
+        divers = jnp.zeros((MAX_DIVERS, 5))
+        for i in range(MAX_DIVERS):
+            diver_pos = state.diver_positions[i]
+            is_active = diver_pos[2] != 0
+            divers = divers.at[i].set(jnp.array([
+                diver_pos[0],  # x position
+                diver_pos[1],  # y position
+                DIVER_SIZE[0],  # width
+                DIVER_SIZE[1],  # height
+                is_active  # active flag
+            ]))
+
+        # create enemy missile
+        enemy_missiles = jnp.zeros((MAX_ENEMY_MISSILES, 5))
+        for i in range(MAX_ENEMY_MISSILES):
+            missile_pos = state.enemy_missile_positions[i]
+            is_active = missile_pos[2] != 0
+            enemy_missiles = enemy_missiles.at[i].set(jnp.array([
+                missile_pos[0],  # x position
+                missile_pos[1],  # y position
+                MISSILE_SIZE[0],  # width
+                MISSILE_SIZE[1],  # height
+                is_active  # active flag
+            ]))
+
+        # Surface submarine
+        surface_pos = state.surface_sub_position
+        surface_sub = EntityPosition(
+            x=surface_pos[0],
+            y=surface_pos[1],
+            width=jnp.array(ENEMY_SUB_SIZE[0]),
+            height=jnp.array(ENEMY_SUB_SIZE[1]),
+            active=jnp.array(surface_pos[2] != 0)
+        )
+
+        # Player missile
+        missile_pos = state.player_missile_position
+        player_missile = EntityPosition(
+            x=missile_pos[0],
+            y=missile_pos[1],
+            width=jnp.array(MISSILE_SIZE[0]),
+            height=jnp.array(MISSILE_SIZE[1]),
+            active=jnp.array(missile_pos[2] != 0)
+        )
+
+        # Return observation
+        return SeaquestObservation(
+            player=player,
+            sharks=sharks,
+            submarines=submarines,
+            divers=divers,
+            enemy_missiles=enemy_missiles,
+            surface_submarine=surface_sub,
+            player_missile=player_missile,
+            collected_divers=state.divers_collected,
+            player_score=state.score,
+            lives=state.lives,
+            oxygen_level=state.oxygen,
+        )
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_info(self, state: SeaquestState) -> SeaquestInfo:
+        return SeaquestInfo(
+            successful_rescues=state.successful_rescues,
+            difficulty=state.spawn_state.difficulty,
+            step_counter=state.step_counter,
+        )
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_reward(self, previous_state: SeaquestState, state: SeaquestState):
+        return state.score - previous_state.score
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_done(self, state: SeaquestState) -> bool:
+        return state.lives < 0
+
+
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self) -> Tuple[SeaquestState, SeaquestObservation]:
         """Initialize game state"""
-        return State(
+        reset_state = SeaquestState(
             player_x=jnp.array(PLAYER_START_X),
             player_y=jnp.array(PLAYER_START_Y),
             player_direction=jnp.array(0),
             oxygen=jnp.array(0),  # Full oxygen
             divers_collected=jnp.array(0),
             score=jnp.array(0),
-            lives=jnp.array(3),
+            lives=jnp.array(0),
             spawn_state=initialize_spawn_state(),
             diver_positions=jnp.zeros((MAX_DIVERS, 3)),  # 4 divers
             shark_positions=jnp.zeros((MAX_SHARKS, 3)),
@@ -2024,8 +2164,16 @@ class Game:
             rng_key=jax.random.PRNGKey(42)
         )
 
+        initial_obs = self._get_observation(reset_state)
+
+        return reset_state, initial_obs
+
     @partial(jax.jit, static_argnums=(0,))
-    def step(self, state: State, action: chex.Array) -> State:
+    def step(self, state: SeaquestState, action: chex.Array) -> Tuple[SeaquestState, SeaquestObservation, float, bool, SeaquestInfo]:
+
+        previous_state = state
+        reset_state, _ = self.reset()
+
         # First handle death animation if active
         def handle_death_animation():
             # Calculate new positions with frozen X coordinates
@@ -2044,7 +2192,7 @@ class Game:
             # Return either final reset or animation frame
             return jax.lax.cond(
                 state.death_counter <= 1,
-                lambda _: self.reset()._replace(
+                lambda _: reset_state._replace(
                     lives=state.lives - 1,
                     score=state.score,
                     successful_rescues=state.successful_rescues,
@@ -2091,7 +2239,7 @@ class Game:
             # Return either final reset or animation frame
             return jax.lax.cond(
                 state.death_counter >= -1,
-                lambda _: self.reset()._replace(
+                lambda _: reset_state._replace(
                     player_x = state.player_x,
                     player_y = state.player_y,
                     player_direction=state.player_direction,
@@ -2254,7 +2402,7 @@ class Game:
             )
 
             # Create the normal returned state
-            normal_returned_state = State(
+            normal_returned_state = SeaquestState(
                 player_x=player_x,
                 player_y=player_y,
                 player_direction=player_direction,
@@ -2306,13 +2454,12 @@ class Game:
             # Handle game over state
             return jax.lax.cond(
                 game_over,
-                lambda _: self.reset()._replace(score=final_state.score, lives=jnp.array(-1)),
+                lambda _: reset_state._replace(score=final_state.score, lives=jnp.array(-1), death_counter=jnp.array(0)),
                 lambda _: final_state,
                 operand=None
             )
 
-        # Choose between death animation and normal game step
-        return jax.lax.cond(
+        return_state = jax.lax.cond(
             state.death_counter > 0,
             lambda _: handle_death_animation(),
             lambda _: jax.lax.cond(
@@ -2323,6 +2470,16 @@ class Game:
             ),
             operand=None
         )
+
+        # Get observation and info
+        observation = self._get_observation(return_state)
+        info = self._get_info(return_state)
+
+        done = self._get_done(return_state)
+        reward = self._get_reward(previous_state, return_state)
+
+        # Choose between death animation and normal game step
+        return return_state, observation, reward, done, info
 
 
 class Renderer:
@@ -2441,7 +2598,7 @@ class Renderer:
                 )
                 pygame.draw.rect(self.screen, PLAYER_COLOR, missile_rect)
 
-    def render(self, state: State):
+    def render(self, state: SeaquestState):
         """Main render method that draws everything"""
         # Clear screen
         self.screen.fill(BACKGROUND_COLOR)
@@ -2522,13 +2679,13 @@ def get_human_action() -> chex.Array:
 
 if __name__ == "__main__":
     # Initialize game and renderer
-    game = Game(frameskip=1)
+    game = JaxSeaquest(frameskip=1)
 
     # Get jitted functions
     jitted_step = jax.jit(game.step)
     jitted_reset = jax.jit(game.reset)
 
-    curr_state = jitted_reset()
+    curr_state, curr_obs = jitted_reset()
 
     # Game loop with rendering
     running = True
@@ -2549,12 +2706,14 @@ if __name__ == "__main__":
                 if event.key == pygame.K_n and frame_by_frame:
                     if counter % frameskip == 0:
                         action = get_human_action()
-                        curr_state: State = jitted_step(curr_state, action)
+                        curr_state, curr_obs, reward, done, info = jitted_step(curr_state, action)
+                        print(f"Observations: {curr_obs}")
+                        print(f"Reward: {reward}, Done: {done}, Info: {info}")
 
         if not frame_by_frame:
             if counter % frameskip == 0:
                 action = get_human_action()
-                curr_state = jitted_step(curr_state, action)
+                curr_state, curr_obs, reward, done, info = jitted_step(curr_state, action)
 
         renderer.render(curr_state)
         counter += 1
