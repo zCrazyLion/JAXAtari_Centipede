@@ -190,6 +190,8 @@ class State(NamedTuple):
     ball_y_dir: chex.Array  # Ball y direction
     ball_movement_tick: chex.Array  # Ball movement tick
     ball_curve: chex.Array
+    ball_start: chex.Array
+    ball_end: chex.Array
     shadow_x: chex.Array  # Shadow x position
     shadow_y: chex.Array  # Shadow y position
     player_score: chex.Array
@@ -485,7 +487,9 @@ def ball_step(state: State, top_collision: chex.Array,
             new_x_pattern,
             new_x_counter_idx,
             jnp.array(0),
-            jnp.array(0.0)
+            jnp.array(0.0),
+            state.ball_start,
+            state.ball_end
         )
 
     def handle_normal_play():
@@ -495,7 +499,7 @@ def ball_step(state: State, top_collision: chex.Array,
         new_y = state.ball_y + state.ball_y_dir * 2
         new_x = state.ball_x + state.ball_x_dir - state.ball_curve
 
-        distance = (state.enemy_y-state.player_y) / 2
+        distance = (state.ball_end-state.ball_start) / 2
         direction = jax.lax.cond(jnp.greater_equal(state.ball_x_dir, 0), lambda _: 1, lambda _: -1, operand=None)
 
         ball_arc = 10 * direction * jnp.abs(jnp.sin((jnp.pi/distance)*state.ball_curve_counter))  # Creates slight curve effect
@@ -512,6 +516,12 @@ def ball_step(state: State, top_collision: chex.Array,
             jnp.logical_or(top_collision, bottom_collision),
             lambda: get_directions(),
             lambda: (state.ball_x_dir, state.ball_y_dir, state.ball_x_pattern_idx, ball_curve_counter),
+        )
+
+        ball_start, ball_end = jax.lax.cond(
+            jnp.logical_or(top_collision, bottom_collision),
+            lambda: (state.enemy_y, state.player_y),
+            lambda: (state.ball_start, state.ball_end),
         )
 
         # in case of collision reset z to 14, set the new_ball_movement_tick to SERVE_INDEX - 1 and the ball_y_tick to 0
@@ -538,7 +548,9 @@ def ball_step(state: State, top_collision: chex.Array,
             new_ball_x_pattern_idx,
             new_x_counter_idx,
             ball_curve_counter,
-            ball_curve
+            ball_curve,
+            ball_start,
+            ball_end
         )
 
     return jax.lax.cond(
@@ -1054,7 +1066,9 @@ class Game:
                 -1
             ),  # can be any value since this should be overwritten before being used (in case its not, it will throw an error now)
             ball_x_counter=jnp.array(0),
-            ball_curve=jnp.array(0.0)
+            ball_curve=jnp.array(0.0),
+            ball_start=jnp.array(PLAYER_START_Y).astype(jnp.int32),
+            ball_end=jnp.array(ENEMY_START_Y).astype(jnp.int32),
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -1093,7 +1107,9 @@ class Game:
             new_x_ball_pattern_idx,
             new_x_ball_id,
             ball_curve_counter,
-            ball_curve
+            ball_curve,
+            ball_start,
+            ball_end,
         ) = ball_step(
             state,
             top_collision,
@@ -1224,7 +1240,9 @@ class Game:
             ball_y_tick=new_ball_y_tick.astype(jnp.int8),
             ball_x_pattern_idx=new_x_ball_pattern_idx,
             ball_x_counter=new_x_ball_id,
-            ball_curve=ball_curve
+            ball_curve=ball_curve,
+            ball_start=ball_start,
+            ball_end=ball_end,
         )
 
         return jax.lax.cond(
