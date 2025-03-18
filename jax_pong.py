@@ -6,6 +6,7 @@ import chex
 import numpy as np
 import pygame
 
+from environment import JaxEnvironment
 from numbers_impl import digits
 
 # Constants for game environment
@@ -400,7 +401,7 @@ def _reset_ball_after_goal(
     )
 
 
-class Game:
+class Game(JaxEnvironment[State, PongObservation, PongInfo]):
     def __init__(self, frameskip=0):
         self.frameskip = frameskip + 1
 
