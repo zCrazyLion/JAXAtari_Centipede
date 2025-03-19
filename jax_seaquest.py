@@ -2913,7 +2913,7 @@ class Renderer_AtraJaxis:
             )
 
         # Use fori_loop to render all sharks
-        raster = jax.lax.fori_loop(0, MAX_DIVERS, render_shark, raster)
+        raster = jax.lax.fori_loop(0, MAX_SHARKS, render_shark, raster)
 
         # render enemy subs
         frame_enemy_sub = aj.get_sprite_frame(SPRITE_ENEMY_SUB, state.step_counter)
@@ -2936,15 +2936,15 @@ class Renderer_AtraJaxis:
         raster = jax.lax.fori_loop(0, MAX_SUBS, render_enemy_sub, raster)
 
         def render_enemy_surface_sub(i, raster_base):
-            should_render = state.surface_sub_position[i][0] > 0
+            should_render = state.surface_sub_position[0] > 0
             return jax.lax.cond(
                 should_render,
                 lambda r: aj.render_at(
                     r,
-                    state.surface_sub_position[i][1],
-                    state.surface_sub_position[i][0],
+                    state.surface_sub_position[1],
+                    state.surface_sub_position[0],
                     frame_enemy_sub,
-                    flip_horizontal=(state.surface_sub_position[i][2] == FACE_LEFT),
+                    flip_horizontal=(state.surface_sub_position[2] == FACE_LEFT),
                 ),
                 lambda r: r,
                 raster_base,
@@ -3050,7 +3050,7 @@ def get_human_action() -> chex.Array:
 
 if __name__ == "__main__":
     # Initialize game and renderer
-    game = Game(frameskip=1)
+    game = JaxSeaquest(frameskip=1)
     pygame.init()
     screen = pygame.display.set_mode((WIDTH * SCALING_FACTOR, HEIGHT * SCALING_FACTOR))
     clock = pygame.time.Clock()
@@ -3068,8 +3068,6 @@ if __name__ == "__main__":
     frame_by_frame = False
     frameskip = game.frameskip
     counter = 1
-
-    renderer = Renderer()
 
     while running:
         for event in pygame.event.get():
@@ -3100,9 +3098,7 @@ if __name__ == "__main__":
         # render and update pygame
         raster = renderer_AtraJaxis.render(curr_state)
         aj.update_pygame(screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
-        # renderer.render(curr_state)
         counter += 1
         clock.tick(60)
-        # renderer.clock.tick(256)
 
     pygame.quit()
