@@ -5,11 +5,49 @@ import jax.numpy as jnp
 import chex
 import numpy as np
 import pygame
+import atraJaxis as aj
+
+def load_sprites():
+    BG = aj.loadFrame("sprites/tennis/bg/1.npy")
+    
+    frames_pl_r = []
+    for i in range(1, 5):
+        frame = aj.loadFrame(f"sprites/tennis/pl_red/{i}.npy")
+        frames_pl_r.append(frame)
+    PL_R = jnp.array(aj.pad_to_match(frames_pl_r))
+    
+    frames_bat_r = []
+    for i in range(1, 5):
+        frame = aj.loadFrame(f"sprites/tennis/bat_r/{i}.npy")
+        frames_bat_r.append(frame)
+    BAT_R = jnp.array(aj.pad_to_match(frames_bat_r))
+    
+    frames_pl_b = []
+    for i in range(1, 5):
+        frame = aj.loadFrame(f"sprites/tennis/pl_blue/{i}.npy")
+        frames_pl_b.append(frame)
+    PL_B = jnp.array(aj.pad_to_match(frames_pl_b))
+    
+    frames_bat_b = []
+    for i in range(1, 5):
+        frame = aj.loadFrame(f"sprites/tennis/bat_b/{i}.npy")
+        frames_bat_b.append(frame)
+    BAT_B = jnp.array(aj.pad_to_match(frames_bat_b))
+    
+    BALL = aj.loadFrame("sprites/tennis/ball/1.npy")
+    BALL_SHADE = aj.loadFrame("sprites/tennis/ball_shade/1.npy")
+    
+    DIGITS_R = aj.load_and_pad_digits("sprites/tennis/digits_r/{}.npy")
+    DIGITS_B = aj.load_and_pad_digits("sprites/tennis/digits_b/{}.npy")
+
+    
+    return BG, PL_R, BAT_R, PL_B, BAT_B, BALL, BALL_SHADE, DIGITS_R, DIGITS_B
+
+BG, PL_R, BAT_R, PL_B, BAT_B, BALL, BALL_SHADE, DIGITS_R, DIGITS_B = load_sprites()
 
 # TODO: remove, for debugging purposes only
 def jaxprint(arg1, arg2=None):
     jax.debug.print("{x}: {y}", x=arg1, y=arg2)
-
 
 # Action constants (placeholders - to be defined according to ALE)
 NOOP = 0
@@ -99,7 +137,6 @@ max_length = max(len(p) for p in [
 def pad_pattern(pattern, length):
     return jnp.pad(pattern, (0, length - len(pattern)), mode="wrap")
 
-
 # Create a single 2D array of patterns
 STACKED_X_PATTERNS = jnp.stack([
     pad_pattern(PATTERN_1, max_length),
@@ -114,7 +151,6 @@ STACKED_X_PATTERNS = jnp.stack([
     pad_pattern(PATTERN_10, max_length),
     pad_pattern(PATTERN_11, max_length)
 ])
-
 
 # Store the length of each pattern for proper cycling
 PATTERN_LENGTHS = jnp.array([
@@ -204,6 +240,9 @@ class State(NamedTuple):
     ball_y_tick: chex.Array
     ball_x_pattern_idx: chex.Array  # Array holding the x-movement pattern
     ball_x_counter: chex.Array  # Current index in the pattern
+    player_hit: chex.Array
+    enemy_hit: chex.Array
+
 
 
 def get_human_action() -> chex.Array:
@@ -402,7 +441,6 @@ def ball_step(state: State, top_collision: chex.Array,
     Returns:
         Tuple of (new_x, new_y, new_z, x_dir, y_dir, serving, ball_movement_tick)
     """
-
     serve_started = jnp.logical_and(action == FIRE, state.serving)
     serve_hit = jnp.logical_and(jnp.logical_or(top_collision, bottom_collision), serve_started)
 
@@ -1153,6 +1191,27 @@ class Game:
             ball_y,
             state.player_side,
         )
+        # TODO: this section of the code teleports the ball back after serve
+
+        ball_was_infield = jax.lax.cond(
+            jnp.logical_or(
+                state.ball_was_infield,
+                jnp.logical_and(
+                    jnp.greater_equal(ball_y, NET_TOP_LEFT[1]),
+                    jnp.less_equal(ball_y, NET_BOTTOM_LEFT[1]),
+                ),
+            ),
+            lambda _: True,
+            lambda _: False,
+            operand=None,
+        )
+
+        # Check scoring
+        player_score, enemy_score, point_scored = check_scoring(state)
+
+        enemy_x, enemy_y, new_enemy_direction = enemy_step(state.enemy_x, state.enemy_y, state.enemy_direction, ball_x, ball_y, state.player_side)
+
+        reset_state = self.reset()
 
         reset_state = self.reset()
 
@@ -1251,185 +1310,117 @@ class Game:
             lambda: calculated_state,
         )
 
+class AnimatorState(NamedTuple):
+    r_x: chex.Array
+    r_y: chex.Array
+    r_f: chex.Array
+    r_bat_f: chex.Array
+    b_x: chex.Array
+    b_y: chex.Array
+    b_f: chex.Array
+    b_bat_f: chex.Array
 
-class Renderer:
-    def __init__(self):
-        pass
+OFFSET_BAT_Y = jnp.array([7, 7, 5, 3])
 
-    def display(self, screen, state):
-        """Displays the rendered game state using pygame."""
-        canvas = self.jax_rendering(state)
-        canvas_np = np.array(canvas)
-        canvas_np = np.flipud(np.rot90(canvas_np, k=1))
-        pygame_surface = pygame.surfarray.make_surface(canvas_np)
-        screen.blit(
-            pygame.transform.scale(pygame_surface, (COURT_WIDTH * 3, COURT_HEIGHT * 3)),
-            (0, 0),
+class Renderer_AJ:
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def next_body_frame(self, diff_x, diff_y, frame):
+
+        # Condition 1: r_x - state.player_x > 0 or r_y - state.player_y > 0
+        condition1 = (diff_x > 0) | (diff_y > 0)
+        
+        # Condition 2: r_x - state.player_x == 0 and r_y - state.player_y == 0
+        condition2 = (diff_x == 0) & (diff_y == 0)
+
+        # Calculate next frame based on conditions
+        next_frame = jnp.where(condition1, (frame + 1) % 16,
+                            jnp.where(condition2, 12, (frame - 1) % 16))
+        
+        return next_frame
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def bat_position(self, body_x, body_y, body_direction, frame):
+        key_frame = frame // 4
+        offset_x = 8
+
+        offset_y = OFFSET_BAT_Y[key_frame]
+        bat_x = jnp.where(body_direction, body_x - offset_x, body_x + offset_x)
+        bat_y = body_y + offset_y
+        return bat_x, bat_y
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def next_bat_frame(self, frame, hit):
+        cond = hit | (frame != 0)
+        return jnp.where(cond, (frame + 1) % 16, 0)
+
+
+       
+    @partial(jax.jit, static_argnums=(0,)) 
+    def render(self, state, animator_state):  
+
+        
+        # render background
+        raster = jnp.zeros((COURT_WIDTH, COURT_HEIGHT, 3))
+        raster = aj.render_at(raster, 0, 0, BG)
+        
+        # render player
+        raster = aj.render_at(raster, state.player_y, state.player_x,  PL_R[animator_state.r_f // 4], flip_horizontal= state.player_direction)
+        
+        # render enemy
+        raster = aj.render_at(raster, state.enemy_y, state.enemy_x,  PL_B[animator_state.b_f // 4], flip_horizontal= state.enemy_direction)
+        
+        # render ball
+        raster = aj.render_at(raster, state.ball_y, state.ball_x,  BALL)
+        
+        # render ball shade
+        
+        raster = aj.render_at(raster, state.shadow_y, state.shadow_x,  BALL_SHADE)
+        
+        # render player bat
+        r_bat_x, r_bat_y = self.bat_position(state.player_x, state.player_y, state.player_direction, animator_state.r_bat_f)
+                
+        raster = aj.render_at(raster, r_bat_y, r_bat_x,  BAT_R[animator_state.r_bat_f // 4], flip_horizontal=state.player_direction)
+        
+        # render enemy bat
+        
+        b_bat_x, b_bat_y = self.bat_position(state.enemy_x, state.enemy_y, state.enemy_direction, animator_state.b_bat_f)
+        raster = aj.render_at(raster, b_bat_y, b_bat_x,  BAT_B[animator_state.b_bat_f // 4], flip_horizontal=state.enemy_direction)
+        
+        # render scores
+        
+        r_score_array = aj.int_to_digits(state.player_score, max_digits = 2)
+        b_score_array = aj.int_to_digits(state.enemy_score, max_digits = 2)
+        
+        raster = aj.render_label(raster, 10, 60, r_score_array, DIGITS_R, spacing=7)
+        raster = aj.render_label(raster, 10, 90, b_score_array, DIGITS_B, spacing=7)
+
+        
+        
+                            
+        # state transition
+
+        next_r_f = self.next_body_frame(state.player_x - animator_state.r_x, state.player_y - animator_state.r_y, animator_state.r_f)
+        next_b_f = self.next_body_frame(state.enemy_x - animator_state.b_x, state.enemy_y - animator_state.b_y, animator_state.b_f)
+        
+        
+        new_animator_state = AnimatorState(
+            r_x = state.player_x,
+            r_y = state.player_y,
+            r_f = next_r_f,
+            r_bat_f = self.next_bat_frame(animator_state.r_bat_f, state.player_hit),
+            b_x = state.enemy_x,
+            b_y = state.enemy_y,
+            b_f = next_b_f,
+            b_bat_f = self.next_bat_frame(animator_state.b_bat_f, state.enemy_hit),
         )
-        pygame.display.flip()
+        
+        
+        
+        return raster, new_animator_state
 
-    def get_rgb_img(self, state: State) -> np.ndarray:
-        canvas = self.jax_rendering(state)
-        return np.array(canvas)
-
-    def jax_rendering(self, state: State):
-        """Renders the current state of the game matching the original Atari style."""
-        # Create dark green background
-        canvas = np.full((COURT_HEIGHT, COURT_WIDTH, 3), [0, 100, 0], dtype=np.uint8)
-
-        # Create the color arrays with correct dtype
-        WHITE = np.array([255, 255, 255], dtype=np.uint8)
-        GRAY = np.array([200, 200, 200], dtype=np.uint8)
-        SHADOW = np.array([100, 100, 100], dtype=np.uint8)
-        BALL = np.array([25, 255, 255], dtype=np.uint8)
-        RED = np.array([255, 0, 0], dtype=np.uint8)  # For direction indicators
-
-        # Draw court outline (white lines)
-        canvas[NET_TOP_LEFT[1], NET_TOP_LEFT[0] : NET_TOP_RIGHT[0]] = WHITE
-        canvas[NET_BOTTOM_LEFT[1], NET_BOTTOM_LEFT[0] : NET_BOTTOM_RIGHT[0]] = WHITE
-
-        # Draw side lines with perspective
-        for y in range(NET_TOP_LEFT[1], NET_BOTTOM_LEFT[1] + 1):
-            progress = (y - NET_TOP_LEFT[1]) / (NET_BOTTOM_LEFT[1] - NET_TOP_LEFT[1])
-            left_x = int(
-                NET_TOP_LEFT[0] + (NET_BOTTOM_LEFT[0] - NET_TOP_LEFT[0]) * progress
-            )
-            right_x = int(
-                NET_TOP_RIGHT[0] + (NET_BOTTOM_RIGHT[0] - NET_TOP_RIGHT[0]) * progress
-            )
-            canvas[y, left_x] = WHITE
-            canvas[y, right_x] = WHITE
-
-        # Draw net (solid gray band)
-        net_y = (NET_RANGE[0] + NET_RANGE[1]) // 2
-        net_height = 15
-        for y in range(net_y - net_height // 2, net_y + net_height // 2):
-            progress = (y - NET_TOP_LEFT[1]) / (NET_BOTTOM_LEFT[1] - NET_TOP_LEFT[1])
-            left_x = int(
-                NET_TOP_LEFT[0] + (NET_BOTTOM_LEFT[0] - NET_TOP_LEFT[0]) * progress
-            )
-            right_x = int(
-                NET_TOP_RIGHT[0] + (NET_BOTTOM_RIGHT[0] - NET_TOP_RIGHT[0]) * progress
-            )
-            canvas[y, left_x:right_x] = GRAY
-
-        # Player and enemy positions
-        player_x = int(state.player_x)
-        player_y = int(state.player_y)
-        enemy_x = int(state.enemy_x)
-        enemy_y = int(state.enemy_y)
-        ball_x = int(state.ball_x)
-        ball_y = int(state.ball_y)
-        shadow_x = int(state.shadow_x)
-        shadow_y = int(state.shadow_y)
-        player_direction = int(state.player_direction)
-        enemy_direction = int(state.enemy_direction)
-
-        # Draw entities with bounds checking
-        if (
-            player_y >= 0
-            and player_y < COURT_HEIGHT - 23
-            and player_x >= 0
-            and player_x < COURT_WIDTH - 13
-        ):
-            canvas[player_y : player_y + 23, player_x : player_x + 13] = WHITE
-
-            # Add player direction arrow
-            arrow_start_y = player_y + 11  # Middle of player vertically
-            if player_direction == 0:  # Right-facing
-                arrow_start_x = player_x + 13  # Right edge
-                for i in range(5):  # Draw a 5-pixel arrow
-                    canvas[arrow_start_y, arrow_start_x + i] = RED
-                # Draw arrowhead
-                canvas[arrow_start_y - 1, arrow_start_x + 3] = RED
-                canvas[arrow_start_y + 1, arrow_start_x + 3] = RED
-            else:  # Left-facing
-                arrow_start_x = player_x  # Left edge
-                for i in range(5):  # Draw a 5-pixel arrow
-                    canvas[arrow_start_y, arrow_start_x - i] = RED
-                # Draw arrowhead
-                canvas[arrow_start_y - 1, arrow_start_x - 3] = RED
-                canvas[arrow_start_y + 1, arrow_start_x - 3] = RED
-
-        if (
-            enemy_y >= 0
-            and enemy_y < COURT_HEIGHT - 23
-            and enemy_x >= 0
-            and enemy_x < COURT_WIDTH - 13
-        ):
-            canvas[enemy_y : enemy_y + 23, enemy_x : enemy_x + 13] = WHITE
-
-            # Add enemy direction arrow
-            arrow_start_y = enemy_y + 11  # Middle of enemy vertically
-            if enemy_direction == 0:  # Right-facing
-                arrow_start_x = enemy_x + 13  # Right edge
-                for i in range(5):  # Draw a 5-pixel arrow
-                    canvas[arrow_start_y, arrow_start_x + i] = RED
-                # Draw arrowhead
-                canvas[arrow_start_y - 1, arrow_start_x + 3] = RED
-                canvas[arrow_start_y + 1, arrow_start_x + 3] = RED
-            else:  # Left-facing
-                arrow_start_x = enemy_x  # Left edge
-                for i in range(5):  # Draw a 5-pixel arrow
-                    canvas[arrow_start_y, arrow_start_x - i] = RED
-                # Draw arrowhead
-                canvas[arrow_start_y - 1, arrow_start_x - 3] = RED
-                canvas[arrow_start_y + 1, arrow_start_x - 3] = RED
-
-        # Draw shadow
-        if (
-            shadow_y >= 0
-            and shadow_y < COURT_HEIGHT - 2
-            and shadow_x >= 0
-            and shadow_x < COURT_WIDTH - 2
-        ):
-            canvas[shadow_y : shadow_y + 2, shadow_x : shadow_x + 2] = SHADOW
-
-        # Draw ball
-        if (
-            ball_y >= 0
-            and ball_y < COURT_HEIGHT - 2
-            and ball_x >= 0
-            and ball_x < COURT_WIDTH - 2
-        ):
-            canvas[ball_y : ball_y + 2, ball_x : ball_x + 2] = BALL
-
-        # Draw scores
-        score_size = 8
-        canvas[
-            10 : 10 + score_size, COURT_WIDTH - 20 : COURT_WIDTH - 20 + score_size
-        ] = WHITE
-        canvas[10 : 10 + score_size, 20 : 20 + score_size] = WHITE
-
-        return canvas
-
-    def draw_score(self, canvas, score, position):
-        """Draw score with improved visibility."""
-        x, y = position
-        score_str = str(score)
-        digit_color = [255, 255, 255]  # White color for score
-
-        # Draw background box for score
-        box_padding = 2
-        box_width = len(score_str) * 8 + box_padding * 2
-        box_height = 12
-        canvas[y - box_padding : y + box_height, x - box_padding : x + box_width] = [
-            0,
-            100,
-            0,
-        ]  # Dark green background
-
-        # Draw digits
-        for digit in score_str:
-            # Simple digit rendering with improved spacing
-            digit_int = int(digit)
-            canvas[y : y + 8, x : x + 6] = digit_color
-            x += 8  # Increased spacing between digits
-
-    def draw_net(self, canvas):
-        # Draw net (for simplicity it spans the whole x, and the y is the NET RANGE)
-        canvas[NET_RANGE[0] : NET_RANGE[1], :] = [255, 255, 255]
-
+    
+    
 
 # TODO: pull out the game loop into a main function that wraps all the different games
 if __name__ == "__main__":
@@ -1443,7 +1434,9 @@ if __name__ == "__main__":
     game = Game(frameskip=1)
 
     # Initialize renderer
-    renderer = Renderer()
+    renderer = Renderer_AJ()
+    animator_state = AnimatorState(r_x=0, r_y=0, r_f=12, r_bat_f=0, b_x=0, b_y=0, b_f=12, b_bat_f=0)
+
 
     # JIT compile main functions
     jitted_step = jax.jit(game.step)
@@ -1482,9 +1475,10 @@ if __name__ == "__main__":
                 list_of_y.append(int(curr_state.ball_y))
                 list_of_z.append(int(curr_state.ball_z))
 
-        renderer.display(screen, curr_state)
+        raster, animator_state = renderer.render(curr_state, animator_state)
+        aj.update_pygame(screen, raster, 4, COURT_WIDTH, COURT_HEIGHT)
 
         counter += 1
-        clock.tick(60)
+        clock.tick(15)
 
     pygame.quit()

@@ -5,8 +5,9 @@ import jax
 import jax.numpy as jnp
 import chex
 import pygame
+import atraJaxis as aj
+import numpy as np
 from jax import Array
-from numpy import ndarray, dtype, bool_
 
 from environment import JaxEnvironment
 
@@ -15,6 +16,10 @@ from environment import JaxEnvironment
 # Game Constants
 WINDOW_WIDTH = 160 * 3
 WINDOW_HEIGHT = 210 * 3
+
+WIDTH = 160
+HEIGHT = 210
+SCALING_FACTOR = 3
 
 # Colors
 BACKGROUND_COLOR = (0, 0, 139)  # Dark blue for water
@@ -28,7 +33,7 @@ SHARK_DIFFICULTY_COLORS = jnp.array([
     [186, 92, 92],   # Level 4: Red (adjusted from original ROM)
 ])
 ENEMY_SUB_COLOR = (170, 170, 170)  # Gray for enemy subs
-OXYGEN_BAR_COLOR = (214, 214, 214)  # White for oxygen
+OXYGEN_BAR_COLOR = (214, 214, 214, 255)  # White for oxygen
 SCORE_COLOR = (210, 210, 64)  # Score color
 OXYGEN_TEXT_COLOR = (0, 0, 0)  # Black for oxygen text
 
@@ -50,9 +55,13 @@ MAX_DIVERS = 4
 MAX_SHARKS = 12
 MAX_SUBS = 12
 MAX_ENEMY_MISSILES = 4
-MAX_PLAYER_MISSILES = 1
+MAX_PLAYER_TORPS = 1
 MAX_SURFACE_SUBS = 1
 MAX_COLLECTED_DIVERS = 6
+
+# define object orientations
+FACE_LEFT = -1
+FACE_RIGHT = 1
 
 # Define action space
 NOOP = 0
@@ -162,6 +171,98 @@ class SeaquestInfo(NamedTuple):
     successful_rescues: jnp.ndarray  # Number of successful rescues
     step_counter: jnp.ndarray  # Current step count
 
+
+class CarryState(NamedTuple):
+    missile_pos: chex.Array
+    shark_pos: chex.Array
+    sub_pos: chex.Array
+    score: chex.Array
+
+# RENDER CONSTANTS
+def load_sprites():
+    # Load sprites - no padding needed for background since it's already full size
+    bg1 = aj.loadFrame('sprites/seaquest/bg/1.npy')
+    pl_sub1 = aj.loadFrame('sprites/seaquest/player_sub/1.npy')
+    pl_sub2 = aj.loadFrame('sprites/seaquest/player_sub/2.npy')
+    pl_sub3 = aj.loadFrame('sprites/seaquest/player_sub/3.npy')
+    diver1 = aj.loadFrame('sprites/seaquest/diver/1.npy')
+    diver2 = aj.loadFrame('sprites/seaquest/diver/2.npy')
+    shark1 = aj.loadFrame('sprites/seaquest/shark/1.npy')
+    shark2 = aj.loadFrame('sprites/seaquest/shark/2.npy')
+    enemy_sub1 = aj.loadFrame('sprites/seaquest/enemy_sub/1.npy')
+    enemy_sub2 = aj.loadFrame('sprites/seaquest/enemy_sub/2.npy')
+    enemy_sub3 = aj.loadFrame('sprites/seaquest/enemy_sub/3.npy')
+    pl_torp = aj.loadFrame('sprites/seaquest/player_torp/1.npy')
+    en_torp = aj.loadFrame('sprites/seaquest/enemy_torp/1.npy')
+    
+
+
+
+    # Pad player submarine sprites to match each other
+    pl_sub_sprites = aj.pad_to_match([pl_sub1, pl_sub2, pl_sub3])
+
+    # Pad diver sprites to match each other
+    diver_sprites = aj.pad_to_match([diver1, diver2])
+    
+    # Pad shark sprites to match each other
+    shark_sprites = aj.pad_to_match([shark1, shark2])
+    
+    # Pad enemy submarine sprites to match each other
+    enemy_sub_sprites = aj.pad_to_match([enemy_sub1, enemy_sub2, enemy_sub3])
+    
+    # Pad player torpedo sprites to match each other
+    pl_torp_sprites = [pl_torp]
+    
+    # Pad enemy torpedo sprites to match each other
+    en_torp_sprites = [en_torp]
+    
+    
+    # Background sprite (no padding needed)
+    SPRITE_BG = jnp.expand_dims(bg1, axis=0)
+
+    # Player submarine sprites
+    SPRITE_PL_SUB = jnp.concatenate([
+        jnp.repeat(pl_sub_sprites[0][None], 4, axis=0),
+        jnp.repeat(pl_sub_sprites[1][None], 4, axis=0),
+        jnp.repeat(pl_sub_sprites[2][None], 4, axis=0)
+    ])
+
+    # Diver sprites
+    SPRITE_DIVER = jnp.concatenate([
+        jnp.repeat(diver_sprites[0][None], 16, axis=0),
+        jnp.repeat(diver_sprites[1][None], 4, axis=0)
+    ])
+    
+    # Shark sprites
+    SPRITE_SHARK = jnp.concatenate([
+        jnp.repeat(shark_sprites[0][None], 16, axis=0),
+        jnp.repeat(shark_sprites[1][None], 8, axis=0)
+    ])
+    
+    # Enemy submarine sprites
+    SPRITE_ENEMY_SUB = jnp.concatenate([
+        jnp.repeat(enemy_sub_sprites[0][None], 4, axis=0),
+        jnp.repeat(enemy_sub_sprites[1][None], 4, axis=0),
+        jnp.repeat(enemy_sub_sprites[2][None], 4, axis=0)
+    ])
+    
+    DIGITS = aj.load_and_pad_digits("./sprites/seaquest/digits/{}.npy")
+    LIFE_INDICATOR = aj.loadFrame('sprites/seaquest/life_indicator/1.npy')
+    DIVER_INDICATOR = aj.loadFrame("./sprites/seaquest/diver_indicator/1.npy")
+    
+    
+
+    # Player torpedo sprites
+    SPRITE_PL_TORP = jnp.repeat(pl_torp_sprites[0][None], 1, axis=0)
+    
+    # Enemy torpedo sprites
+    SPRITE_EN_TORP = jnp.repeat(en_torp_sprites[0][None], 1, axis=0)
+
+    return SPRITE_BG, SPRITE_PL_SUB, SPRITE_DIVER, SPRITE_SHARK, SPRITE_ENEMY_SUB, SPRITE_PL_TORP, SPRITE_EN_TORP, DIGITS, LIFE_INDICATOR, DIVER_INDICATOR
+
+
+# Load sprites once at module level
+SPRITE_BG, SPRITE_PL_SUB, SPRITE_DIVER, SPRITE_SHARK, SPRITE_ENEMY_SUB, SPRITE_PL_TORP, SPRITE_EN_TORP, DIGITS, LIFE_INDICATOR, DIVER_INDICATOR = load_sprites()
 
 def check_collision(pos1, size1, pos2, size2):
     """
@@ -2481,145 +2582,162 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
         # Choose between death animation and normal game step
         return return_state, observation, reward, done, info
 
+class Renderer_AtraJaxis:
+    @partial(jax.jit, static_argnums=(0,))
+    def render(self, state):
+        raster = jnp.zeros((WIDTH, HEIGHT, 3))
 
-class Renderer:
-    def __init__(self):
-        """Initialize the renderer"""
-        pygame.init()
-        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pygame.display.set_caption("Seaquest")
-        self.clock = pygame.time.Clock()
-        self.font = pygame.font.Font(None, 36)
+        # render background
+        frame_bg = aj.get_sprite_frame(SPRITE_BG, 0)
+        raster = aj.render_at(raster, 0, 0, frame_bg)
 
-    def draw_water_gradient(self):
-        """Draw water surface gradient effect"""
-        surface_gradient = pygame.Surface((WINDOW_WIDTH, 46))
-        for i in range(46):
-            alpha = 255 - (i * 8)
-            color = (*BACKGROUND_COLOR[:2], min(255, BACKGROUND_COLOR[2] + 50))
-            pygame.draw.line(surface_gradient, color, (0, i), (WINDOW_WIDTH, i))
-        self.screen.blit(surface_gradient, (0, 0))
+        # render player submarine
+        frame_pl_sub = aj.get_sprite_frame(SPRITE_PL_SUB, state.step_counter)
+        raster = aj.render_at(raster, state.player_y, state.player_x, frame_pl_sub, flip_horizontal = state.player_direction == FACE_LEFT)
+        
+        # render player torpedo
+        frame_pl_torp = aj.get_sprite_frame(SPRITE_PL_TORP, state.step_counter)
+        should_render = state.player_missile_position[0] > 0
+        raster = jax.lax.cond(should_render, 
+                               lambda r: aj.render_at(r, state.player_missile_position[1], state.player_missile_position[0], frame_pl_torp, flip_horizontal = state.player_missile_position[2] == FACE_LEFT),
+                               lambda r: r,
+                               raster)
+        
+        # render divers
+        frame_diver = aj.get_sprite_frame(SPRITE_DIVER, state.step_counter)
+        diver_positions = state.diver_positions
 
-    def draw_oxygen_bar(self, oxygen_value):
-        """Draw oxygen bar and text"""
-        # Draw "OXYGEN" text
-        text = self.font.render("OXYGEN", True, OXYGEN_TEXT_COLOR)
-        self.screen.blit(text, (15 * 3, 170 * 3))
-
-        # Draw oxygen bar
-        oxygen_width = int((float(oxygen_value) / 63.0) * 180)
-        oxygen_rect = pygame.Rect(49 * 3, 170 * 3, oxygen_width, 15)
-        pygame.draw.rect(self.screen, OXYGEN_BAR_COLOR, oxygen_rect)
-
-    def draw_score_lives_and_divers(self, score, lives, divers):
-        """Draw score, lives counter and collected divers"""
-        # Draw score on left
-        score_text = self.font.render(str(int(score)), True, SCORE_COLOR)
-        self.screen.blit(score_text, (10, 10))
-
-        # Draw lives in middle
-        lives_text = self.font.render(f"Lives: {int(lives)}", True, SCORE_COLOR)
-        self.screen.blit(lives_text, (WINDOW_WIDTH - 200, 10))
-
-        # Draw diver count on right
-        divers_text = self.font.render(f"Divers: {int(divers)}/6", True, SCORE_COLOR)
-        self.screen.blit(divers_text, (WINDOW_WIDTH - 100, 40))
-
-    def draw_enemies(self, shark_positions, sub_positions, surface_sub_position, difficulty):
-        """Draw sharks and submarines"""
-        # Draw sharks
-        for pos in shark_positions:
-            if pos[0] > 0:  # Only draw if x position is valid
-                shark_rect = pygame.Rect(
-                    int(pos[0]) * 3, int(pos[1]) * 3,
-                    SHARK_SIZE[0] * 3, SHARK_SIZE[1] * 3
-                )
-
-                color = SHARK_DIFFICULTY_COLORS[difficulty % len(SHARK_DIFFICULTY_COLORS)]
-
-
-                pygame.draw.rect(self.screen, color, shark_rect)
-
-        # Draw submarines
-        for pos in sub_positions:
-            if pos[0] > 0:  # Only draw if x position is valid
-                sub_rect = pygame.Rect(
-                    int(pos[0]) * 3, int(pos[1]) * 3,
-                    ENEMY_SUB_SIZE[0] * 3, ENEMY_SUB_SIZE[1] * 3
-                )
-                pygame.draw.rect(self.screen, ENEMY_SUB_COLOR, sub_rect)
-
-        # draw surface sub
-        if surface_sub_position[0] > 0:
-            surface_sub_rect = pygame.Rect(
-                int(surface_sub_position[0]) * 3, int(surface_sub_position[1]) * 3,
-                ENEMY_SUB_SIZE[0] * 3, ENEMY_SUB_SIZE[1] * 3
+        def render_diver(i, raster_base):
+            should_render = diver_positions[i][0] > 0
+            return jax.lax.cond(
+                should_render,
+                lambda r: aj.render_at(
+                    r,
+                    diver_positions[i][1],
+                    diver_positions[i][0],
+                    frame_diver,
+                    flip_horizontal=(diver_positions[i][2] == FACE_LEFT)
+                ),
+                lambda r: r,
+                raster_base
             )
-            pygame.draw.rect(self.screen, ENEMY_SUB_COLOR, surface_sub_rect)
 
-    def draw_divers(self, diver_positions):
-        """Draw divers"""
-        for pos in diver_positions:
-            if pos[0] > 0:  # Only draw if x position is valid
-                diver_rect = pygame.Rect(
-                    int(pos[0]) * 3, int(pos[1]) * 3,
-                    DIVER_SIZE[0] * 3, DIVER_SIZE[1] * 3
-                )
-                pygame.draw.rect(self.screen, DIVER_COLOR, diver_rect)
-
-    def draw_player(self, x, y):
-        """Draw player submarine"""
-        player_rect = pygame.Rect(
-            int(x) * 3, int(y) * 3,
-            PLAYER_SIZE[0] * 3, PLAYER_SIZE[1] * 3
+        raster = jax.lax.fori_loop(
+            0,
+            MAX_DIVERS,
+            render_diver,
+            raster
         )
-        pygame.draw.rect(self.screen, PLAYER_COLOR, player_rect)
+        
+        # render sharks
+        frame_shark = aj.get_sprite_frame(SPRITE_SHARK, state.step_counter)
 
-    def draw_missiles(self, missile_positions):
-        """Draw missiles
-        Args:
-            missile_positions: Array of shape (N, 3) or (3,) containing missile data
-                where each missile has [x, y, direction]
-        """
-        # check if there is only a single missile (i.e. not multiple 3 element arrays)
-        if len(missile_positions.shape) == 1:
-            # Handle single missile case - reshape to match expected dimensions
-            missile_positions = jnp.expand_dims(missile_positions, axis=0)
+        def render_shark(i, raster_base):
+            should_render = state.shark_positions[i][0] > 0
+            return jax.lax.cond(
+                should_render,
+                lambda r: aj.render_at(
+                    r,
+                    state.shark_positions[i][1],
+                    state.shark_positions[i][0],
+                    frame_shark,
+                    flip_horizontal=(state.shark_positions[i][2] == FACE_LEFT)
+                ),
+                lambda r: r,
+                raster_base
+            )
+        # Use fori_loop to render all sharks
+        raster = jax.lax.fori_loop(
+            0,
+            MAX_DIVERS,
+            render_shark,
+            raster
+        )
+        
+        # render enemy subs
+        frame_enemy_sub = aj.get_sprite_frame(SPRITE_ENEMY_SUB, state.step_counter)
+        
+        def render_enemy_sub(i, raster_base):
+            should_render = state.sub_positions[i][0] > 0
+            return jax.lax.cond(
+                should_render,
+                lambda r: aj.render_at(
+                    r,
+                    state.sub_positions[i][1],
+                    state.sub_positions[i][0],
+                    frame_enemy_sub,
+                    flip_horizontal=(state.sub_positions[i][2] == FACE_LEFT)
+                ),
+                lambda r: r,
+                raster_base
+            )
+        
+        raster = jax.lax.fori_loop(
+            0,
+            MAX_SUBS,
+            render_enemy_sub,
+            raster
+        )
+        
+        def render_enemy_surface_sub(i, raster_base):
+            should_render = state.surface_sub_position[i][0] > 0
+            return jax.lax.cond(
+                should_render,
+                lambda r: aj.render_at(
+                    r,
+                    state.surface_sub_position[i][1],
+                    state.surface_sub_position[i][0],
+                    frame_enemy_sub,
+                    flip_horizontal=(state.surface_sub_position[i][2] == FACE_LEFT)
+                ),
+                lambda r: r,
+                raster_base
+            )   
+            
+        raster = jax.lax.fori_loop(
+            0,
+            MAX_SURFACE_SUBS,
+            render_enemy_surface_sub,
+            raster
+        )
+            
+        frame_enemy_torp = aj.get_sprite_frame(SPRITE_EN_TORP, state.step_counter)
+        
+        def render_enemy_torp (i, raster_base):
+            should_render = state.enemy_missile_positions[i][0] > 0
+            return jax.lax.cond(
+                should_render,
+                lambda r: aj.render_at(
+                    r,
+                    state.enemy_missile_positions[i][1],
+                    state.enemy_missile_positions[i][0],
+                    frame_enemy_torp,
+                    flip_horizontal=(state.enemy_missile_positions[i][2] == FACE_LEFT)
+                ),
+                lambda r: r,
+                raster_base
+            )
+        raster = jax.lax.fori_loop(
+            0,
+            MAX_ENEMY_MISSILES,
+            render_enemy_torp,
+            raster
+        )  
+        
+        # show the scores
+        score_array = aj.int_to_digits(state.score)
+        # convert the score to a list of digits
+        raster = aj.render_label(raster, 10, 10, score_array, DIGITS, spacing=7)
+        raster = aj.render_indicator(raster, 20, 10, state.lives, LIFE_INDICATOR, spacing=10)
+        raster = aj.render_indicator(raster, 178, 49, state.divers_collected, DIVER_INDICATOR, spacing=10)
+        
+        raster = aj.render_bar(raster, 170, 49, state.oxygen, 64, 63, 5, OXYGEN_BAR_COLOR, (0, 0, 0, 0))
+        return raster
+        
 
-        """Draw missiles"""
-        for pos in missile_positions:
-            # Only draw if missile exists (x position > 0)
-            if pos[0] > 0:
-                missile_rect = pygame.Rect(
-                    int(pos[0]) * 3,  # x position
-                    int(pos[1]) * 3,  # y position
-                    MISSILE_SIZE[0] * 3,
-                    MISSILE_SIZE[1] * 3
-                )
-                pygame.draw.rect(self.screen, PLAYER_COLOR, missile_rect)
-
-    def render(self, state: SeaquestState):
-        """Main render method that draws everything"""
-        # Clear screen
-        self.screen.fill(BACKGROUND_COLOR)
-
-        # Draw background effects
-        self.draw_water_gradient()
-
-        # Draw game objects
-        self.draw_divers(state.diver_positions)
-        self.draw_enemies(state.shark_positions, state.sub_positions, state.surface_sub_position, state.spawn_state.difficulty)
-        self.draw_missiles(state.player_missile_position)
-        self.draw_missiles(state.enemy_missile_positions)
-        self.draw_player(state.player_x, state.player_y)
-
-        # Draw HUD elements
-        self.draw_oxygen_bar(state.oxygen)
-        self.draw_score_lives_and_divers(state.score, state.lives, state.divers_collected)
-
-        # Update display
-        pygame.display.flip()
-        self.clock.tick(60)
+    #     self.hud_oxygen.current_value = state.oxygen.item()
+    #     # finally, update the canvas
+    #     self.canvas.update()
 
 
 def get_human_action() -> chex.Array:
@@ -2679,7 +2797,13 @@ def get_human_action() -> chex.Array:
 
 if __name__ == "__main__":
     # Initialize game and renderer
-    game = JaxSeaquest(frameskip=1)
+    game = Game(frameskip=1)
+    pygame.init()
+    screen = pygame.display.set_mode((WIDTH * SCALING_FACTOR, HEIGHT * SCALING_FACTOR))
+    clock = pygame.time.Clock()
+   
+    
+    renderer_AtraJaxis = Renderer_AtraJaxis()
 
     # Get jitted functions
     jitted_step = jax.jit(game.step)
@@ -2715,8 +2839,12 @@ if __name__ == "__main__":
                 action = get_human_action()
                 curr_state, curr_obs, reward, done, info = jitted_step(curr_state, action)
 
-        renderer.render(curr_state)
+        # render and update pygame
+        raster = renderer_AtraJaxis.render(curr_state)
+        aj.update_pygame(screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
+        # renderer.render(curr_state)   
         counter += 1
-        renderer.clock.tick(64)
+        clock.tick(60)
+        # renderer.clock.tick(256)
 
     pygame.quit()
