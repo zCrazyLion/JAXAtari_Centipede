@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class Canvas:
     """
     A class that represents a canvas for rendering layers.
@@ -102,7 +103,9 @@ class Canvas:
         """
         # Extract the RGB channels and the alpha channel from the new layer
         newLayerRGB = newLayer[..., :3]  # Shape: (height, width, 3)
-        alpha = newLayer[..., 3] / 255.0  # Normalize alpha to [0, 1], Shape: (height, width)
+        alpha = (
+            newLayer[..., 3] / 255.0
+        )  # Normalize alpha to [0, 1], Shape: (height, width)
 
         # Ensure base and newLayer dimensions match
         if base.shape[:2] != newLayer.shape[:2]:

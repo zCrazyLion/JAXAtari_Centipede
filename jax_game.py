@@ -8,6 +8,7 @@ from jax_seaquest import JaxSeaquest
 from jax_skiing import SkiingGameLogic as JaxSkiing
 from jax_tennis import Game as JaxTennis
 
+
 class JAXAtari:
     def __init__(self, game_name):
         match game_name:
@@ -26,7 +27,6 @@ class JAXAtari:
             case _:
                 raise NotImplementedError(f"The game {game_name} does not exist")
         self.env: JaxEnvironment = env
-
 
     def get_init_state(self):
         fn = jax.jit(self.env.reset)

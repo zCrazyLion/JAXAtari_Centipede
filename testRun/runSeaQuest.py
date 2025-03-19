@@ -17,20 +17,23 @@ os.makedirs(screenshot_dir, exist_ok=True)
 # Counter for frame filenames
 frame_counter = 1
 
+
 def get_action_from_key(key):
     """Map keyboard keys to ALE actions."""
     key_action_map = {
-        pygame.K_UP: 2,      # Move Up
-        pygame.K_DOWN: 5,    # Move Down
-        pygame.K_LEFT: 4,    # Move Left
-        pygame.K_RIGHT: 3,   # Move Right
-        pygame.K_SPACE: 1    # Fire torpedoes 
+        pygame.K_UP: 2,  # Move Up
+        pygame.K_DOWN: 5,  # Move Down
+        pygame.K_LEFT: 4,  # Move Left
+        pygame.K_RIGHT: 3,  # Move Right
+        pygame.K_SPACE: 1,  # Fire torpedoes
     }
     return key_action_map.get(key, 0)  # Default to no-op
+
 
 def get_current_render():
     """Return the current rendering pixel array."""
     return ale.getScreenRGB()
+
 
 def save_frame_as_numpy(frame):
     """Save the given frame as a NumPy array with an auto-incremented filename."""
@@ -39,8 +42,11 @@ def save_frame_as_numpy(frame):
     np.save(filepath, frame)
     print(f"Frame saved as NumPy array: {filepath}")
     frame_counter += 1
+
+
 # Add a global set to track pressed keys
 pressed_keys = set()
+
 
 def main():
     pygame.init()
@@ -58,7 +64,9 @@ def main():
     while running:
         frame = get_current_render()
         frame_surface = pygame.surfarray.make_surface(np.transpose(frame, (1, 0, 2)))
-        frame_surface = pygame.transform.scale(frame_surface, (screen_width, screen_height))
+        frame_surface = pygame.transform.scale(
+            frame_surface, (screen_width, screen_height)
+        )
         screen.blit(frame_surface, (0, 0))
         pygame.display.flip()
 
@@ -72,7 +80,9 @@ def main():
                     save_frame_as_numpy(frame)
                 elif event.key == pygame.K_p:  # Toggle pause
                     paused = not paused
-                    pygame.display.set_caption(f"{base_caption} (Paused)" if paused else base_caption)
+                    pygame.display.set_caption(
+                        f"{base_caption} (Paused)" if paused else base_caption
+                    )
                 elif paused and event.key == pygame.K_f:  # Step one frame
                     action = ale.act(action)  # Execute one frame of the game
                     print("Stepped one frame.")
@@ -98,6 +108,7 @@ def main():
         clock.tick(60)  # Limit to 60 FPS
 
     pygame.quit()
+
 
 if __name__ == "__main__":
     main()

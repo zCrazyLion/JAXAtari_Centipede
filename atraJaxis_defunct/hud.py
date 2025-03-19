@@ -1,6 +1,7 @@
 from atraJaxis_defunct.gameObject import GameObject
 import numpy as np
 
+
 class TextHUD(GameObject):
     """
     A class to represent a text-based Heads-Up Display (HUD) in a game.
@@ -31,6 +32,7 @@ class TextHUD(GameObject):
     update():
         Updates the text frame based on the current text and character frames.
     """
+
     def __init__(self, text, x, y, charToFrame, spaceBetweenChars):
         super().__init__(x, y, None)
         self.text = text
@@ -38,7 +40,7 @@ class TextHUD(GameObject):
         self.charToFrame = charToFrame
         self.spaceBetweenChars = spaceBetweenChars
         self.update()
-        
+
     def render(self, grid):
         """
         Renders the frame onto the provided grid at the specified position.
@@ -54,10 +56,14 @@ class TextHUD(GameObject):
         # put self.frame on the grid at position (self.x, self.y)
         for i in range(self.width):
             for j in range(self.height):
-                if self.x + j < len(grid[0]) and self.y + i < len(grid) and self.x + j >= 0 and self.y + i >= 0:
+                if (
+                    self.x + j < len(grid[0])
+                    and self.y + i < len(grid)
+                    and self.x + j >= 0
+                    and self.y + i >= 0
+                ):
                     grid[self.y + i][self.x + j] = frame_t[i][j]
 
-                
     def update(self):
         """
         Updates the dimensions and frame of the text based on the characters and their spacing.
@@ -74,12 +80,12 @@ class TextHUD(GameObject):
         self.width = 0
         for char in self.text:
             self.width += self.charToFrame[char].shape[1] + self.spaceBetweenChars
-            
+
         # Then, compute the height of the text: height = maximum of the heights of the characters
         self.height = 0
         for char in self.text:
             self.height = max(self.height, self.charToFrame[char].shape[0])
-        
+
         # Finally, compute the frame of the text
         self.frame = np.zeros((self.height, self.width, 4), dtype=np.uint8)
         currentX = 0
@@ -89,7 +95,8 @@ class TextHUD(GameObject):
                 for j in range(charFrame.shape[1]):
                     self.frame[i][currentX + j] = charFrame[i][j]
             currentX += charFrame.shape[1] + self.spaceBetweenChars
-        return 
+        return
+
 
 class BarHUD(GameObject):
     def __init__(self, x, y, width, height, max_value, current_value, color):
@@ -113,7 +120,7 @@ class BarHUD(GameObject):
         self.color = color
         self.frame = None
         self.update()
-        
+
     def render(self, grid):
         """
         Renders the frame onto the provided grid at the position (self.x, self.y).
@@ -129,9 +136,14 @@ class BarHUD(GameObject):
         # put self.frame on the grid at position (self.x, self.y)
         for i in range(self.width):
             for j in range(self.height):
-                if self.y + i < len(grid) and self.x + j < len(grid[0]) and self.x + j >= 0 and self.y + i >= 0:
+                if (
+                    self.y + i < len(grid)
+                    and self.x + j < len(grid[0])
+                    and self.x + j >= 0
+                    and self.y + i >= 0
+                ):
                     grid[self.y + i][self.x + j] = self.frame[i][j]
-                    
+
     def update(self):
         """
         Updates the frame with the current value of the bar.

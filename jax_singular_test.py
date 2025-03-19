@@ -341,42 +341,55 @@ def print_benchmark_results(
 
 
 if __name__ == "__main__":
-    jax_game_name = "pong"
-    oc_atari_game_name = "Pong-v4"
-    number_of_steps = 1_000_000
+    GAMES_TO_TEST = [
+        ("pong", "Pong-v4"),
+        ("breakout", "Breakout"),
+        ("freeway", "Freeway"),
+        ("seaquest", "Seaquest"),
+        ("skiing", "Skiing"),
+        ("tennis", "Tennis"),
+    ]
+    NUMBER_OF_STEPS = 1_000_000
 
-    # Create results folder
-    Path("./results").mkdir(parents=True, exist_ok=True)
+    for game in GAMES_TO_TEST:
+        jax_game_name, oc_atari_game_name = game
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Create results folder
+        Path("./results").mkdir(parents=True, exist_ok=True)
 
-    # Save device information
-    with open(f"./results/logging_{timestamp}.txt", "a") as f:
-        print("\nSystem Information:", file=f)
-        print(f"CPU cores available: {mp.cpu_count()}", file=f)
-        print("Available devices:", jax.devices(), file=f)
-        print("Default device:", jax.default_device(), file=f)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Run scaling benchmarks
-    print("\nRunning scaling benchmarks...")
-    cpu_workers, cpu_results, gpu_workers, gpu_results = run_scaling_benchmarks(
-        jax_game_name, oc_atari_game_name, num_steps=number_of_steps
-    )
+        # Save device information
+        with open(f"./results/logging_{timestamp}.txt", "a") as f:
+            print("\nSystem Information:", file=f)
+            print(f"CPU cores available: {mp.cpu_count()}", file=f)
+            print("Available devices:", jax.devices(), file=f)
+            print("Default device:", jax.default_device(), file=f)
 
-    # Plot scaling results
-    print("\nGenerating scaling plots...")
-    plot_scaling_results(cpu_workers, cpu_results, gpu_workers, gpu_results, timestamp)
+        # Run scaling benchmarks
+        print("\nRunning scaling benchmarks...")
+        cpu_workers, cpu_results, gpu_workers, gpu_results = run_scaling_benchmarks(
+            jax_game_name, oc_atari_game_name, num_steps=NUMBER_OF_STEPS
+        )
 
-    # Run standard benchmarks for detailed comparison
-    print("\nRunning standard benchmarks...")
-    jax_results = run_parallel_jax(jax_game_name)
-    print_benchmark_results("JAX", *jax_results)
+        # Plot scaling results
+        print("\nGenerating scaling plots...")
+        plot_scaling_results(
+            cpu_workers, cpu_results, gpu_workers, gpu_results, timestamp
+        )
 
-    ocatari_results = run_parallel_ocatari(oc_atari_game_name)
-    print_benchmark_results("OCAtari", *ocatari_results)
+        # Run standard benchmarks for detailed comparison
+        print("\nRunning standard benchmarks...")
+        jax_results = run_parallel_jax(jax_game_name)
+        print_benchmark_results(f"JAX {jax_game_name}", *jax_results)
 
-    # Plot comparison results
-    print("\nGenerating comparison plots...")
-    plot_benchmark_comparison(jax_results, ocatari_results, timestamp)
+        ocatari_results = run_parallel_ocatari(oc_atari_game_name)
+        print_benchmark_results(f"OCAtari {oc_atari_game_name}", *ocatari_results)
 
-    print("\nBenchmark complete! Check the generated plot files for visualizations.")
+        # Plot comparison results
+        print("\nGenerating comparison plots...")
+        plot_benchmark_comparison(jax_results, ocatari_results, timestamp)
+
+        print(
+            "\nBenchmark complete! Check the generated plot files for visualizations."
+        )

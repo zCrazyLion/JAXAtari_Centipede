@@ -116,11 +116,13 @@ class State(NamedTuple):
     acceleration_counter: chex.Array
     buffer: chex.Array
 
+
 class EntityPosition(NamedTuple):
     x: jnp.ndarray
     y: jnp.ndarray
     width: jnp.ndarray
     height: jnp.ndarray
+
 
 class PongObservation(NamedTuple):
     player: EntityPosition
@@ -128,6 +130,7 @@ class PongObservation(NamedTuple):
     ball: EntityPosition
     score_player: jnp.ndarray
     score_enemy: jnp.ndarray
+
 
 class PongInfo(NamedTuple):
     time: jnp.ndarray
@@ -567,7 +570,13 @@ class Game(JaxEnvironment[State, PongObservation, PongInfo]):
             width=jnp.array(BALL_SIZE[0]),
             height=jnp.array(BALL_SIZE[1]),
         )
-        return PongObservation(player=player, enemy=enemy, ball=ball, score_player=state.player_score, score_enemy=state.enemy_score)
+        return PongObservation(
+            player=player,
+            enemy=enemy,
+            ball=ball,
+            score_player=state.player_score,
+            score_enemy=state.enemy_score,
+        )
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_info(self, state: State) -> PongInfo:
@@ -575,11 +584,16 @@ class Game(JaxEnvironment[State, PongObservation, PongInfo]):
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_reward(self, previous_state: State, state: State):
-        return (state.player_score - state.enemy_score) - (previous_state.player_score - previous_state.enemy_score)
+        return (state.player_score - state.enemy_score) - (
+            previous_state.player_score - previous_state.enemy_score
+        )
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: State) -> bool:
-        return jnp.logical_or(jnp.greater_equal(state.player_score, 20), jnp.greater_equal(state.enemy_score, 20))
+        return jnp.logical_or(
+            jnp.greater_equal(state.player_score, 20),
+            jnp.greater_equal(state.enemy_score, 20),
+        )
 
 
 class Renderer:
@@ -721,7 +735,9 @@ if __name__ == "__main__":
                 if event.key == pygame.K_n and frame_by_frame:
                     if counter % frameskip == 0:
                         action = get_human_action()
-                        curr_state, obs, reward, done, info = jitted_step(curr_state, action)
+                        curr_state, obs, reward, done, info = jitted_step(
+                            curr_state, action
+                        )
 
         if not frame_by_frame:
             if counter % frameskip == 0:

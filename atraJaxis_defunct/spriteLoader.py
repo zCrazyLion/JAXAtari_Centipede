@@ -5,13 +5,15 @@ from pathlib import Path, PureWindowsPath
 import os
 
 
-class AgnosticPath(Path): # https://stackoverflow.com/questions/60291545/converting-windows-path-to-linux
+class AgnosticPath(
+    Path
+):  # https://stackoverflow.com/questions/60291545/converting-windows-path-to-linux
     """A class that can handle input with Windows (\\) and/or posix (/) separators for paths"""
 
     def __new__(cls, *args, **kwargs):
         new_path = PureWindowsPath(*args).parts
         if (os.name != "nt") and (len(new_path) > 0) and (new_path[0] in ("/", "\\")):
-          new_path = ("/", *new_path[1:])
+            new_path = ("/", *new_path[1:])
         return super().__new__(Path, *new_path, **kwargs)
 
 
@@ -64,10 +66,12 @@ class SpriteLoader:
 
         # Check if the frame's shape is [[[r, g, b, a], ...], ...]
         if frame.ndim != 3 or frame.shape[2] != 4:
-            raise ValueError("Invalid frame format. The frame must have a shape of (height, width, 4).")
+            raise ValueError(
+                "Invalid frame format. The frame must have a shape of (height, width, 4)."
+            )
 
         # Name defaults to the file name, or uses the name parameter
-        name = kwargs.get('name', fileName)
+        name = kwargs.get("name", fileName)
         if name in self.frames:
             raise ValueError("The frame name is already used.")
 
@@ -99,12 +103,14 @@ class SpriteLoader:
 
         # Check render_mode is a RenderMode enum
         if not isinstance(render_mode, RenderMode):
-            raise ValueError("Invalid render mode. The render_mode must be a RenderMode enum.")
+            raise ValueError(
+                "Invalid render mode. The render_mode must be a RenderMode enum."
+            )
 
         # Store sprite
         self.sprites[name] = Sprite(
             [(self.frames[frame_name], duration) for frame_name, duration in frames],
-            render_mode
+            render_mode,
         )
 
     def getSprite(self, name, copy=True):
@@ -133,7 +139,11 @@ class SpriteLoader:
 
         sprite = self.sprites[name]
         # Return a deep copy or the original sprite
-        return Sprite(
-            [(frame.copy(), duration) for frame, duration in sprite.key_frames],
-            sprite.render_mode
-        ) if copy else sprite
+        return (
+            Sprite(
+                [(frame.copy(), duration) for frame, duration in sprite.key_frames],
+                sprite.render_mode,
+            )
+            if copy
+            else sprite
+        )

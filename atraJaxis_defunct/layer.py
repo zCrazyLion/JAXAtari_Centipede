@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class Layer:
     """
     A class to represent a layer in a game.
@@ -74,7 +75,11 @@ class Layer:
         This method removes destroyed game objects and updates the remaining ones.
         """
         # Remove destroyed gameObjects
-        self.gameObjects = [gameObject for gameObject in self.gameObjects if not gameObject.isDestroyed()]
+        self.gameObjects = [
+            gameObject
+            for gameObject in self.gameObjects
+            if not gameObject.isDestroyed()
+        ]
 
         # Update remaining gameObjects
         for gameObject in self.gameObjects:

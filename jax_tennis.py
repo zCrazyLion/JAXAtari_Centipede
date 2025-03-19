@@ -7,47 +7,50 @@ import numpy as np
 import pygame
 import atraJaxis as aj
 
+
 def load_sprites():
     BG = aj.loadFrame("sprites/tennis/bg/1.npy")
-    
+
     frames_pl_r = []
     for i in range(1, 5):
         frame = aj.loadFrame(f"sprites/tennis/pl_red/{i}.npy")
         frames_pl_r.append(frame)
     PL_R = jnp.array(aj.pad_to_match(frames_pl_r))
-    
+
     frames_bat_r = []
     for i in range(1, 5):
         frame = aj.loadFrame(f"sprites/tennis/bat_r/{i}.npy")
         frames_bat_r.append(frame)
     BAT_R = jnp.array(aj.pad_to_match(frames_bat_r))
-    
+
     frames_pl_b = []
     for i in range(1, 5):
         frame = aj.loadFrame(f"sprites/tennis/pl_blue/{i}.npy")
         frames_pl_b.append(frame)
     PL_B = jnp.array(aj.pad_to_match(frames_pl_b))
-    
+
     frames_bat_b = []
     for i in range(1, 5):
         frame = aj.loadFrame(f"sprites/tennis/bat_b/{i}.npy")
         frames_bat_b.append(frame)
     BAT_B = jnp.array(aj.pad_to_match(frames_bat_b))
-    
+
     BALL = aj.loadFrame("sprites/tennis/ball/1.npy")
     BALL_SHADE = aj.loadFrame("sprites/tennis/ball_shade/1.npy")
-    
+
     DIGITS_R = aj.load_and_pad_digits("sprites/tennis/digits_r/{}.npy")
     DIGITS_B = aj.load_and_pad_digits("sprites/tennis/digits_b/{}.npy")
 
-    
     return BG, PL_R, BAT_R, PL_B, BAT_B, BALL, BALL_SHADE, DIGITS_R, DIGITS_B
 
+
 BG, PL_R, BAT_R, PL_B, BAT_B, BALL, BALL_SHADE, DIGITS_R, DIGITS_B = load_sprites()
+
 
 # TODO: remove, for debugging purposes only
 def jaxprint(arg1, arg2=None):
     jax.debug.print("{x}: {y}", x=arg1, y=arg2)
+
 
 # Action constants (placeholders - to be defined according to ALE)
 NOOP = 0
@@ -73,46 +76,137 @@ BALL_SIZE = 2
 
 WAIT_AFTER_GOAL = 0  # number of ticks that are waited after a goal was scored
 
-Z_DERIVATIVES = jnp.array([
-    # Bounce recovery from 0
-    3, 2, 3, 2, 2, 2,
-
-    # This is where we join during serve (height ~14)
-    2, 2, 2, 2, 2, 1, 2, 1, 1, 2, 1, 0, 1, 1, 0, 1,
-
-    # Peak plateau at 38
-    0, 0, 0, 0, 0, -1, 0, -1, -1, 0, -1,
-
-    # Main descent
-    -2, -1, -1, -2, -1, -2, -2, -2, -2, -2,
-
-    # Final drop to 0
-    -3, -2, -3, -3, -2, -3, -1
-])
+Z_DERIVATIVES = jnp.array(
+    [
+        # Bounce recovery from 0
+        3,
+        2,
+        3,
+        2,
+        2,
+        2,
+        # This is where we join during serve (height ~14)
+        2,
+        2,
+        2,
+        2,
+        2,
+        1,
+        2,
+        1,
+        1,
+        2,
+        1,
+        0,
+        1,
+        1,
+        0,
+        1,
+        # Peak plateau at 38
+        0,
+        0,
+        0,
+        0,
+        0,
+        -1,
+        0,
+        -1,
+        -1,
+        0,
+        -1,
+        # Main descent
+        -2,
+        -1,
+        -1,
+        -2,
+        -1,
+        -2,
+        -2,
+        -2,
+        -2,
+        -2,
+        # Final drop to 0
+        -3,
+        -2,
+        -3,
+        -3,
+        -2,
+        -3,
+        -1,
+    ]
+)
 
 # Y-movement derivatives (excluding net jump)
-Y_DERIVATIVES = jnp.array([
-    # Initial oscillation
-    0, -2, 0, 0, 0, 2, 0, 0, 0, 2,
-
-    # Gradual rise with alternating speeds
-    0, 2, 0, 2, 0, 2, 2, 1, 3, 2,
-
-    # Steady rise
-    2, 2, 2, 2, 4, 2, 4, 2, 4, 2,
-
-    # Fast rise before net
-    4, 4, 4, 2, 4,
-
-    # After net (landed around y=114)
-    4, 4, 6, 4, 6, 2, -2, 0, 0, 0,
-
-    # Plateau with slight adjustments
-    0, 0, 0, 0, 2, 0, 0, 2, 0, 2,
-
-    # Final movement
-    0, 2, 8, -4
-])
+Y_DERIVATIVES = jnp.array(
+    [
+        # Initial oscillation
+        0,
+        -2,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        2,
+        # Gradual rise with alternating speeds
+        0,
+        2,
+        0,
+        2,
+        0,
+        2,
+        2,
+        1,
+        3,
+        2,
+        # Steady rise
+        2,
+        2,
+        2,
+        2,
+        4,
+        2,
+        4,
+        2,
+        4,
+        2,
+        # Fast rise before net
+        4,
+        4,
+        4,
+        2,
+        4,
+        # After net (landed around y=114)
+        4,
+        4,
+        6,
+        4,
+        6,
+        2,
+        -2,
+        0,
+        0,
+        0,
+        # Plateau with slight adjustments
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        2,
+        0,
+        2,
+        # Final movement
+        0,
+        2,
+        8,
+        -4,
+    ]
+)
 
 # all x patterns as global constants
 PATTERN_1 = jnp.array([1])  # Edge right
@@ -120,7 +214,9 @@ PATTERN_2 = jnp.array([1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0])  # Near right
 PATTERN_3 = jnp.array([0, 1, 1, 0, 1, 1, 0, 1, 1])  # Right 3-4
 PATTERN_4 = jnp.array([1, 0, 0, 1, 0, 0, 0])  # Right 5
 PATTERN_5 = jnp.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1])  # Right 6-7
-PATTERN_6 = jnp.array([-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])  # Position 8 & left 7-8
+PATTERN_6 = jnp.array(
+    [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+)  # Position 8 & left 7-8
 PATTERN_7 = jnp.array([-1, 0, 0, -1, 0, 0, 0])  # Right 9
 PATTERN_8 = jnp.array([-1, 0])  # Right 10 & left 5
 PATTERN_9 = jnp.array([-1, -1, 0])  # Right 11-13, left 10, & left 1-4
@@ -128,57 +224,121 @@ PATTERN_10 = jnp.array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1])  # Left 9
 PATTERN_11 = jnp.array([-1, 0, 0])  # Left 6
 
 # Create a 2D array where each row is a pattern, padded to the same length
-max_length = max(len(p) for p in [
-    PATTERN_1, PATTERN_2, PATTERN_3, PATTERN_4, PATTERN_5,
-    PATTERN_6, PATTERN_7, PATTERN_8, PATTERN_9, PATTERN_10, PATTERN_11
-])
+max_length = max(
+    len(p)
+    for p in [
+        PATTERN_1,
+        PATTERN_2,
+        PATTERN_3,
+        PATTERN_4,
+        PATTERN_5,
+        PATTERN_6,
+        PATTERN_7,
+        PATTERN_8,
+        PATTERN_9,
+        PATTERN_10,
+        PATTERN_11,
+    ]
+)
+
 
 # Pad each pattern to max_length
 def pad_pattern(pattern, length):
     return jnp.pad(pattern, (0, length - len(pattern)), mode="wrap")
 
+
 # Create a single 2D array of patterns
-STACKED_X_PATTERNS = jnp.stack([
-    pad_pattern(PATTERN_1, max_length),
-    pad_pattern(PATTERN_2, max_length),
-    pad_pattern(PATTERN_3, max_length),
-    pad_pattern(PATTERN_4, max_length),
-    pad_pattern(PATTERN_5, max_length),
-    pad_pattern(PATTERN_6, max_length),
-    pad_pattern(PATTERN_7, max_length),
-    pad_pattern(PATTERN_8, max_length),
-    pad_pattern(PATTERN_9, max_length),
-    pad_pattern(PATTERN_10, max_length),
-    pad_pattern(PATTERN_11, max_length)
-])
+STACKED_X_PATTERNS = jnp.stack(
+    [
+        pad_pattern(PATTERN_1, max_length),
+        pad_pattern(PATTERN_2, max_length),
+        pad_pattern(PATTERN_3, max_length),
+        pad_pattern(PATTERN_4, max_length),
+        pad_pattern(PATTERN_5, max_length),
+        pad_pattern(PATTERN_6, max_length),
+        pad_pattern(PATTERN_7, max_length),
+        pad_pattern(PATTERN_8, max_length),
+        pad_pattern(PATTERN_9, max_length),
+        pad_pattern(PATTERN_10, max_length),
+        pad_pattern(PATTERN_11, max_length),
+    ]
+)
 
 # Store the length of each pattern for proper cycling
-PATTERN_LENGTHS = jnp.array([
-    len(PATTERN_1), len(PATTERN_2), len(PATTERN_3),
-    len(PATTERN_4), len(PATTERN_5), len(PATTERN_6),
-    len(PATTERN_7), len(PATTERN_8), len(PATTERN_9),
-    len(PATTERN_10), len(PATTERN_11)
-])
+PATTERN_LENGTHS = jnp.array(
+    [
+        len(PATTERN_1),
+        len(PATTERN_2),
+        len(PATTERN_3),
+        len(PATTERN_4),
+        len(PATTERN_5),
+        len(PATTERN_6),
+        len(PATTERN_7),
+        len(PATTERN_8),
+        len(PATTERN_9),
+        len(PATTERN_10),
+        len(PATTERN_11),
+    ]
+)
 
 # Pre-compute first non-zero values for each pattern
-X_DIRECTION_ARRAY = jnp.array([
-    1,   # PATTERN_1 starts with 1
-    1,   # PATTERN_2 starts with 1
-    0,   # PATTERN_3 starts with 0, but first non-zero is 1
-    1,   # PATTERN_4 starts with 1
-    0,   # PATTERN_5 starts with many 0s, first non-zero is 1
-    -1,  # PATTERN_6 starts with -1
-    -1,  # PATTERN_7 starts with -1
-    -1,  # PATTERN_8 starts with -1
-    -1,  # PATTERN_9 starts with -1
-    0,   # PATTERN_10 starts with 0s, first non-zero is 1
-    -1   # PATTERN_11 starts with -1
-])
+X_DIRECTION_ARRAY = jnp.array(
+    [
+        1,  # PATTERN_1 starts with 1
+        1,  # PATTERN_2 starts with 1
+        0,  # PATTERN_3 starts with 0, but first non-zero is 1
+        1,  # PATTERN_4 starts with 1
+        0,  # PATTERN_5 starts with many 0s, first non-zero is 1
+        -1,  # PATTERN_6 starts with -1
+        -1,  # PATTERN_7 starts with -1
+        -1,  # PATTERN_8 starts with -1
+        -1,  # PATTERN_9 starts with -1
+        0,  # PATTERN_10 starts with 0s, first non-zero is 1
+        -1,  # PATTERN_11 starts with -1
+    ]
+)
 
 TOPSIDE_STARTING_Z = 28
-BOTSIDE_STARTING_Z = 2 # approx
-TOPSIDE_BOUNCE = jnp.array([0,0,0,0,0,0,0,0,0,2,0,0,2,-2,-4,-4,-6,-4,-4,-4,-2,-4,-4,-4,-2,-4,-2,-4,-2,-2,-2,-2,-2,-2])
-BOTSIDE_BOUNCE = jnp.array([0,0,0,0,0,0,0,0,0,2,0,0,2,0,2])
+BOTSIDE_STARTING_Z = 2  # approx
+TOPSIDE_BOUNCE = jnp.array(
+    [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        2,
+        -2,
+        -4,
+        -4,
+        -6,
+        -4,
+        -4,
+        -4,
+        -2,
+        -4,
+        -4,
+        -4,
+        -2,
+        -4,
+        -2,
+        -4,
+        -2,
+        -2,
+        -2,
+        -2,
+        -2,
+        -2,
+    ]
+)
+BOTSIDE_BOUNCE = jnp.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 2])
 
 
 # Index to jump to after crossing net (skip the 18 value)
@@ -209,6 +369,7 @@ NET_TOP_RIGHT = (120, 48)  # (120, 48)
 NET_BOTTOM_LEFT = (24, 178)
 NET_BOTTOM_RIGHT = (136, 178)
 
+
 # TODO: due to the movement properties of the ball in Tennis, the velocity values should probably represent how frequent ticks are skipped..
 # Define state container
 class State(NamedTuple):
@@ -233,7 +394,7 @@ class State(NamedTuple):
     player_score: chex.Array
     enemy_score: chex.Array
     serving: chex.Array  # boolean for serve state
-    just_hit: chex.Array # boolean for just hit state
+    just_hit: chex.Array  # boolean for just hit state
     player_side: chex.Array  # 0 if player on top side; 1 if player on bottom side
     ball_was_infield: chex.Array
     current_tick: chex.Array
@@ -242,7 +403,6 @@ class State(NamedTuple):
     ball_x_counter: chex.Array  # Current index in the pattern
     player_hit: chex.Array
     enemy_hit: chex.Array
-
 
 
 def get_human_action() -> chex.Array:
@@ -268,7 +428,9 @@ def get_human_action() -> chex.Array:
 
 
 @partial(jax.jit, static_argnums=())
-def get_ball_x_pattern(impact_point: chex.Array, player_direction: chex.Array) -> Tuple[chex.Array, chex.Array]:
+def get_ball_x_pattern(
+    impact_point: chex.Array, player_direction: chex.Array
+) -> Tuple[chex.Array, chex.Array]:
     """
     Determines the ball's x-direction pattern based on where it hit the player's paddle.
 
@@ -298,19 +460,19 @@ def get_ball_x_pattern(impact_point: chex.Array, player_direction: chex.Array) -
         return jax.lax.switch(
             point,
             [
-                lambda: EDGE_RIGHT,                # 0: Rightmost edge
-                lambda: NEAR_RIGHT,                # 1: 1-2 pixels from right
-                lambda: NEAR_RIGHT,                # 2: 1-2 pixels from right
-                lambda: RIGHT_3_4,                 # 3: 3 pixels from right
-                lambda: RIGHT_3_4,                 # 4: 4 pixels from right
-                lambda: RIGHT_5,                   # 5: 5 pixels from right
-                lambda: RIGHT_6_7,                 # 6: 6-7 pixels from right
-                lambda: RIGHT_6_7,                 # 7: 6-7 pixels from right
-                lambda: RIGHT_LEFT_8,              # 8: 8 pixels from right
-                lambda: RIGHT_9,                   # 9: 9 pixels from right
-                lambda: RIGHT_10_LEFT_5,           # 10: 10 pixels from right
-                lambda: RIGHT_11_13_LEFT_1_4_10,   # 11: 11-13 pixels from right
-                lambda: RIGHT_11_13_LEFT_1_4_10,   # 12: 11-13 pixels from right
+                lambda: EDGE_RIGHT,  # 0: Rightmost edge
+                lambda: NEAR_RIGHT,  # 1: 1-2 pixels from right
+                lambda: NEAR_RIGHT,  # 2: 1-2 pixels from right
+                lambda: RIGHT_3_4,  # 3: 3 pixels from right
+                lambda: RIGHT_3_4,  # 4: 4 pixels from right
+                lambda: RIGHT_5,  # 5: 5 pixels from right
+                lambda: RIGHT_6_7,  # 6: 6-7 pixels from right
+                lambda: RIGHT_6_7,  # 7: 6-7 pixels from right
+                lambda: RIGHT_LEFT_8,  # 8: 8 pixels from right
+                lambda: RIGHT_9,  # 9: 9 pixels from right
+                lambda: RIGHT_10_LEFT_5,  # 10: 10 pixels from right
+                lambda: RIGHT_11_13_LEFT_1_4_10,  # 11: 11-13 pixels from right
+                lambda: RIGHT_11_13_LEFT_1_4_10,  # 12: 11-13 pixels from right
             ],
         )
 
@@ -319,19 +481,19 @@ def get_ball_x_pattern(impact_point: chex.Array, player_direction: chex.Array) -
         return jax.lax.switch(
             point,
             [
-                lambda: RIGHT_11_13_LEFT_1_4_10,   # 0: 1-4 pixels from left
-                lambda: RIGHT_11_13_LEFT_1_4_10,   # 1: 1-4 pixels from left
-                lambda: RIGHT_11_13_LEFT_1_4_10,   # 2: 1-4 pixels from left
-                lambda: RIGHT_11_13_LEFT_1_4_10,   # 3: 1-4 pixels from left
-                lambda: RIGHT_10_LEFT_5,           # 4: 5 pixels from left
-                lambda: LEFT_6,                    # 5: 6 pixels from left
-                lambda: RIGHT_LEFT_8,              # 6: 7-8 pixels from left
-                lambda: RIGHT_LEFT_8,              # 7: 7-8 pixels from left
-                lambda: LEFT_9,                    # 8: 9 pixels from left
-                lambda: RIGHT_11_13_LEFT_1_4_10,   # 9: 10 pixels from left
-                lambda: RIGHT_11_13_LEFT_1_4_10,   # 10: After switch point
-                lambda: RIGHT_11_13_LEFT_1_4_10,   # 11: After switch point
-                lambda: RIGHT_11_13_LEFT_1_4_10,   # 12: After switch point
+                lambda: RIGHT_11_13_LEFT_1_4_10,  # 0: 1-4 pixels from left
+                lambda: RIGHT_11_13_LEFT_1_4_10,  # 1: 1-4 pixels from left
+                lambda: RIGHT_11_13_LEFT_1_4_10,  # 2: 1-4 pixels from left
+                lambda: RIGHT_11_13_LEFT_1_4_10,  # 3: 1-4 pixels from left
+                lambda: RIGHT_10_LEFT_5,  # 4: 5 pixels from left
+                lambda: LEFT_6,  # 5: 6 pixels from left
+                lambda: RIGHT_LEFT_8,  # 6: 7-8 pixels from left
+                lambda: RIGHT_LEFT_8,  # 7: 7-8 pixels from left
+                lambda: LEFT_9,  # 8: 9 pixels from left
+                lambda: RIGHT_11_13_LEFT_1_4_10,  # 9: 10 pixels from left
+                lambda: RIGHT_11_13_LEFT_1_4_10,  # 10: After switch point
+                lambda: RIGHT_11_13_LEFT_1_4_10,  # 11: After switch point
+                lambda: RIGHT_11_13_LEFT_1_4_10,  # 12: After switch point
             ],
         )
 
@@ -339,14 +501,16 @@ def get_ball_x_pattern(impact_point: chex.Array, player_direction: chex.Array) -
     pattern_index = jax.lax.cond(
         player_direction == 0,
         lambda: select_right_facing_pattern_index(impact_point.astype(jnp.int32)),
-        lambda: select_left_facing_pattern_index(impact_point.astype(jnp.int32))
+        lambda: select_left_facing_pattern_index(impact_point.astype(jnp.int32)),
     )
 
     return pattern_index
 
 
 @partial(jax.jit, static_argnums=())
-def update_z_position(z_pos: chex.Array, current_tick: chex.Array, serve_hit: chex.Array) -> Tuple[chex.Array, chex.Array, chex.Array]:
+def update_z_position(
+    z_pos: chex.Array, current_tick: chex.Array, serve_hit: chex.Array
+) -> Tuple[chex.Array, chex.Array, chex.Array]:
     """
     Updates Z position using a continuous cycle pattern.
     """
@@ -362,7 +526,7 @@ def update_z_position(z_pos: chex.Array, current_tick: chex.Array, serve_hit: ch
     new_tick = jnp.where(
         serve_hit,
         jnp.array(SERVE_INDEX - 1),
-        (current_tick + 1) % Z_DERIVATIVES.shape[0]
+        (current_tick + 1) % Z_DERIVATIVES.shape[0],
     )
 
     # Ensure z never goes below 0
@@ -378,8 +542,9 @@ def update_z_position(z_pos: chex.Array, current_tick: chex.Array, serve_hit: ch
 
 
 @partial(jax.jit, static_argnums=())
-def update_y_position(y_pos: chex.Array, current_tick: chex.Array, direction: chex.Array) -> Tuple[
-    chex.Array, chex.Array]:
+def update_y_position(
+    y_pos: chex.Array, current_tick: chex.Array, direction: chex.Array
+) -> Tuple[chex.Array, chex.Array]:
     """
     Updates Y position using the derivative pattern.
 
@@ -394,58 +559,67 @@ def update_y_position(y_pos: chex.Array, current_tick: chex.Array, direction: ch
     # Get current derivative
     y_derivative = Y_DERIVATIVES[current_tick % Y_DERIVATIVES.shape[0]]
 
-    y_derivative = jnp.where(
-        direction == 1,
-        y_derivative,
-        -y_derivative
-    )
+    y_derivative = jnp.where(direction == 1, y_derivative, -y_derivative)
 
     # Update position
     new_y = y_pos + y_derivative
 
     # check if the ball is currently crossing the net, i.e. if the y is in the net range
     crossing_net = jnp.logical_and(
-        jnp.greater_equal(new_y, NET_RANGE[0]),
-        jnp.less_equal(new_y, NET_RANGE[1])
+        jnp.greater_equal(new_y, NET_RANGE[0]), jnp.less_equal(new_y, NET_RANGE[1])
     )
 
     # if y_ball_tick is negative, the ball is currently crossing the net. If so, continue counting it down and wait for 4 ticks before teleporting the ball
     new_tick = jnp.where(
         crossing_net,
         jnp.maximum(current_tick - 1, 0),
-        (current_tick + 1) % Y_DERIVATIVES.shape[0]
+        (current_tick + 1) % Y_DERIVATIVES.shape[0],
     )
 
     # if the new_tick is between -4 and 0, set y to 0 (masking)
     new_y = jnp.where(
         jnp.logical_and(jnp.less(new_tick, 0), jnp.greater_equal(new_tick, -4)),
         0,
-        new_y
+        new_y,
     )
 
     # if new_tick is smaller than -4, teleport the ball to the other side of the net
-    new_y = jnp.where(
-        jnp.less(new_tick, -4),
-        NET_RANGE[1] + 2,
-        new_y
-    )
+    new_y = jnp.where(jnp.less(new_tick, -4), NET_RANGE[1] + 2, new_y)
 
     return new_y, new_tick
 
 
-
-def ball_step(state: State, top_collision: chex.Array,
-              bottom_collision: chex.Array, action: chex.Array) -> Tuple[
-    chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array]:
+def ball_step(
+    state: State,
+    top_collision: chex.Array,
+    bottom_collision: chex.Array,
+    action: chex.Array,
+) -> Tuple[
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+    chex.Array,
+]:
     """Update ball state for one step.
     Returns:
         Tuple of (new_x, new_y, new_z, x_dir, y_dir, serving, ball_movement_tick)
     """
     serve_started = jnp.logical_and(action == FIRE, state.serving)
-    serve_hit = jnp.logical_and(jnp.logical_or(top_collision, bottom_collision), serve_started)
+    serve_hit = jnp.logical_and(
+        jnp.logical_or(top_collision, bottom_collision), serve_started
+    )
 
     # Update Z position first
-    new_z, delta_z, new_ball_movement_tick = update_z_position(state.ball_z, state.ball_movement_tick, serve_hit)
+    new_z, delta_z, new_ball_movement_tick = update_z_position(
+        state.ball_z, state.ball_movement_tick, serve_hit
+    )
 
     def get_directions():
         # Find out in which direction the ball should go using top_collision and bottom_collision
@@ -456,7 +630,7 @@ def ball_step(state: State, top_collision: chex.Array,
         # Determine which player is involved in the collision
         is_player_collision = jnp.logical_xor(
             jnp.logical_and(top_collision, state.player_side == 0),
-            jnp.logical_and(bottom_collision, state.player_side == 1)
+            jnp.logical_and(bottom_collision, state.player_side == 1),
         )
 
         # Get the relevant player position and direction based on who was hit
@@ -493,7 +667,7 @@ def ball_step(state: State, top_collision: chex.Array,
         offset_from_center = (paddle_center_x - (COURT_WIDTH // 2)) / 30
         offset_from_player = (state.ball_x - paddle_center_x) / (PLAYER_WIDTH / 2)
 
-        x_direction =  (offset_from_center / -2) + (offset_from_player/2)
+        x_direction = (offset_from_center / -2) + (offset_from_player / 2)
 
         return x_direction, y_direction, pattern_idx, 0
 
@@ -527,7 +701,7 @@ def ball_step(state: State, top_collision: chex.Array,
             jnp.array(0),
             jnp.array(0.0),
             state.ball_start,
-            state.ball_end
+            state.ball_end,
         )
 
     def handle_normal_play():
@@ -537,10 +711,9 @@ def ball_step(state: State, top_collision: chex.Array,
         new_y = state.ball_y + state.ball_y_dir * 2
         new_x = state.ball_x + state.ball_x_dir - state.ball_curve
 
-        distance = (state.ball_end-state.ball_start) / 2
-        direction = jax.lax.cond(jnp.greater_equal(state.ball_x_dir, 0), lambda _: 1, lambda _: -1, operand=None)
-
-        ball_arc = 10 * direction * jnp.abs(jnp.sin((jnp.pi/distance)*state.ball_curve_counter))  # Creates slight curve effect
+        ball_arc = -10 * jnp.abs(
+            jnp.sin((jnp.pi / 70) * state.ball_z)
+        )  # Creates slight curve effect
 
         # Apply arc effect to ball position
         new_x = new_x + ball_arc
@@ -550,10 +723,17 @@ def ball_step(state: State, top_collision: chex.Array,
         ball_curve_counter = state.ball_curve_counter + 1
 
         # if there was a collision, get the new directions
-        x_direction, y_direction, new_ball_x_pattern_idx, ball_curve_counter = jax.lax.cond(
-            jnp.logical_or(top_collision, bottom_collision),
-            lambda: get_directions(),
-            lambda: (state.ball_x_dir, state.ball_y_dir, state.ball_x_pattern_idx, ball_curve_counter),
+        x_direction, y_direction, new_ball_x_pattern_idx, ball_curve_counter = (
+            jax.lax.cond(
+                jnp.logical_or(top_collision, bottom_collision),
+                lambda: get_directions(),
+                lambda: (
+                    state.ball_x_dir,
+                    state.ball_y_dir,
+                    state.ball_x_pattern_idx,
+                    ball_curve_counter,
+                ),
+            )
         )
 
         ball_start, ball_end = jax.lax.cond(
@@ -588,7 +768,7 @@ def ball_step(state: State, top_collision: chex.Array,
             ball_curve_counter,
             ball_curve,
             ball_start,
-            ball_end
+            ball_end,
         )
 
     return jax.lax.cond(
@@ -789,7 +969,9 @@ def enemy_step(
     )
 
     # TODO: temporary fix for the enemy movement
-    ball_x = ball_x.astype(jnp.int32) - 6  # force the enemy to move the ball to its center
+    ball_x = (
+        ball_x.astype(jnp.int32) - 6
+    )  # force the enemy to move the ball to its center
 
     # Basic AI movement - move towards the ball
     enemy_x = jnp.where(
@@ -1209,7 +1391,14 @@ class Game:
         # Check scoring
         player_score, enemy_score, point_scored = check_scoring(state)
 
-        enemy_x, enemy_y, new_enemy_direction = enemy_step(state.enemy_x, state.enemy_y, state.enemy_direction, ball_x, ball_y, state.player_side)
+        enemy_x, enemy_y, new_enemy_direction = enemy_step(
+            state.enemy_x,
+            state.enemy_y,
+            state.enemy_direction,
+            ball_x,
+            ball_y,
+            state.player_side,
+        )
 
         reset_state = self.reset()
 
@@ -1310,6 +1499,7 @@ class Game:
             lambda: calculated_state,
         )
 
+
 class AnimatorState(NamedTuple):
     r_x: chex.Array
     r_y: chex.Array
@@ -1320,25 +1510,28 @@ class AnimatorState(NamedTuple):
     b_f: chex.Array
     b_bat_f: chex.Array
 
+
 OFFSET_BAT_Y = jnp.array([7, 7, 5, 3])
 
+
 class Renderer_AJ:
-    
+
     @partial(jax.jit, static_argnums=(0,))
     def next_body_frame(self, diff_x, diff_y, frame):
 
         # Condition 1: r_x - state.player_x > 0 or r_y - state.player_y > 0
         condition1 = (diff_x > 0) | (diff_y > 0)
-        
+
         # Condition 2: r_x - state.player_x == 0 and r_y - state.player_y == 0
         condition2 = (diff_x == 0) & (diff_y == 0)
 
         # Calculate next frame based on conditions
-        next_frame = jnp.where(condition1, (frame + 1) % 16,
-                            jnp.where(condition2, 12, (frame - 1) % 16))
-        
+        next_frame = jnp.where(
+            condition1, (frame + 1) % 16, jnp.where(condition2, 12, (frame - 1) % 16)
+        )
+
         return next_frame
-    
+
     @partial(jax.jit, static_argnums=(0,))
     def bat_position(self, body_x, body_y, body_direction, frame):
         key_frame = frame // 4
@@ -1348,79 +1541,107 @@ class Renderer_AJ:
         bat_x = jnp.where(body_direction, body_x - offset_x, body_x + offset_x)
         bat_y = body_y + offset_y
         return bat_x, bat_y
-    
+
     @partial(jax.jit, static_argnums=(0,))
     def next_bat_frame(self, frame, hit):
         cond = hit | (frame != 0)
         return jnp.where(cond, (frame + 1) % 16, 0)
 
+    @partial(jax.jit, static_argnums=(0,))
+    def render(self, state, animator_state):
 
-       
-    @partial(jax.jit, static_argnums=(0,)) 
-    def render(self, state, animator_state):  
-
-        
         # render background
         raster = jnp.zeros((COURT_WIDTH, COURT_HEIGHT, 3))
         raster = aj.render_at(raster, 0, 0, BG)
-        
+
         # render player
-        raster = aj.render_at(raster, state.player_y, state.player_x,  PL_R[animator_state.r_f // 4], flip_horizontal= state.player_direction)
-        
+        raster = aj.render_at(
+            raster,
+            state.player_y,
+            state.player_x,
+            PL_R[animator_state.r_f // 4],
+            flip_horizontal=state.player_direction,
+        )
+
         # render enemy
-        raster = aj.render_at(raster, state.enemy_y, state.enemy_x,  PL_B[animator_state.b_f // 4], flip_horizontal= state.enemy_direction)
-        
+        raster = aj.render_at(
+            raster,
+            state.enemy_y,
+            state.enemy_x,
+            PL_B[animator_state.b_f // 4],
+            flip_horizontal=state.enemy_direction,
+        )
+
         # render ball
-        raster = aj.render_at(raster, state.ball_y, state.ball_x,  BALL)
-        
+        raster = aj.render_at(raster, state.ball_y, state.ball_x, BALL)
+
         # render ball shade
-        
-        raster = aj.render_at(raster, state.shadow_y, state.shadow_x,  BALL_SHADE)
-        
+
+        raster = aj.render_at(raster, state.shadow_y, state.shadow_x, BALL_SHADE)
+
         # render player bat
-        r_bat_x, r_bat_y = self.bat_position(state.player_x, state.player_y, state.player_direction, animator_state.r_bat_f)
-                
-        raster = aj.render_at(raster, r_bat_y, r_bat_x,  BAT_R[animator_state.r_bat_f // 4], flip_horizontal=state.player_direction)
-        
+        r_bat_x, r_bat_y = self.bat_position(
+            state.player_x,
+            state.player_y,
+            state.player_direction,
+            animator_state.r_bat_f,
+        )
+
+        raster = aj.render_at(
+            raster,
+            r_bat_y,
+            r_bat_x,
+            BAT_R[animator_state.r_bat_f // 4],
+            flip_horizontal=state.player_direction,
+        )
+
         # render enemy bat
-        
-        b_bat_x, b_bat_y = self.bat_position(state.enemy_x, state.enemy_y, state.enemy_direction, animator_state.b_bat_f)
-        raster = aj.render_at(raster, b_bat_y, b_bat_x,  BAT_B[animator_state.b_bat_f // 4], flip_horizontal=state.enemy_direction)
-        
+
+        b_bat_x, b_bat_y = self.bat_position(
+            state.enemy_x, state.enemy_y, state.enemy_direction, animator_state.b_bat_f
+        )
+        raster = aj.render_at(
+            raster,
+            b_bat_y,
+            b_bat_x,
+            BAT_B[animator_state.b_bat_f // 4],
+            flip_horizontal=state.enemy_direction,
+        )
+
         # render scores
-        
-        r_score_array = aj.int_to_digits(state.player_score, max_digits = 2)
-        b_score_array = aj.int_to_digits(state.enemy_score, max_digits = 2)
-        
+
+        r_score_array = aj.int_to_digits(state.player_score, max_digits=2)
+        b_score_array = aj.int_to_digits(state.enemy_score, max_digits=2)
+
         raster = aj.render_label(raster, 10, 60, r_score_array, DIGITS_R, spacing=7)
         raster = aj.render_label(raster, 10, 90, b_score_array, DIGITS_B, spacing=7)
 
-        
-        
-                            
         # state transition
 
-        next_r_f = self.next_body_frame(state.player_x - animator_state.r_x, state.player_y - animator_state.r_y, animator_state.r_f)
-        next_b_f = self.next_body_frame(state.enemy_x - animator_state.b_x, state.enemy_y - animator_state.b_y, animator_state.b_f)
-        
-        
-        new_animator_state = AnimatorState(
-            r_x = state.player_x,
-            r_y = state.player_y,
-            r_f = next_r_f,
-            r_bat_f = self.next_bat_frame(animator_state.r_bat_f, state.player_hit),
-            b_x = state.enemy_x,
-            b_y = state.enemy_y,
-            b_f = next_b_f,
-            b_bat_f = self.next_bat_frame(animator_state.b_bat_f, state.enemy_hit),
+        next_r_f = self.next_body_frame(
+            state.player_x - animator_state.r_x,
+            state.player_y - animator_state.r_y,
+            animator_state.r_f,
         )
-        
-        
-        
+        next_b_f = self.next_body_frame(
+            state.enemy_x - animator_state.b_x,
+            state.enemy_y - animator_state.b_y,
+            animator_state.b_f,
+        )
+
+        new_animator_state = AnimatorState(
+            r_x=state.player_x,
+            r_y=state.player_y,
+            r_f=next_r_f,
+            r_bat_f=self.next_bat_frame(animator_state.r_bat_f, state.player_hit),
+            b_x=state.enemy_x,
+            b_y=state.enemy_y,
+            b_f=next_b_f,
+            b_bat_f=self.next_bat_frame(animator_state.b_bat_f, state.enemy_hit),
+        )
+
         return raster, new_animator_state
 
-    
-    
 
 # TODO: pull out the game loop into a main function that wraps all the different games
 if __name__ == "__main__":
@@ -1435,8 +1656,9 @@ if __name__ == "__main__":
 
     # Initialize renderer
     renderer = Renderer_AJ()
-    animator_state = AnimatorState(r_x=0, r_y=0, r_f=12, r_bat_f=0, b_x=0, b_y=0, b_f=12, b_bat_f=0)
-
+    animator_state = AnimatorState(
+        r_x=0, r_y=0, r_f=12, r_bat_f=0, b_x=0, b_y=0, b_f=12, b_bat_f=0
+    )
 
     # JIT compile main functions
     jitted_step = jax.jit(game.step)

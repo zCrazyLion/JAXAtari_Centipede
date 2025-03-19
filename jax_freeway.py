@@ -79,16 +79,19 @@ class GameState(NamedTuple):
     cooldown: chex.Array  # Cooldown after collision
     game_over: chex.Array
 
+
 class EntityPosition(NamedTuple):
     x: jnp.ndarray
     y: jnp.ndarray
     width: jnp.ndarray
     height: jnp.ndarray
 
+
 class FreewayObservation(NamedTuple):
     chicken: EntityPosition
     car: EntityPosition
     score: jnp.ndarray
+
 
 class FreewayInfo(NamedTuple):
     time: jnp.ndarray
@@ -253,12 +256,16 @@ class FreewayGameLogic(JaxEnvironment[GameState, FreewayObservation, FreewayInfo
         cars = jnp.zeros((self.config.num_lanes, 4))
         for i in range(self.config.num_lanes):
             car_pos = state.cars.at[i].get()
-            cars = cars.at[i].set(jnp.array([
-                car_pos.at[0].get(),  # x position
-                car_pos.at[1].get(),  # y position
-                self.config.car_width,  # width
-                self.config.car_height,  # height
-            ]))
+            cars = cars.at[i].set(
+                jnp.array(
+                    [
+                        car_pos.at[0].get(),  # x position
+                        car_pos.at[1].get(),  # y position
+                        self.config.car_width,  # width
+                        self.config.car_height,  # height
+                    ]
+                )
+            )
         return FreewayObservation(chicken=chicken, car=cars, score=state.score)
 
     @partial(jax.jit, static_argnums=(0,))
@@ -272,7 +279,6 @@ class FreewayGameLogic(JaxEnvironment[GameState, FreewayObservation, FreewayInfo
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: GameState) -> bool:
         return state.game_over
-
 
 
 @dataclass

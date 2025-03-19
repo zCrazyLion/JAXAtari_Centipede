@@ -1,6 +1,7 @@
 from atraJaxis_defunct.renderMode import RenderMode
 import numpy as np
 
+
 class Sprite:
     """
     A class representing a sprite, which is a sequence of frames that can be rendered on the screen.
@@ -77,7 +78,9 @@ class Sprite:
                 self.finished = True
                 self.current_frame_idx = len(self.key_frames) - 1
         else:
-            raise ValueError("Invalid render mode. The render_mode must be a RenderMode enum.")
+            raise ValueError(
+                "Invalid render mode. The render_mode must be a RenderMode enum."
+            )
 
     def render(self):
         """

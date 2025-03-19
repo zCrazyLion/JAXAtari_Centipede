@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class RenderMode(Enum):
     """
     An enumeration to define rendering modes for sprites.
@@ -11,5 +12,6 @@ class RenderMode(Enum):
     ONCE : int
         Indicates the sprite should play the frames once and then destroy itself.
     """
+
     LOOP = 1
     ONCE = 2
