@@ -2458,7 +2458,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
             oxygen=jnp.array(0),  # Full oxygen
             divers_collected=jnp.array(0),
             score=jnp.array(0),
-            lives=jnp.array(0),
+            lives=jnp.array(3),
             spawn_state=initialize_spawn_state(),
             diver_positions=jnp.zeros((MAX_DIVERS, 3)),  # 4 divers
             shark_positions=jnp.zeros((MAX_SHARKS, 3)),
