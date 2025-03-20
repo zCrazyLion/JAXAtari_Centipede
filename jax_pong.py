@@ -406,6 +406,7 @@ def _reset_ball_after_goal(
 
 class Game(JaxEnvironment[State, PongObservation, PongInfo]):
     def __init__(self, frameskip=0):
+        super().__init__()
         self.frameskip = frameskip + 1
 
     def reset(self) -> State:

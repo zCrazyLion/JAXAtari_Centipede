@@ -1333,6 +1333,7 @@ def before_serve(state: TennisState) -> Tuple[chex.Array, chex.Array, chex.Array
 
 class JaxTennis(JaxEnvironment[TennisState, TennisObservation, TennisInfo]):
     def __init__(self, frameskip=0):
+        super().__init__()
         self.frameskip = frameskip
 
     @partial(jax.jit, static_argnums=(0,))
