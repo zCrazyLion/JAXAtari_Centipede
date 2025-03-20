@@ -27,6 +27,7 @@ BLOCK_COLORS = [
 
 # Object sizes and positions
 PLAYER_SIZE = (16, 4)  # Width, Height of paddle
+PLAYER_SIZE_SMALL = (12, 4)
 BALL_SIZE = (2, 4)  # Width, Height of ball
 BLOCK_SIZE = (8, 6)  # Width, Height of blocks
 
@@ -56,7 +57,7 @@ NUM_ROWS = 6
 BLOCK_START_Y = 57  # Starting Y position of first row
 BLOCK_START_X = 8  # Starting X position of blocks
 
-NUM_LIVES = 5
+NUM_LIVES = 50
 
 # Ball speed
 BALL_VELOCITIES_ABS = jnp.array([
@@ -64,7 +65,7 @@ BALL_VELOCITIES_ABS = jnp.array([
     [[2, 1], [1, 1]],  # Left hit or Right hit
     [[1, 2], [1, 1]],  # Middle left, middle, middle right hit
     [[2, 2], [2, 2]],  # Speed after 12th consecutive hit
-    [[3, 2], [3, 2]]   # Speed after hitting speed block (upper three layers)
+    [[2, 3], [2, 3]]   # Speed after hitting speed block (upper three layers)
 ])
 
 BALL_DIRECTIONS = jnp.array([
@@ -83,6 +84,7 @@ REVERSE_Y = jnp.array([2, 3, 0, 1])
 class State(NamedTuple):
     player_x: chex.Array
     player_speed: chex.Array
+    small_paddle: chex.Array
     ball_x: chex.Array
     ball_y: chex.Array
     ball_vel_x: chex.Array
@@ -228,7 +230,8 @@ def ball_step(state, game_started, player_x):
         new_direction_idx = jnp.where(jnp.logical_or(idx == 0, idx == 2), 0, 1)
         new_speed_idx = 0
         vel_x, vel_y = get_ball_velocity(new_speed_idx, new_direction_idx, state.step_counter)
-        return ball_start_x, ball_start_y, vel_x, vel_y, new_speed_idx, new_direction_idx, jnp.array(0), True
+        return (ball_start_x, ball_start_y, vel_x, vel_y, new_speed_idx, new_direction_idx,
+                jnp.array(0), jnp.array(True), jnp.array(False))
 
     def started_fn(_):
         # Once the game has started, update ball position normally
@@ -269,6 +272,10 @@ def ball_step(state, game_started, player_x):
 
         hit_wall_or_paddle = jnp.logical_or(hit_wall_or_paddle, top_collision)
 
+        # Set small_paddle to True when ball hits top wall
+        small_paddle = jnp.logical_or(state.small_paddle, top_collision)
+        paddle_width = jnp.where(state.small_paddle, PLAYER_SIZE_SMALL[0], PLAYER_SIZE[0])
+
         # Paddle collision
         paddle_hit_y = jnp.logical_and(
             ball_y + BALL_SIZE[1] > PLAYER_START_Y,
@@ -276,7 +283,7 @@ def ball_step(state, game_started, player_x):
         )
         paddle_hit_x = jnp.logical_and(
             ball_x + BALL_SIZE[0] >= player_x,
-            ball_x <= player_x + PLAYER_SIZE[0]
+            ball_x <= player_x + paddle_width
         )
         paddle_hit = jnp.logical_and(paddle_hit_x, paddle_hit_y)
 
@@ -371,15 +378,18 @@ def ball_step(state, game_started, player_x):
         # Reset blocks_hittable if ball hit wall or paddle
         blocks_hittable = jnp.where(hit_wall_or_paddle, True, state.blocks_hittable)
 
-        return ball_x, ball_y, new_vel_x, new_vel_y, ball_speed_idx, ball_direction_idx, new_consecutive_hits, blocks_hittable
+        return (ball_x, ball_y, new_vel_x, new_vel_y, ball_speed_idx, ball_direction_idx,
+                new_consecutive_hits, blocks_hittable, small_paddle)
 
     # Use a conditional: if game_started is true, run the normal update branch;
     # otherwise, use the spawn values.
-    ball_x, ball_y, ball_vel_x, ball_vel_y, ball_speed_idx, ball_direction_idx, new_consecutive_hits, blocks_hittable = jax.lax.cond(
+    (ball_x, ball_y, ball_vel_x, ball_vel_y, ball_speed_idx, ball_direction_idx,
+     new_consecutive_hits, blocks_hittable, small_paddle) = jax.lax.cond(
         game_started, started_fn, not_started_fn, operand=None
     )
 
-    return ball_x, ball_y, ball_vel_x, ball_vel_y, ball_speed_idx, ball_direction_idx, new_consecutive_hits, blocks_hittable
+    return (ball_x, ball_y, ball_vel_x, ball_vel_y, ball_speed_idx, ball_direction_idx,
+            new_consecutive_hits, blocks_hittable, small_paddle)
 
 
 def check_block_collision(state, ball_x, ball_y, ball_speed_idx, ball_direction_idx, consecutive_hits):
@@ -401,16 +411,19 @@ def check_block_collision(state, ball_x, ball_y, ball_speed_idx, ball_direction_
             block_hit = jnp.logical_and(
                 blocks[row, col] == 1,
                 jnp.logical_and(
-                    ball_x < block_x + BLOCK_SIZE[0],
-                    ball_x + BALL_SIZE[0] > block_x
-                ) & jnp.logical_and(
-                    ball_y <= block_y + BLOCK_SIZE[1],
-                    ball_y + BALL_SIZE[1] >= block_y
+                    jnp.logical_and(
+                        ball_x < block_x + BLOCK_SIZE[0],
+                        ball_x + BALL_SIZE[0] > block_x
+                    ),
+                    jnp.logical_and(
+                        ball_y <= block_y + BLOCK_SIZE[1],
+                        ball_y + BALL_SIZE[1] >= block_y
+                    )
                 )
             )
 
             # Bounce condition
-            bounce = block_hit & (jnp.abs((block_y + BLOCK_SIZE[1]) - ball_y) < 2)
+            bounce = jnp.logical_and(block_hit, (jnp.abs((block_y + BLOCK_SIZE[1]) - ball_y) <= 3)) # 3 is the tolerance to somewhat also bounce "inside" the block
             new_direction_idx = jnp.where(
                 bounce,
                 REVERSE_Y[ball_direction_idx],
@@ -470,6 +483,7 @@ class Game:
         return State(
             player_x=jnp.array(PLAYER_START_X),
             player_speed=jnp.array(0),
+            small_paddle=jnp.array(False),
             ball_x=jnp.array(BALL_START_X[0]),
             ball_y=jnp.array(BALL_START_Y),
             ball_vel_x=init_vel_x,
@@ -497,7 +511,7 @@ class Game:
 
         # Update ball, check collisions, etc., as before, but now pass new_player_x
         (ball_x, ball_y, ball_vel_x, ball_vel_y, ball_speed_idx, ball_direction_idx,
-         consecutive_hits, blocks_hittable) = ball_step(
+         consecutive_hits, blocks_hittable, small_paddle) = ball_step(
             state, game_started, new_player_x
         )
 
@@ -518,10 +532,12 @@ class Game:
         blocks_hittable = jnp.where(life_lost, True, blocks_hittable)
         game_started = jnp.where(life_lost, jnp.array(0), game_started)
         new_lives = jnp.where(life_lost, state.lives - 1, state.lives)
+        small_paddle = jnp.where(life_lost, jnp.array(False), small_paddle)
 
         return State(
             player_x=new_player_x,
             player_speed=new_paddle_v,
+            small_paddle=small_paddle,
             ball_x=ball_x,
             ball_y=ball_y,
             ball_vel_x=ball_vel_x,
@@ -590,10 +606,11 @@ class Renderer:
                     pygame.draw.rect(self.screen, BLOCK_COLORS[row], block_rect)
 
         # Draw player paddle
+        paddle_width = PLAYER_SIZE_SMALL[0] if state.small_paddle else PLAYER_SIZE[0]
         player_rect = pygame.Rect(
             int(state.player_x) * 3,
             PLAYER_START_Y * 3,
-            PLAYER_SIZE[0] * 3,
+            paddle_width * 3,
             PLAYER_SIZE[1] * 3,
         )
         pygame.draw.rect(self.screen, PLAYER_COLOR, player_rect)
@@ -632,16 +649,28 @@ if __name__ == "__main__":
     # Game loop
     running = True
     frameskip = game.frameskip
+    frame_by_frame = False
     counter = 1
 
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_f:
+                    frame_by_frame = not frame_by_frame
+            elif event.type == pygame.KEYDOWN or (
+                    event.type == pygame.KEYUP and event.key == pygame.K_n
+            ):
+                if event.key == pygame.K_n and frame_by_frame:
+                    if counter % frameskip == 0:
+                        action = get_human_action()
+                        curr_state = jitted_step(curr_state, action)
 
-        if counter % frameskip == 0:
-            action = get_human_action()
-            curr_state = jitted_step(curr_state, action)
+        if not frame_by_frame:
+            if counter % frameskip == 0:
+                action = get_human_action()
+                curr_state = jitted_step(curr_state, action)
 
         if curr_state.lives <= 0:
             running = False
