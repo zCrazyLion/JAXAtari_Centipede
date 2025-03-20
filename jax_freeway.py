@@ -6,6 +6,8 @@ import jax.numpy as jnp
 from dataclasses import dataclass
 from typing import Tuple, NamedTuple, List
 
+from environment import JaxEnvironment
+
 # Actions
 NOOP = 0
 UP = 1
@@ -78,12 +80,30 @@ class GameState(NamedTuple):
     game_over: chex.Array
 
 
-class FreewayGameLogic:
-    def __init__(self, config: GameConfig):
-        self.config = config
+class EntityPosition(NamedTuple):
+    x: jnp.ndarray
+    y: jnp.ndarray
+    width: jnp.ndarray
+    height: jnp.ndarray
+
+
+class FreewayObservation(NamedTuple):
+    chicken: EntityPosition
+    car: EntityPosition
+    score: jnp.ndarray
+
+
+class FreewayInfo(NamedTuple):
+    time: jnp.ndarray
+
+
+class FreewayGameLogic(JaxEnvironment[GameState, FreewayObservation, FreewayInfo]):
+    def __init__(self):
+        super().__init__()
+        self.config = GameConfig()
         self.state = self.reset()
 
-    def reset(self) -> GameState:
+    def reset(self) -> Tuple[GameState, FreewayObservation]:
         """Initialize a new game state"""
         # Start chicken at bottom
         chicken_y = self.config.bottom_border + self.config.chicken_height - 1
@@ -104,7 +124,7 @@ class FreewayGameLogic:
                 x = 0  # Start from left
             cars.append([x, lane_y])
 
-        return GameState(
+        state = GameState(
             chicken_y=jnp.array(chicken_y),
             cars=jnp.array(cars),
             score=jnp.array(0),
@@ -112,6 +132,8 @@ class FreewayGameLogic:
             cooldown=jnp.array(0),
             game_over=jnp.array(False),
         )
+
+        return state, self._get_observation(state)
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: GameState, action: int) -> GameState:
@@ -205,7 +227,7 @@ class FreewayGameLogic:
             state.game_over,
         )
 
-        return GameState(
+        new_state = GameState(
             chicken_y=new_y,
             cars=new_cars,
             score=new_score,
@@ -213,6 +235,50 @@ class FreewayGameLogic:
             cooldown=new_cooldown,
             game_over=game_over,
         )
+        done = self._get_done(new_state)
+        reward = self._get_reward(state, new_state)
+        obs = self._get_observation(new_state)
+        info = self._get_info(new_state)
+
+        return new_state, obs, reward, done, info
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_observation(self, state: GameState):
+        # create chicken
+        chicken = EntityPosition(
+            x=jnp.array(self.config.chicken_x),
+            y=state.chicken_y,
+            width=jnp.array(self.config.chicken_width),
+            height=jnp.array(self.config.chicken_height),
+        )
+
+        # create cars
+        cars = jnp.zeros((self.config.num_lanes, 4))
+        for i in range(self.config.num_lanes):
+            car_pos = state.cars.at[i].get()
+            cars = cars.at[i].set(
+                jnp.array(
+                    [
+                        car_pos.at[0].get(),  # x position
+                        car_pos.at[1].get(),  # y position
+                        self.config.car_width,  # width
+                        self.config.car_height,  # height
+                    ]
+                )
+            )
+        return FreewayObservation(chicken=chicken, car=cars, score=state.score)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_info(self, state: GameState) -> FreewayInfo:
+        return FreewayInfo(time=state.time)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_reward(self, previous_state: GameState, state: GameState):
+        return state.score - previous_state.score
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_done(self, state: GameState) -> bool:
+        return state.game_over
 
 
 @dataclass
@@ -368,14 +434,16 @@ def main():
     render_config = RenderConfig()
 
     # Initialize game and renderer
-    game = FreewayGameLogic(game_config)
+    game = FreewayGameLogic()
+    state, init_obs = game.reset()
     renderer = GameRenderer(game_config, render_config)
 
     # Setup game loop
     clock = pygame.time.Clock()
     running = True
+    done = False
 
-    while running and not game.state.game_over:
+    while running and not done:
         # Handle events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -391,16 +459,16 @@ def main():
             action = NOOP
 
         # Update game state
-        game.state = game.step(game.state, action)
+        state, obs, reward, done, info = game.step(state, action)
 
         # Render
-        renderer.render(game.state)
+        renderer.render(state)
 
         # Cap at 60 FPS
         clock.tick(60)
 
     # If game over, wait before closing
-    if game.state.game_over:
+    if done:
         pygame.time.wait(2000)
 
     renderer.close()

@@ -1,30 +1,83 @@
 from functools import partial
-from typing import NamedTuple, Tuple, Any
+from typing import NamedTuple, Tuple
+from environment import JaxEnvironment, EnvState, EnvObs, EnvInfo
 import jax
 import jax.numpy as jnp
 import chex
 import numpy as np
 import pygame
+import atraJaxis as aj
+
+def load_sprites():
+    BG = aj.loadFrame("sprites/tennis/bg/1.npy")
+    
+    frames_pl_r = []
+    for i in range(1, 5):
+        frame = aj.loadFrame(f"sprites/tennis/pl_red/{i}.npy")
+        frames_pl_r.append(frame)
+    PL_R = jnp.array(aj.pad_to_match(frames_pl_r))
+    
+    frames_bat_r = []
+    for i in range(1, 5):
+        frame = aj.loadFrame(f"sprites/tennis/bat_r/{i}.npy")
+        frames_bat_r.append(frame)
+    BAT_R = jnp.array(aj.pad_to_match(frames_bat_r))
+    
+    frames_pl_b = []
+    for i in range(1, 5):
+        frame = aj.loadFrame(f"sprites/tennis/pl_blue/{i}.npy")
+        frames_pl_b.append(frame)
+    PL_B = jnp.array(aj.pad_to_match(frames_pl_b))
+    
+    frames_bat_b = []
+    for i in range(1, 5):
+        frame = aj.loadFrame(f"sprites/tennis/bat_b/{i}.npy")
+        frames_bat_b.append(frame)
+    BAT_B = jnp.array(aj.pad_to_match(frames_bat_b))
+    
+    BALL = aj.loadFrame("sprites/tennis/ball/1.npy")
+    BALL_SHADE = aj.loadFrame("sprites/tennis/ball_shade/1.npy")
+    
+    DIGITS_R = aj.load_and_pad_digits("sprites/tennis/digits_r/{}.npy")
+    DIGITS_B = aj.load_and_pad_digits("sprites/tennis/digits_b/{}.npy")
+
+
+    return BG, PL_R, BAT_R, PL_B, BAT_B, BALL, BALL_SHADE, DIGITS_R, DIGITS_B
+
+BG, PL_R, BAT_R, PL_B, BAT_B, BALL, BALL_SHADE, DIGITS_R, DIGITS_B = load_sprites()
 
 # TODO: remove, for debugging purposes only
 def jaxprint(arg1, arg2=None):
     jax.debug.print("{x}: {y}", x=arg1, y=arg2)
 
-# Action constants (placeholders - to be defined according to ALE)
+
+# Action constants
 NOOP = 0
 FIRE = 1
 UP = 2
-DOWN = 3
+RIGHT = 3
 LEFT = 4
-RIGHT = 5
+DOWN = 5
+UPRIGHT = 6
+UPLEFT = 7
+DOWNRIGHT = 8
+DOWNLEFT = 9
+UPFIRE = 10
+RIGHTFIRE = 11
+LEFTFIRE = 12
+DOWNFIRE = 13
+UPRIGHTFIRE = 14
+UPLEFTFIRE = 15
+DOWNRIGHTFIRE = 16
+DOWNLEFTFIRE = 17
 
 # Game constants (placeholders - to be adjusted according to ALE)
 COURT_WIDTH = 160
 COURT_HEIGHT = 210
-PLAYER_START_X = 71
-PLAYER_START_Y = 24
-ENEMY_START_X = 71  # this is where he starts, but he instantly moves to:
-ENEMY_START_Y = 140
+TOP_START_X = 71
+TOP_START_Y = 24
+BOT_START_X = 71
+BOT_START_Y = 160
 BALL_START_X = 75  # taken from the RAM extraction script (initial ram 77 - 2)
 BALL_START_Y = 44  # taken from the RAM extraction script (189 - initial ram 145)
 BALL_START_Z = 7  # of course there is no real z, but using the shadow it is suggested that there is a z
@@ -96,7 +149,8 @@ max_length = max(len(p) for p in [
 
 # Pad each pattern to max_length
 def pad_pattern(pattern, length):
-    return jnp.pad(pattern, (0, length - len(pattern)), mode='wrap')
+    return jnp.pad(pattern, (0, length - len(pattern)), mode="wrap")
+
 
 # Create a single 2D array of patterns
 STACKED_X_PATTERNS = jnp.stack([
@@ -113,7 +167,6 @@ STACKED_X_PATTERNS = jnp.stack([
     pad_pattern(PATTERN_11, max_length)
 ])
 
-jaxprint("full_patterns", STACKED_X_PATTERNS)
 
 # Store the length of each pattern for proper cycling
 PATTERN_LENGTHS = jnp.array([
@@ -122,8 +175,6 @@ PATTERN_LENGTHS = jnp.array([
     len(PATTERN_7), len(PATTERN_8), len(PATTERN_9),
     len(PATTERN_10), len(PATTERN_11)
 ])
-
-jaxprint("pattern_lengths", PATTERN_LENGTHS)
 
 # Pre-compute first non-zero values for each pattern
 X_DIRECTION_ARRAY = jnp.array([
@@ -166,8 +217,8 @@ TOP_ENTITY_MAX_BOTTOM = 75
 
 BOTTOM_ENTITY_MAX_LEFT = 4
 BOTTOM_ENTITY_MAX_RIGHT = 142
-BOTTOM_ENTITY_MAX_TOP = -1
-BOTTOM_ENTITY_MAX_BOTTOM = -1
+BOTTOM_ENTITY_MAX_TOP = 113
+BOTTOM_ENTITY_MAX_BOTTOM = 178
 
 NET_TOP_LEFT = (40, 48)  # (0, 48)  # x,y top left corner
 NET_TOP_RIGHT = (120, 48)  # (120, 48)
@@ -176,7 +227,7 @@ NET_BOTTOM_RIGHT = (136, 178)
 
 # TODO: due to the movement properties of the ball in Tennis, the velocity values should probably represent how frequent ticks are skipped..
 # Define state container
-class State(NamedTuple):
+class TennisState(NamedTuple):
     player_x: chex.Array  # Player x position
     player_y: chex.Array  # Player y position
     player_direction: chex.Array  # Player direction (0 for right, 1 for left)
@@ -186,14 +237,23 @@ class State(NamedTuple):
     ball_x: chex.Array  # Ball x position
     ball_y: chex.Array  # Ball y position
     ball_z: chex.Array  # Ball height/shadow
+    ball_curve_counter: chex.Array
     ball_x_dir: chex.Array  # Ball x direction
     ball_y_dir: chex.Array  # Ball y direction
     ball_movement_tick: chex.Array  # Ball movement tick
+    ball_curve: chex.Array
+    ball_start: chex.Array
+    ball_end: chex.Array
     shadow_x: chex.Array  # Shadow x position
     shadow_y: chex.Array  # Shadow y position
+    player_round_score: chex.Array
+    enemy_round_score: chex.Array
     player_score: chex.Array
     enemy_score: chex.Array
+    round_overtime: chex.Array  # boolean array that is only true if the round is in overtime
+    game_overtime: chex.Array # boolean array that is only true if the game is in overtime
     serving: chex.Array  # boolean for serve state
+    side_switch_counter: chex.Array # tracks side switch cycle position
     just_hit: chex.Array # boolean for just hit state
     player_side: chex.Array  # 0 if player on top side; 1 if player on bottom side
     ball_was_infield: chex.Array
@@ -201,28 +261,86 @@ class State(NamedTuple):
     ball_y_tick: chex.Array
     ball_x_pattern_idx: chex.Array  # Array holding the x-movement pattern
     ball_x_counter: chex.Array  # Current index in the pattern
+    player_hit: chex.Array
+    enemy_hit: chex.Array
+
+
+# Observation and Info containers
+class EntityPosition(NamedTuple):
+    x: jnp.ndarray
+    y: jnp.ndarray
+    width: jnp.ndarray
+    height: jnp.ndarray
+
+class TennisObservation(NamedTuple):
+    player: EntityPosition
+    enemy: EntityPosition
+    ball: EntityPosition
+    ball_shadow: EntityPosition
+    player_round_score: jnp.ndarray
+    enemy_round_score: jnp.ndarray
+    player_score: jnp.ndarray
+    enemy_score: jnp.ndarray
+
+class TennisInfo(NamedTuple):
+    serving: jnp.ndarray
+    player_side: jnp.ndarray
+    current_tick: jnp.ndarray
+    ball_direction: jnp.ndarray
 
 
 def get_human_action() -> chex.Array:
-    """
-    Records if UP or DOWN is being pressed and returns the corresponding action.
-
-    Returns:
-        action: int, action taken by the player (LEFT, RIGHT, FIRE, LEFTFIRE, RIGHTFIRE, NOOP).
-    """
+    """Get human action from keyboard with support for diagonal movement and combined fire"""
     keys = pygame.key.get_pressed()
-    if keys[pygame.K_a]:
-        return jnp.array(LEFT)
-    elif keys[pygame.K_d]:
-        return jnp.array(RIGHT)
-    elif keys[pygame.K_SPACE]:
-        return jnp.array(FIRE)
-    elif keys[pygame.K_w]:
+    up = keys[pygame.K_UP] or keys[pygame.K_w]
+    down = keys[pygame.K_DOWN] or keys[pygame.K_s]
+    left = keys[pygame.K_LEFT] or keys[pygame.K_a]
+    right = keys[pygame.K_RIGHT] or keys[pygame.K_d]
+    fire = keys[pygame.K_SPACE]
+
+    # Diagonal movements with fire
+    if up and right and fire:
+        return jnp.array(UPRIGHTFIRE)
+    if up and left and fire:
+        return jnp.array(UPLEFTFIRE)
+    if down and right and fire:
+        return jnp.array(DOWNRIGHTFIRE)
+    if down and left and fire:
+        return jnp.array(DOWNLEFTFIRE)
+
+    # Cardinal directions with fire
+    if up and fire:
+        return jnp.array(UPFIRE)
+    if down and fire:
+        return jnp.array(DOWNFIRE)
+    if left and fire:
+        return jnp.array(LEFTFIRE)
+    if right and fire:
+        return jnp.array(RIGHTFIRE)
+
+    # Diagonal movements
+    if up and right:
+        return jnp.array(UPRIGHT)
+    if up and left:
+        return jnp.array(UPLEFT)
+    if down and right:
+        return jnp.array(DOWNRIGHT)
+    if down and left:
+        return jnp.array(DOWNLEFT)
+
+    # Cardinal directions
+    if up:
         return jnp.array(UP)
-    elif keys[pygame.K_s]:
+    if down:
         return jnp.array(DOWN)
-    else:
-        return jnp.array(NOOP)
+    if left:
+        return jnp.array(LEFT)
+    if right:
+        return jnp.array(RIGHT)
+    if fire:
+        return jnp.array(FIRE)
+
+    return jnp.array(NOOP)
 
 
 @partial(jax.jit, static_argnums=())
@@ -296,8 +414,8 @@ def get_ball_x_pattern(impact_point: chex.Array, player_direction: chex.Array) -
     # Select pattern index based on player direction and impact point
     pattern_index = jax.lax.cond(
         player_direction == 0,
-        lambda: select_right_facing_pattern_index(impact_point),
-        lambda: select_left_facing_pattern_index(impact_point)
+        lambda: select_right_facing_pattern_index(impact_point.astype(jnp.int32)),
+        lambda: select_left_facing_pattern_index(impact_point.astype(jnp.int32))
     )
 
     return pattern_index
@@ -392,15 +510,21 @@ def update_y_position(y_pos: chex.Array, current_tick: chex.Array, direction: ch
 
 
 
-def ball_step(state: State, top_collision: chex.Array,
+def ball_step(state: TennisState, top_collision: chex.Array,
               bottom_collision: chex.Array, action: chex.Array) -> Tuple[
     chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array]:
     """Update ball state for one step.
     Returns:
         Tuple of (new_x, new_y, new_z, x_dir, y_dir, serving, ball_movement_tick)
     """
+    serving_side = (state.side_switch_counter >= 2).astype(jnp.int32)
+    player_is_server = jnp.equal(state.player_side, serving_side)
 
-    serve_started = jnp.logical_and(action == FIRE, state.serving)
+    serve_started = jnp.logical_or(
+        jnp.logical_and(action == FIRE, player_is_server),  # Player serves with FIRE
+        jnp.logical_and(~player_is_server, state.current_tick % 60 == 0)
+        # Enemy tries to serve automatically every ~60 ticks
+    )
     serve_hit = jnp.logical_and(jnp.logical_or(top_collision, bottom_collision), serve_started)
 
     # Update Z position first
@@ -409,13 +533,7 @@ def ball_step(state: State, top_collision: chex.Array,
     def get_directions():
         # Find out in which direction the ball should go using top_collision and bottom_collision
         y_direction = jnp.where(
-            top_collision,
-            1,
-            jnp.where(
-                bottom_collision,
-                -1,
-                state.ball_y_dir
-            )
+            top_collision, 1, jnp.where(bottom_collision, -1, state.ball_y_dir)
         )
 
         # Determine which player is involved in the collision
@@ -425,17 +543,13 @@ def ball_step(state: State, top_collision: chex.Array,
         )
 
         # Get the relevant player position and direction based on who was hit
-        player_pos = jnp.where(
-            is_player_collision,
-            state.player_x,
-            state.enemy_x
-        )
+        player_pos = jnp.where(is_player_collision, state.player_x, state.enemy_x)
 
         # Use the actual stored direction of the player/enemy that was hit
         hitting_entity_dir = jnp.where(
             is_player_collision,
             state.player_direction,  # Use player's current direction
-            state.enemy_direction  # Use enemy's current direction
+            state.enemy_direction,  # Use enemy's current direction
         )
 
         # impact point calculation
@@ -446,11 +560,8 @@ def ball_step(state: State, top_collision: chex.Array,
             # Facing right: measure from right edge
             (player_pos + PLAYER_WIDTH) - state.ball_x,  # Pixels from right edge
             # Facing left: measure from left edge
-            state.ball_x - player_pos  # Pixels from left edge
+            state.ball_x - player_pos,  # Pixels from left edge
         )
-
-
-        jaxprint("impact_point", impact_point)
 
         # Get the pattern index for the appropriate x-movement pattern
         pattern_idx = get_ball_x_pattern(impact_point, hitting_entity_dir)
@@ -459,91 +570,129 @@ def ball_step(state: State, top_collision: chex.Array,
         x_direction = jnp.where(
             jnp.logical_or(top_collision, bottom_collision),
             X_DIRECTION_ARRAY[pattern_idx],
-            state.ball_x_dir
+            state.ball_x_dir,
         )
+        paddle_center_x = player_pos + PLAYER_WIDTH / 2  # Get player center
+        offset_from_center = (paddle_center_x - (COURT_WIDTH // 2)) / 30
+        offset_from_player = (state.ball_x - paddle_center_x) / (PLAYER_WIDTH / 2)
 
-        return x_direction, y_direction, pattern_idx
+        x_direction =  (offset_from_center / -2) + (offset_from_player/2)
 
+        return x_direction, y_direction, pattern_idx, 0
 
     def handle_serve():
+        serving_entity_x = jnp.where(player_is_server, state.player_x, state.enemy_x)
 
-        serve_x = state.ball_x
+        serve_x = jnp.where(
+            serve_hit,
+            serving_entity_x + (PLAYER_WIDTH / 2),  # Center of server paddle
+            state.ball_x
+        )
+
         serve_y = jnp.where(
             serve_hit,
-            jnp.where(state.player_side == 0, 24, 159),
+            jnp.where(
+                serving_side == 0,
+                24,  # Top serve position
+                159  # Bottom serve position
+            ),
             state.ball_y
         )
 
-        x_direction, y_direction, new_x_pattern = jax.lax.cond(
+        x_direction, y_direction, new_x_pattern, _ = jax.lax.cond(
             serve_hit,
             lambda: get_directions(),
-            lambda: (0, 0, state.ball_x_pattern_idx),
+            lambda: (0.0, 0, state.ball_x_pattern_idx, 0),
         )
 
-        new_x_counter_idx = jnp.where(
-            serve_hit,
-            0,
-            state.ball_x_counter
-        )
+        new_x_counter_idx = jnp.where(serve_hit, 0, state.ball_x_counter)
 
-        return serve_x, serve_y, new_z, delta_z, x_direction, y_direction, ~serve_hit, new_ball_movement_tick, state.ball_y_tick.astype(jnp.int8), new_x_pattern, new_x_counter_idx
+        return (
+            serve_x.astype(jnp.float32),
+            serve_y.astype(jnp.float32),
+            new_z.astype(jnp.float32),
+            delta_z,
+            x_direction,
+            y_direction,
+            ~serve_hit,
+            new_ball_movement_tick,
+            state.ball_y_tick.astype(jnp.int8),
+            new_x_pattern,
+            new_x_counter_idx,
+            jnp.array(0),
+            jnp.array(0.0),
+            state.ball_start,
+            state.ball_end
+        )
 
     def handle_normal_play():
-        pattern_idx = state.ball_x_pattern_idx
-        pattern_length = PATTERN_LENGTHS[pattern_idx]
-        pattern_pos = state.ball_x_counter % pattern_length
-
-        # Get the value from the stacked array
-        pattern_x_dir = STACKED_X_PATTERNS[pattern_idx, pattern_pos]
-
         # Increment pattern index
         new_x_counter_idx = state.ball_x_counter + 1
 
-        # Apply x movement from pattern
-        new_x = state.ball_x + pattern_x_dir
+        new_y = state.ball_y + state.ball_y_dir * 2
+        new_x = state.ball_x + state.ball_x_dir - state.ball_curve
 
-        new_y, ball_y_tick = update_y_position(state.ball_y, state.ball_y_tick, state.ball_y_dir)
+        ball_arc = -3 * jnp.abs(
+            jnp.sin((jnp.pi / 70) * state.ball_z)
+        )  # Creates slight curve effect
+        # Apply arc effect to ball position
+        new_x = new_x + ball_arc
+        new_y = new_y
 
-        # check if ball_y_tick is between -4 and 0, if so, mask x as well
-        new_x = jnp.where(
-            jnp.logical_and(jnp.less(ball_y_tick, 0), jnp.greater_equal(ball_y_tick, -4)),
-            0,
-            new_x
-        )
+        ball_curve = ball_arc
+        ball_curve_counter = state.ball_curve_counter + 1
 
         # if there was a collision, get the new directions
-        x_direction, y_direction, new_ball_x_pattern_idx = jax.lax.cond(
+        x_direction, y_direction, new_ball_x_pattern_idx, ball_curve_counter = (
+            jax.lax.cond(
+                jnp.logical_or(top_collision, bottom_collision),
+                lambda: get_directions(),
+                lambda: (
+                    state.ball_x_dir,
+                    state.ball_y_dir,
+                    state.ball_x_pattern_idx,
+                    ball_curve_counter,
+                ),
+            )
+        )
+
+        ball_start, ball_end = jax.lax.cond(
             jnp.logical_or(top_collision, bottom_collision),
-            lambda: get_directions(),
-            lambda: (state.ball_x_dir, state.ball_y_dir, state.ball_x_pattern_idx),
+            lambda: (state.enemy_y, state.player_y),
+            lambda: (state.ball_start, state.ball_end),
         )
 
         # in case of collision reset z to 14, set the new_ball_movement_tick to SERVE_INDEX - 1 and the ball_y_tick to 0
         final_new_z = jnp.where(
-            jnp.logical_or(top_collision, bottom_collision),
-            14,
-            new_z
+            jnp.logical_or(top_collision, bottom_collision), 14, new_z
         )
 
         final_new_ball_movement_tick = jnp.where(
             jnp.logical_or(top_collision, bottom_collision),
             SERVE_INDEX - 1,
-            new_ball_movement_tick
+            new_ball_movement_tick,
         )
 
-        final_ball_y_tick = jnp.where(
-            jnp.logical_or(top_collision, bottom_collision),
+        return (
+            new_x.astype(jnp.float32),
+            new_y.astype(jnp.float32),
+            final_new_z.astype(jnp.float32),
+            delta_z,
+            x_direction,
+            y_direction,
+            state.serving,
+            final_new_ball_movement_tick,
             jnp.array(0).astype(jnp.int8),
-            ball_y_tick
+            new_ball_x_pattern_idx,
+            new_x_counter_idx,
+            ball_curve_counter,
+            ball_curve,
+            ball_start,
+            ball_end
         )
-
-        return new_x, new_y, final_new_z, delta_z, x_direction, y_direction, state.serving, final_new_ball_movement_tick, final_ball_y_tick.astype(jnp.int8), new_ball_x_pattern_idx, new_x_counter_idx
 
     return jax.lax.cond(
-        state.serving,
-        lambda _: handle_serve(),
-        lambda _: handle_normal_play(),
-        None
+        state.serving, lambda _: handle_serve(), lambda _: handle_normal_play(), None
     )
 
 
@@ -573,15 +722,15 @@ def player_step(
 
     # Calculate if we need to switch direction (turn around)
     # Switch when player is facing right (0) and ball is too far left
+    ball_x = ball_x.astype(jnp.int32)
     should_turn_left = jnp.logical_and(
         player_direction == 0,  # Currently facing right
-        ball_x == state_player_x  # Ball is at the exact same position
+        ball_x == state_player_x,  # Ball is at the exact same position
     )
 
     # Switch when player is facing left (1) and ball is too far right
     should_turn_right = jnp.logical_and(
-        player_direction == 1,  # Currently facing left
-        ball_x == state_player_x + 9
+        player_direction == 1, ball_x == state_player_x + 9  # Currently facing left
     )
 
     # Update direction
@@ -591,8 +740,8 @@ def player_step(
         jnp.where(
             should_turn_right,
             0,  # Switch to facing right
-            player_direction  # Keep current direction
-        )
+            player_direction,  # Keep current direction
+        ),
     )
 
     # Teleport player when turning
@@ -602,38 +751,51 @@ def player_step(
         jnp.where(
             should_turn_right,
             state_player_x + 8,  # Teleport right by 7 pixels
-            state_player_x  # Keep current position
-        )
+            state_player_x,  # Keep current position
+        ),
     )
 
     # TODO: adjust the borders of the game according to base implementation
-    player_max_left, player_max_right, player_max_bottom, player_max_top = jax.lax.cond(
+    player_max_left, player_max_right, player_max_top, player_max_bottom = jax.lax.cond(
         jnp.equal(side, 0),
         lambda _: (
             TOP_ENTITY_MAX_LEFT,
             TOP_ENTITY_MAX_RIGHT,
-            TOP_ENTITY_MAX_BOTTOM,
             TOP_ENTITY_MAX_TOP,
+            TOP_ENTITY_MAX_BOTTOM
         ),
         lambda _: (
             BOTTOM_ENTITY_MAX_LEFT,
             BOTTOM_ENTITY_MAX_RIGHT,
-            BOTTOM_ENTITY_MAX_BOTTOM,
             BOTTOM_ENTITY_MAX_TOP,
+            BOTTOM_ENTITY_MAX_BOTTOM
         ),
-        operand=None,
+        operand=None
     )
+
+    # handle diagonal movement by setting left/right and top/down variables
+    up = jnp.any(jnp.array([action == UP, action == UPRIGHT, action == UPLEFT, action == UPFIRE, action == UPRIGHTFIRE,
+                            action == UPLEFTFIRE]))
+    down = jnp.any(jnp.array(
+        [action == DOWN, action == DOWNRIGHT, action == DOWNLEFT, action == DOWNFIRE, action == DOWNRIGHTFIRE,
+         action == DOWNLEFTFIRE]))
+    left = jnp.any(jnp.array(
+        [action == LEFT, action == UPLEFT, action == DOWNLEFT, action == LEFTFIRE, action == UPLEFTFIRE,
+         action == DOWNLEFTFIRE]))
+    right = jnp.any(jnp.array(
+        [action == RIGHT, action == UPRIGHT, action == DOWNRIGHT, action == RIGHTFIRE, action == UPRIGHTFIRE,
+         action == DOWNRIGHTFIRE]))
 
     # check if the player is trying to move left
     player_x = jnp.where(
-        jnp.logical_and(action == LEFT, new_player_x > 0),
+        jnp.logical_and(left, new_player_x > 0),
         new_player_x - 1,
         new_player_x,
     )
 
     # check if the player is trying to move right
     player_x = jnp.where(
-        jnp.logical_and(action == RIGHT, new_player_x < COURT_WIDTH - 13),
+        jnp.logical_and(right, new_player_x < COURT_WIDTH - 13),
         new_player_x + 1,
         player_x,
     )
@@ -642,14 +804,14 @@ def player_step(
 
     # check if the player is trying to move up
     player_y = jnp.where(
-        jnp.logical_and(action == UP, state_player_y > 0),
+        jnp.logical_and(up, state_player_y > 0),
         state_player_y - 1,
         state_player_y,
     )
 
     # check if the player is trying to move down
     player_y = jnp.where(
-        jnp.logical_and(action == DOWN, state_player_y < COURT_HEIGHT - 23),
+        jnp.logical_and(down, state_player_y < COURT_HEIGHT - 23),
         state_player_y + 1,
         player_y,
     )
@@ -691,13 +853,12 @@ def enemy_step(
     # Switch when enemy is facing right (0) and ball is at the exact same position
     should_turn_left = jnp.logical_and(
         enemy_direction == 0,  # Currently facing right
-        ball_x == state_enemy_x  # Ball is at the exact same position
+        ball_x == state_enemy_x,  # Ball is at the exact same position
     )
 
     # Switch when enemy is facing left (1) and ball is at specific offset
     should_turn_right = jnp.logical_and(
-        enemy_direction == 1,  # Currently facing left
-        ball_x == state_enemy_x + 9
+        enemy_direction == 1, ball_x == state_enemy_x + 9  # Currently facing left
     )
 
     # Update direction
@@ -707,8 +868,8 @@ def enemy_step(
         jnp.where(
             should_turn_right,
             0,  # Switch to facing right
-            enemy_direction  # Keep current direction
-        )
+            enemy_direction,  # Keep current direction
+        ),
     )
 
     # Teleport enemy when turning
@@ -718,8 +879,8 @@ def enemy_step(
         jnp.where(
             should_turn_right,
             state_enemy_x + 8,  # Teleport right by 8 pixels
-            state_enemy_x  # Keep current position
-        )
+            state_enemy_x,  # Keep current position
+        ),
     )
 
     # Get appropriate bounds based on side
@@ -740,18 +901,15 @@ def enemy_step(
         operand=None,
     )
 
-    # TODO: temporary fix for the enemy movement
-    ball_x = ball_x - 6 # force the enemy to move the ball to its center
+    ball_x = (
+        ball_x.astype(jnp.int32) - 6
+    )  # force the enemy to move the ball to its center
 
     # Basic AI movement - move towards the ball
     enemy_x = jnp.where(
         ball_x < new_enemy_x,
         new_enemy_x - 1,
-        jnp.where(
-            ball_x > new_enemy_x,
-            new_enemy_x + 1,
-            new_enemy_x
-        )
+        jnp.where(ball_x > new_enemy_x, new_enemy_x + 1, new_enemy_x),
     )
 
     # Apply bounds
@@ -762,8 +920,52 @@ def enemy_step(
 
     return enemy_x, enemy_y, new_direction
 
+def check_if_round_over(player_round_score, enemy_round_score, round_overtime) -> Tuple[chex.Array, chex.Array]:
+    """
+    A round is over if:
+    1. we are not in round_overtime and one player has more than 40 points whilst the other has less than 40
+    2. we are in round_overtime and one player has a score difference of 2
+    Args:
+        player_round_score: Current player score
+        enemy_round_score: Current enemy score
+        round_overtime: Boolean array that is only true if the round is in overtime
 
-def check_scoring(state: State) -> Tuple[chex.Array, chex.Array, bool]:
+    Returns:
+        Tuple containing:
+            bool: True if the player won the round; False otherwise
+            bool: True if the enemy won the round; False otherwise
+    """
+    # check if the score is 40-30 or 30-40
+    clear_winner_player = jnp.logical_and(
+        jnp.logical_not(round_overtime),
+        jnp.logical_and(
+            jnp.greater(player_round_score, 40),
+            jnp.less(enemy_round_score, 40),
+        ),
+    )
+
+    clear_winner_enemy = jnp.logical_and(
+        jnp.logical_not(round_overtime),
+        jnp.logical_and(
+            jnp.greater(enemy_round_score, 40),
+            jnp.less(player_round_score, 40),
+        )
+    )
+
+    # if its overtime, check if the score difference is 2
+    player_win_in_overtime = jnp.logical_and(
+        round_overtime,
+        player_round_score - enemy_round_score >= 2,
+    )
+
+    enemy_win_in_overtime = jnp.logical_and(
+        round_overtime,
+        enemy_round_score - player_round_score >= 2,
+    )
+
+    return jnp.logical_or(clear_winner_player, player_win_in_overtime), jnp.logical_or(clear_winner_enemy, enemy_win_in_overtime)
+
+def check_scoring(state: TennisState) -> Tuple[chex.Array, chex.Array, chex.Array, chex.Array, bool, chex.Array, chex.Array, chex.Array]:
     """
     Checks if a point was scored and updates the score accordingly.
 
@@ -776,25 +978,125 @@ def check_scoring(state: State) -> Tuple[chex.Array, chex.Array, bool]:
             chex.Array: Updated enemy score
             bool: Whether a point was scored in this step
     """
+    def get_next_score(current_score, round_score_intervals):
+        """Get the next score value from the round_score_intervals array."""
+        # Find the current score index in the intervals
+        current_index = jnp.argmax(jnp.array(round_score_intervals) == current_score)
+        # Ensure we don't go beyond the array bounds
+        next_index = jnp.minimum(current_index + 1, len(round_score_intervals) - 1)
+        return round_score_intervals[next_index]
+
+    round_score_intervals = jnp.array([0, 15, 30, 40, 41])
+
     ball_in_field, side = check_ball_in_field(state)
 
-    player_score, enemy_score, add_point = jax.lax.cond(jnp.logical_or(ball_in_field, state.serving),
-                             lambda _: (state.player_score, state.enemy_score, False),
-                             lambda _: (state.player_score, state.enemy_score, True),
-                             operand=None,
-                             )
-
-    player_score, enemy_score = jax.lax.cond(
-        jnp.logical_and(add_point, jnp.equal(side, 0)),
-        lambda _: (state.player_score + 1, state.enemy_score),
-        lambda _: (state.player_score, state.enemy_score + 1),
+    player_round_score, enemy_round_score, add_point = jax.lax.cond(
+        jnp.logical_or(ball_in_field, state.serving),
+        lambda _: (state.player_round_score, state.enemy_round_score, False),
+        lambda _: (state.player_round_score, state.enemy_round_score, True),
         operand=None,
     )
 
-    return player_score, enemy_score, add_point
+    # Ball left on player's side, enemy scores
+    enemy_scores = jnp.logical_and(add_point, jnp.equal(side, state.player_side))
+
+    # Ball left on enemy's side, player scores
+    player_scores = jnp.logical_and(add_point, jnp.not_equal(side, state.player_side))
+
+    # Update scores
+    player_round_score = jnp.where(
+        player_scores,
+        get_next_score(state.player_round_score, round_score_intervals),
+        state.player_round_score
+    )
+
+    enemy_round_score = jnp.where(
+        enemy_scores,
+        get_next_score(state.enemy_round_score, round_score_intervals),
+        state.enemy_round_score
+    )
+
+    # if we are in round_overtime, dont set the round_scores to the next step but simply add 1 to it (we are only looking at differences now)
+    player_round_score = jnp.where(
+        jnp.logical_and(player_scores, state.round_overtime),
+        state.player_round_score + 1,
+        player_round_score
+    )
+
+    enemy_round_score = jnp.where(
+        jnp.logical_and(enemy_scores, state.round_overtime),
+        state.enemy_round_score + 1,
+        enemy_round_score
+    )
+
+    # recheck the round_overtime value
+    round_overtime = jnp.logical_or(
+        state.round_overtime,
+        jnp.logical_and(
+            jnp.greater_equal(player_round_score, 40),
+            jnp.greater_equal(enemy_round_score, 40),
+        )
+    )
+
+    # check if one of the two won this round
+    player_won_round, enemy_won_round = check_if_round_over(player_round_score, enemy_round_score, round_overtime)
+
+    # if either player or enemy won a round, reset the scores
+    player_round_score = jnp.where(
+        jnp.logical_or(player_won_round, enemy_won_round),
+        0,
+        player_round_score,
+    )
+
+    enemy_round_score = jnp.where(
+        jnp.logical_or(player_won_round, enemy_won_round),
+        0,
+        enemy_round_score,
+    )
+
+    # if the round was won, we set the round_overtime to false
+    round_overtime = jnp.where(
+        jnp.logical_or(player_won_round, enemy_won_round),
+        False,
+        round_overtime,
+    )
+
+    newly_round_overtime = jnp.logical_and(
+        round_overtime,
+        jnp.logical_not(state.round_overtime)
+    )
+
+    # if we are newly overtime set the scores to 0
+    player_round_score = jnp.where(
+        newly_round_overtime,
+        0,
+        player_round_score
+    )
+
+    enemy_round_score = jnp.where(
+        newly_round_overtime,
+        0,
+        enemy_round_score
+    )
+
+    # Increment side_switch_counter when a round is won (circuit through 0-3)
+    new_side_switch_counter = jnp.where(
+        jnp.logical_or(player_won_round, enemy_won_round),
+        jnp.mod(state.side_switch_counter + 1, 4),  # Cycle through 0,1,2,3
+        state.side_switch_counter
+    )
+
+    new_player_side = jnp.mod(new_side_switch_counter, 2) # 0 for top, 1 for bottom
+
+    # increase the overall game scoring accordingly
+    player_score = jnp.where(player_won_round, state.player_score + 1, state.player_score)
+
+    enemy_score = jnp.where(enemy_won_round, state.enemy_score + 1, state.enemy_score)
+
+    return player_round_score, enemy_round_score, player_score, enemy_score, add_point, round_overtime, new_side_switch_counter, new_player_side
 
 
-def check_ball_in_field(state: State) -> Tuple[chex.Array, chex.Array]:
+def check_ball_in_field(state: TennisState) -> Tuple[chex.Array, chex.Array]:
     """
     Checks if the ball is in the field
     Args:
@@ -822,19 +1124,30 @@ def check_ball_in_field(state: State) -> Tuple[chex.Array, chex.Array]:
 
     in_field_bottom = (state.ball_y + state.ball_z) <= NET_BOTTOM_LEFT[1]
 
-    side = jax.lax.cond(jnp.less_equal((state.ball_y + state.ball_z), NET_RANGE[0]), lambda _: 0, lambda _: 1, operand=None)
+    side = jax.lax.cond(
+        jnp.less_equal((state.ball_y + state.ball_z), NET_RANGE[0]),
+        lambda _: 0,
+        lambda _: 1,
+        operand=None,
+    )
 
-    return jnp.logical_or(jnp.logical_and(
-        jnp.logical_and(in_field_sides, in_field_top), in_field_bottom
-    ), jnp.greater(state.ball_z, 0)), side
+    return (
+        jnp.logical_or(
+            jnp.logical_and(
+                jnp.logical_and(in_field_sides, in_field_top), in_field_bottom
+            ),
+            jnp.greater(state.ball_z, 0),
+        ),
+        side,
+    )
 
 
 def check_collision(
-        player_x: chex.Array,
-        player_y: chex.Array,
-        state: State,
-        just_hit: chex.Array,
-        serving: chex.Array
+    player_x: chex.Array,
+    player_y: chex.Array,
+    state: TennisState,
+    just_hit: chex.Array,
+    serving: chex.Array,
 ) -> Tuple[chex.Array, chex.Array]:
     """
     Checks if a collision occurred between the ball and the players,
@@ -861,7 +1174,7 @@ def check_collision(
     BOTTOM_VALID_Z = (0, 30)
 
     def check_hit_zone(
-            y_pos: chex.Array, z_pos: chex.Array, valid_y: tuple, valid_z: tuple
+        y_pos: chex.Array, z_pos: chex.Array, valid_y: tuple, valid_z: tuple
     ) -> chex.Array:
         y_valid = jnp.logical_and(y_pos >= valid_y[0], y_pos <= valid_y[1])
         z_valid = jnp.logical_and(z_pos >= valid_z[0], z_pos <= valid_z[1])
@@ -870,24 +1183,22 @@ def check_collision(
     # Check basic overlaps
     player_overlap = jnp.logical_and(
         jnp.logical_and(
-            state.ball_x < player_x + PLAYER_WIDTH,
-            state.ball_x + BALL_SIZE > player_x
+            state.ball_x < player_x + PLAYER_WIDTH, state.ball_x + BALL_SIZE > player_x
         ),
         jnp.logical_and(
-            state.ball_y < player_y + PLAYER_HEIGHT,
-            state.ball_y + BALL_SIZE > player_y
-        )
+            state.ball_y < player_y + PLAYER_HEIGHT, state.ball_y + BALL_SIZE > player_y
+        ),
     )
 
     enemy_overlap = jnp.logical_and(
         jnp.logical_and(
             state.ball_x < state.enemy_x + PLAYER_WIDTH,
-            state.ball_x + BALL_SIZE > state.enemy_x
+            state.ball_x + BALL_SIZE > state.enemy_x,
         ),
         jnp.logical_and(
             state.ball_y < state.enemy_y + PLAYER_HEIGHT,
-            state.ball_y + BALL_SIZE > state.enemy_y
-        )
+            state.ball_y + BALL_SIZE > state.enemy_y,
+        ),
     )
 
     # Combine with valid hit zones based on player side
@@ -908,7 +1219,7 @@ def check_collision(
     player_dir_valid = jnp.where(
         state.player_side == 0,
         jnp.less_equal(state.ball_y_dir, 0),
-        jnp.greater_equal(state.ball_y_dir, 0)
+        jnp.greater_equal(state.ball_y_dir, 0),
     )
 
     enemy_dir_valid = jnp.where(
@@ -918,31 +1229,24 @@ def check_collision(
     )
 
     player_collision = jnp.logical_and(
-        jnp.logical_and(player_overlap, player_hit_zone),
-        player_dir_valid
+        jnp.logical_and(player_overlap, player_hit_zone), player_dir_valid
     )
 
     enemy_collision = jnp.logical_and(
-        jnp.logical_and(enemy_overlap, enemy_hit_zone),
-        enemy_dir_valid
+        jnp.logical_and(enemy_overlap, enemy_hit_zone), enemy_dir_valid
     )
 
     # Return collisions in proper order (top, bottom) based on player side
-    top_collision = jnp.where(
-        state.player_side == 0,
-        player_collision,
-        enemy_collision
-    )
+    top_collision = jnp.where(state.player_side == 0, player_collision, enemy_collision)
 
     bottom_collision = jnp.where(
-        state.player_side == 0,
-        enemy_collision,
-        player_collision
+        state.player_side == 0, enemy_collision, player_collision
     )
 
     return top_collision, bottom_collision
 
-def before_serve(state: State) -> Tuple[chex.Array, chex.Array, chex.Array]:
+
+def before_serve(state: TennisState) -> Tuple[chex.Array, chex.Array, chex.Array]:
     """
     Plays the idle animation of the ball before serving.
 
@@ -956,23 +1260,63 @@ def before_serve(state: State) -> Tuple[chex.Array, chex.Array, chex.Array]:
     """
 
     # idle movement of the ball
-    idle_movement = jnp.array([
-        # Initial fast ascent (7 frames)
-        3, 2, 2, 2, 2, 2, 2, 2,
-        # Transition and slowdown (7 frames)
-        1, 1, 2, 1, 1, 1, 0,
-        # Peak hover (9 frames)
-        1, 1, 0, 0, 0, 0, 0, 0, 0,
-        # Initial descent (6 frames)
-        -1, -1, 0, -1, -1, -1,
-        # Transition (3 frames)
-        -2, -1, -1,
-        # Fast descent (7 frames)
-        -2, -2, -2, -2, -2, -2, -2,
-        # Final drop (2 frames)
-        -3
-    ])
+    idle_movement = jnp.array(
+        [
+            # Initial fast ascent (7 frames)
+            3,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            # Transition and slowdown (7 frames)
+            1,
+            1,
+            2,
+            1,
+            1,
+            1,
+            0,
+            # Peak hover (9 frames)
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            # Initial descent (6 frames)
+            -1,
+            -1,
+            0,
+            -1,
+            -1,
+            -1,
+            # Transition (3 frames)
+            -2,
+            -1,
+            -1,
+            # Fast descent (7 frames)
+            -2,
+            -2,
+            -2,
+            -2,
+            -2,
+            -2,
+            -2,
+            # Final drop (2 frames)
+            -3,
+        ]
+    )
 
+    # Idle animation direction depends on serving side
+    serving_side = (state.side_switch_counter >= 2).astype(jnp.int32)
+
+    # Possibly flip animation pattern based on serving side
     delta_z = idle_movement[state.ball_movement_tick % idle_movement.shape[0]]
 
     # get the speed of the next z movement using the idle movement pattern
@@ -987,143 +1331,404 @@ def before_serve(state: State) -> Tuple[chex.Array, chex.Array, chex.Array]:
     return new_z, new_ball_movement_tick, delta_z
 
 
-class Game:
+class JaxTennis(JaxEnvironment[TennisState, TennisObservation, TennisInfo]):
     def __init__(self, frameskip=0):
+        super().__init__()
         self.frameskip = frameskip
 
-    def reset(self) -> State:
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_observation(
+        self,
+        state: TennisState
+    ) -> TennisObservation:
+        # create player
+        player = EntityPosition(
+            x=state.player_x,
+            y=state.player_y,
+            width=jnp.array(PLAYER_WIDTH),
+            height=jnp.array(PLAYER_HEIGHT),
+        )
+
+        # create enemy
+        enemy = EntityPosition(
+            x=state.enemy_x,
+            y=state.enemy_y,
+            width=jnp.array(PLAYER_WIDTH),
+            height=jnp.array(PLAYER_HEIGHT),
+        )
+
+        # create ball
+        ball = EntityPosition(
+            x=state.ball_x,
+            y=state.ball_y,
+            width=jnp.array(BALL_SIZE),
+            height=jnp.array(BALL_SIZE),
+        )
+
+        # create shadow
+        shadow = EntityPosition(
+            x=state.shadow_x,
+            y=state.shadow_y,
+            width=jnp.array(BALL_SIZE),
+            height=jnp.array(BALL_SIZE),
+        )
+
+        # return the obs object
+        return TennisObservation(
+            player=player,
+            enemy=enemy,
+            ball=ball,
+            ball_shadow = shadow,
+            player_round_score=state.player_round_score,
+            enemy_round_score=state.enemy_round_score,
+            player_score=state.player_score,
+            enemy_score=state.enemy_score
+        )
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_info(
+        self,
+        state: TennisState
+    ) -> TennisInfo:
+        return TennisInfo(
+            serving=state.serving,
+            player_side=state.player_side,
+            current_tick=state.current_tick,
+            ball_direction=state.ball_y_dir
+        )
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_reward(
+        self,
+        previous_state: TennisState,
+        state: TennisState
+    ) -> float:
+        return (state.player_score - state.enemy_score) - (previous_state.player_score - previous_state.enemy_score)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_done(
+        self,
+        state: TennisState
+    ) -> chex.Array:
+        """
+        Returns true only if:
+        1. one score is 6 and the other score is lower than 5
+        2. the game_overtime is true and the score difference is == 2
+        Args:
+            state: Current game state
+
+        Returns: boolean indicating if the game is over
+        """
+
+        # check if the score is 6-4 or 4-6
+        clear_winner = jnp.logical_and(
+            jnp.logical_not(state.game_overtime),
+            jnp.logical_or(
+                jnp.logical_and(
+                    jnp.greater_equal(state.player_score, 6),
+                    jnp.less(state.enemy_score, 5),
+                ),
+                jnp.logical_and(
+                    jnp.greater_equal(state.enemy_score, 6),
+                    jnp.less(state.player_score, 5),
+                ),
+            ),
+        )
+
+        # if its overtime, check if the score difference is 2
+        win_in_overtime = jnp.logical_and(
+            state.game_overtime,
+            jnp.abs(state.player_score - state.enemy_score) >= 2,
+        )
+
+        return jnp.logical_or(clear_winner, win_in_overtime)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def calculate_player_side(self, counter: chex.Array) -> chex.Array:
+        """Calculate player side based on counter value (0-3)
+        Returns 0 for top, 1 for bottom
+        """
+        return jnp.mod(counter, 2)  # Even = top, Odd = bottom
+
+    @partial(jax.jit, static_argnums=(0,))
+    def calculate_serving_side(self, counter: chex.Array) -> chex.Array:
+        """Calculate serving side based on counter value (0-3)
+        Returns 0 for top serve, 1 for bottom serve
+        """
+        return jnp.where(counter < 2, 0, 1)  # First two states = top serve
+
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self) -> Tuple[TennisState, TennisObservation]:
+        # Use provided internal_counter or default to 0
+        internal_counter = jnp.array(0)
+
+        # Calculate sides based on internal_counter
+        player_side = self.calculate_player_side(internal_counter)
+        serving_side = self.calculate_serving_side(internal_counter)
+
+        # Set positions based on sides
+        player_x = jnp.array(TOP_START_X).astype(jnp.int32)
+        player_y = jnp.where(
+            player_side == 0,
+            jnp.array(TOP_START_Y),
+            jnp.array(BOT_START_Y)
+        ).astype(jnp.int32)
+
+        enemy_x = jnp.array(BOT_START_X).astype(jnp.int32)
+        enemy_y = jnp.where(
+            player_side == 0,
+            jnp.array(BOT_START_Y),
+            jnp.array(TOP_START_Y)
+        ).astype(jnp.int32)
+
+        # Initialize ball based on serving side
+        ball_y = jnp.where(
+            serving_side == 0,
+            jnp.array(BALL_START_Y),
+            jnp.array(COURT_HEIGHT - BALL_START_Y)
+        ).astype(jnp.float32)
+
         """Resets game to initial state."""
-        return State(
-            player_x=jnp.array(PLAYER_START_X).astype(jnp.int32),
-            player_y=jnp.array(PLAYER_START_Y).astype(jnp.int32),
+        reset_state = TennisState(
+            player_x=player_x,
+            player_y=player_y,
             player_direction=jnp.array(0).astype(jnp.int32),
-            enemy_x=jnp.array(ENEMY_START_X).astype(jnp.int32),
-            enemy_y=jnp.array(ENEMY_START_Y).astype(jnp.int32),
+            enemy_x=enemy_x,
+            enemy_y=enemy_y,
             enemy_direction=jnp.array(0).astype(jnp.int32),
-            ball_x=jnp.array(BALL_START_X).astype(jnp.int32),
-            ball_y=jnp.array(BALL_START_Y).astype(jnp.int32),
-            ball_z=jnp.array(BALL_START_Z).astype(jnp.int32),
-            ball_x_dir=jnp.array(0).astype(jnp.int32),
-            ball_y_dir=jnp.array(0).astype(jnp.int32),
+            ball_x=jnp.array(BALL_START_X).astype(jnp.float32),
+            ball_y=ball_y,
+            ball_z=jnp.array(BALL_START_Z).astype(jnp.float32),
+            ball_curve_counter=jnp.array(0),
+            ball_x_dir=jnp.array(1).astype(jnp.float32),
+            ball_y_dir=jnp.array(1).astype(jnp.int32),
             shadow_x=jnp.array(0).astype(jnp.int32),
             shadow_y=jnp.array(0).astype(jnp.int32),
             ball_movement_tick=jnp.array(0).astype(jnp.int32),
             player_score=jnp.array(0).astype(jnp.int32),
             enemy_score=jnp.array(0).astype(jnp.int32),
+            player_round_score=jnp.array(0).astype(jnp.int32),
+            enemy_round_score=jnp.array(40).astype(jnp.int32),
             serving=jnp.array(1).astype(jnp.bool),  # boolean for serve state
             just_hit=jnp.array(0).astype(jnp.bool),  # boolean for just hit state
-            player_side=jnp.array(0).astype(jnp.int32),
+            player_side=player_side,
             ball_was_infield=jnp.array(0).astype(jnp.bool),
             current_tick=jnp.array(0).astype(jnp.int32),
             ball_y_tick=jnp.array(0).astype(jnp.int8),
-            ball_x_pattern_idx=jnp.array(-1), # can be any value since this should be overwritten before being used (in case its not, it will throw an error now)
+            ball_x_pattern_idx=jnp.array(
+                -1
+            ),  # can be any value since this should be overwritten before being used (in case its not, it will throw an error now)
             ball_x_counter=jnp.array(0),
+            ball_curve=jnp.array(0.0),
+            round_overtime=jnp.array(0).astype(jnp.bool),
+            game_overtime=jnp.array(0).astype(jnp.bool),
+            ball_start=jnp.array(TOP_START_Y).astype(jnp.int32),
+            ball_end=jnp.array(BOT_START_Y).astype(jnp.int32),
+            side_switch_counter=jnp.array(0).astype(jnp.int32),
+            player_hit=jnp.array(False),
+            enemy_hit=jnp.array(False),
         )
+        return reset_state, self._get_observation(reset_state)
 
     @partial(jax.jit, static_argnums=(0,))
-    def step(self, state: State, action: chex.Array) -> State:
-        """Executes one game step."""
-        # Update player position
-        player_x, player_y, new_player_direction = player_step(
-            state.player_x, state.player_y, state.player_direction, action, state.ball_x, state.player_side
-        )
+    def step(self, state: TennisState, action: chex.Array) -> Tuple[
+        TennisState, TennisObservation, float, bool, TennisInfo]:
+        def normal_play():
+            """Executes one game step."""
+            # Update player position
+            player_x, player_y, new_player_direction = player_step(
+                state.player_x,
+                state.player_y,
+                state.player_direction,
+                action,
+                state.ball_x,
+                state.player_side,
+            )
 
-        # check if there was a collision
-        top_collision, bottom_collision = check_collision(
-            player_x,
-            player_y,
-            state,
-            state.just_hit,
-            state.serving,
-        )
+            # check if there was a collision
+            top_collision, bottom_collision = check_collision(
+                player_x,
+                player_y,
+                state,
+                state.just_hit,
+                state.serving,
+            )
 
-        # Update ball position and velocity (TODO: currently no side switching implemented)
-        ball_x, ball_y, ball_z, delta_z, new_ball_x_dir, new_ball_y_dir, serve, updated_ball_movement_tick, new_ball_y_tick, new_x_ball_pattern_idx, new_x_ball_id = ball_step(
-            state,
-            top_collision,
-            bottom_collision,
-            action,
-        )
+            # Get information about serving
+            serving_side = (state.side_switch_counter >= 2).astype(jnp.int32)
+            player_is_server = jnp.equal(state.player_side, serving_side)
 
-        # if nothing is happening, play the idle animation of the ball
-        ball_z, new_ball_movement_tick, delta_z = jax.lax.cond(
-            serve,
-            lambda: before_serve(state),
-            lambda: (ball_z, updated_ball_movement_tick, delta_z),
-        )
+            # For serving state, only register a hit when serve is executed
+            serve_started = jnp.logical_or(
+                jnp.logical_and(action == FIRE, player_is_server),  # Player serves with FIRE
+                jnp.logical_and(~player_is_server, state.current_tick % 60 == 0)  # Enemy auto-serve
+            )
+            serve_hit = jnp.logical_and(jnp.logical_or(top_collision, bottom_collision), serve_started)
 
-        # TODO: maybe move this
-        # calculate the z into the ball_y
-        ball_y = jnp.where(
-            serve,
-            ball_y - delta_z,
-            ball_y
-        )
-        # TODO: this section of the code teleports the ball back after serve
+            # Determine hit variables differently based on serve state
+            if_serving_player_hit = jnp.logical_and(serve_hit, player_is_server)
+            if_serving_enemy_hit = jnp.logical_and(serve_hit, ~player_is_server)
 
-        ball_was_infield = jax.lax.cond(
-            jnp.logical_or(
-                state.ball_was_infield,
-                jnp.logical_and(
-                    jnp.greater_equal(ball_y, NET_TOP_LEFT[1]),
-                    jnp.less_equal(ball_y, NET_BOTTOM_LEFT[1]),
+            # For normal play, detect hits based on collisions and player position
+            if_normal_player_hit = jnp.logical_and(
+                ~state.serving,
+                jnp.logical_xor(
+                    jnp.logical_and(top_collision, state.player_side == 0),
+                    jnp.logical_and(bottom_collision, state.player_side == 1)
+                )
+            )
+
+            if_normal_enemy_hit = jnp.logical_and(
+                ~state.serving,
+                jnp.logical_xor(
+                    jnp.logical_and(top_collision, state.player_side == 1),
+                    jnp.logical_and(bottom_collision, state.player_side == 0)
+                )
+            )
+
+            # Combine serve and normal play conditions
+            player_hit = jnp.logical_or(if_serving_player_hit, if_normal_player_hit)
+            enemy_hit = jnp.logical_or(if_serving_enemy_hit, if_normal_enemy_hit)
+
+            # Update ball position and velocity
+            (
+                ball_x,
+                ball_y,
+                ball_z,
+                delta_z,
+                new_ball_x_dir,
+                new_ball_y_dir,
+                serve,
+                updated_ball_movement_tick,
+                new_ball_y_tick,
+                new_x_ball_pattern_idx,
+                new_x_ball_id,
+                ball_curve_counter,
+                ball_curve,
+                ball_start,
+                ball_end,
+            ) = ball_step(
+                state,
+                top_collision,
+                bottom_collision,
+                action,
+            )
+
+            # if nothing is happening, play the idle animation of the ball
+            ball_z, new_ball_movement_tick, delta_z = jax.lax.cond(
+                serve,
+                lambda: before_serve(state),
+                lambda: (ball_z, updated_ball_movement_tick, delta_z),
+            )
+
+            # calculate the z into the ball_y
+            ball_y = jnp.where(serve, ball_y - delta_z, ball_y)
+
+            ball_was_infield = jax.lax.cond(
+                jnp.logical_or(
+                    state.ball_was_infield,
+                    jnp.logical_and(
+                        jnp.greater_equal(ball_y, NET_TOP_LEFT[1]),
+                        jnp.less_equal(ball_y, NET_BOTTOM_LEFT[1]),
+                    ),
                 ),
-            ),
-            lambda _: True,
-            lambda _: False,
-            operand=None,
-        )
+                lambda _: True,
+                lambda _: False,
+                operand=None,
+            )
 
-        # Check scoring
-        player_score, enemy_score, point_scored = check_scoring(state)
+            # Check scoring
+            player_round_score, enemy_round_score, player_game_score, enemy_game_score, point_scored, round_overtime, new_side_switch_counter, new_player_side = check_scoring(
+                state)
 
-        enemy_x, enemy_y, new_enemy_direction = enemy_step(state.enemy_x, state.enemy_y, state.enemy_direction, ball_x, ball_y, state.player_side)
+            enemy_x, enemy_y, new_enemy_direction = enemy_step(
+                state.enemy_x,
+                state.enemy_y,
+                state.enemy_direction,
+                ball_x,
+                ball_y,
+                state.player_side,
+            )
 
-        reset_state = self.reset()
+            newly_overtime = jnp.logical_and(
+                ~state.round_overtime,
+                jnp.logical_and(
+                    jnp.equal(player_game_score, 6),
+                    jnp.equal(enemy_game_score, 6),
+                )
+            )
 
-        # if its serve, block the y movement of player and enemy
-        player_y = jnp.where(serve, PLAYER_START_Y, player_y)
+            # check if the game is in overtime (i.e. if the score is 6-6 set the flag to true)
+            game_overtime = jnp.logical_or(
+                state.game_overtime,
+                jnp.logical_and(
+                    jnp.equal(player_game_score, 6),
+                    jnp.equal(enemy_game_score, 6),
+                )
+            )
 
-        # if its serve, block the y movement of player and enemy
-        enemy_y = jnp.where(serve, ENEMY_START_Y, state.enemy_y)
+            # in case its newly overtime, reset the _game_scores to 0
+            player_game_score = jnp.where(
+                newly_overtime,
+                0,
+                player_game_score
+            )
 
-        # if the game is frozen, return the current state
-        serve = jax.lax.cond(
-            jnp.logical_or(serve, jnp.logical_and(point_scored, ball_was_infield)),
-            lambda _: True,
-            lambda _: False,
-            operand=None,
-        )
+            enemy_game_score = jnp.where(
+                newly_overtime,
+                0,
+                enemy_game_score
+            )
 
-        # TODO: this is really cursed, revisit
-        (
-            ball_x,
-            ball_y,
-            ball_z,
-            player_x,
-            player_y,
-            enemy_x,
-            enemy_y,
-            ball_was_infield,
-            current_tick,
-            new_ball_movement_tick,
-            new_ball_y_tick
-        ) = jax.lax.cond(
-            jnp.logical_and(point_scored, ball_was_infield),
-            lambda _: (
-                reset_state.ball_x,
-                reset_state.ball_y,
-                reset_state.ball_z,
-                reset_state.player_x,
-                reset_state.player_y,
-                reset_state.enemy_x,
-                reset_state.enemy_y,
-                False,
-                -1,
-                reset_state.ball_movement_tick,
-                reset_state.ball_y_tick,
-            ),
-            lambda _: (
+            reset_state, _ = self.reset()
+
+            # Check if player side has changed
+            side_changed = jnp.not_equal(state.player_side, new_player_side)
+
+            # When sides change after round ends, reset player and enemy positions
+            player_y = jnp.where(
+                side_changed,
+                jnp.where(
+                    new_player_side == 0,
+                    jnp.array(TOP_START_Y),  # Reset to top position
+                    jnp.array(BOT_START_Y)  # Reset to bottom position
+                ),
+                player_y
+            )
+
+            enemy_y = jnp.where(
+                side_changed,
+                jnp.where(
+                    new_player_side == 0,
+                    jnp.array(BOT_START_Y),  # Reset to bottom position
+                    jnp.array(TOP_START_Y)  # Reset to top position
+                ),
+                enemy_y
+            )
+
+            # if its serve, block the y movement of player and enemy (depending on the side)
+            player_y = jnp.where(serve, jnp.where(new_player_side == 0, TOP_START_Y, BOT_START_Y), player_y)
+
+            # if its serve, block the y movement of player and enemy
+            enemy_y = jnp.where(serve, jnp.where(new_player_side == 0, BOT_START_Y, TOP_START_Y), enemy_y)
+
+            # if the game is frozen, return the current state
+            serve = jax.lax.cond(
+                jnp.logical_or(serve, jnp.logical_and(point_scored, ball_was_infield)),
+                lambda _: True,
+                lambda _: False,
+                operand=None,
+            )
+
+            new_serving_side = (new_side_switch_counter >= 2).astype(jnp.int32)
+            # Calculate correct ball position based on new serving side
+            side_corrected_y = jnp.where(
+                new_serving_side == 0,
+                jnp.array(BALL_START_Y),  # Top position
+                jnp.array(COURT_HEIGHT - BALL_START_Y)  # Bottom position
+            ).astype(jnp.float32)
+
+            (
                 ball_x,
                 ball_y,
                 ball_z,
@@ -1132,196 +1737,243 @@ class Game:
                 enemy_x,
                 enemy_y,
                 ball_was_infield,
-                state.current_tick,
+                current_tick,
                 new_ball_movement_tick,
-                new_ball_y_tick
-            ),
-            operand=None,
-        )
+                new_ball_y_tick,
+            ) = jax.lax.cond(
+                jnp.logical_and(point_scored, ball_was_infield),
+                lambda _: (
+                    reset_state.ball_x,
+                    side_corrected_y,
+                    reset_state.ball_z,
+                    reset_state.player_x,
+                    reset_state.player_y,
+                    reset_state.enemy_x,
+                    reset_state.enemy_y,
+                    False,
+                    -1,
+                    reset_state.ball_movement_tick,
+                    reset_state.ball_y_tick,
+                ),
+                lambda _: (
+                    ball_x,
+                    ball_y,
+                    ball_z,
+                    player_x,
+                    player_y,
+                    enemy_x,
+                    enemy_y,
+                    ball_was_infield,
+                    state.current_tick,
+                    new_ball_movement_tick,
+                    new_ball_y_tick,
+                ),
+                operand=None,
+            )
 
-        calculated_state = State(
-            player_x=player_x,
-            player_y=player_y,
-            player_direction=new_player_direction,
-            enemy_x=enemy_x,
-            enemy_y=enemy_y,
-            enemy_direction=new_enemy_direction,
-            ball_x=ball_x,
-            ball_y=ball_y,
-            ball_z=ball_z,
-            ball_x_dir=new_ball_x_dir,
-            ball_y_dir=new_ball_y_dir,
-            shadow_x=ball_x,
-            shadow_y=((ball_y + ball_z + 1) // 2) * 2,
-            ball_movement_tick=new_ball_movement_tick,
-            player_score=player_score,
-            enemy_score=enemy_score,
-            serving=serve,
-            just_hit=jnp.array(False),
-            player_side=state.player_side,
-            ball_was_infield=ball_was_infield,
-            current_tick=current_tick + 1,
-            ball_y_tick=new_ball_y_tick.astype(jnp.int8),
-            ball_x_pattern_idx=new_x_ball_pattern_idx,
-            ball_x_counter=new_x_ball_id,
-        )
+            # make sure the ball_y is not going negative, if it does, reset it to 0
+            ball_y = jnp.maximum(ball_y, 0)
+
+            calculated_state = TennisState(
+                player_x=player_x,
+                player_y=player_y,
+                player_direction=new_player_direction,
+                enemy_x=enemy_x,
+                enemy_y=enemy_y,
+                enemy_direction=new_enemy_direction,
+                ball_x=ball_x,
+                ball_y=ball_y,
+                ball_z=ball_z,
+                ball_curve_counter=ball_curve_counter,
+                ball_x_dir=new_ball_x_dir,
+                ball_y_dir=new_ball_y_dir,
+                shadow_x=ball_x.astype(jnp.int32),
+                shadow_y=(((ball_y + ball_z + 1) // 2) * 2).astype(jnp.int32),
+                ball_movement_tick=new_ball_movement_tick,
+                player_round_score=player_round_score,
+                enemy_round_score=enemy_round_score,
+                player_score=player_game_score,
+                enemy_score=enemy_game_score,
+                serving=serve,
+                just_hit=jnp.array(False),
+                player_side=new_player_side,
+                ball_was_infield=ball_was_infield,
+                current_tick=current_tick + 1,
+                ball_y_tick=new_ball_y_tick.astype(jnp.int8),
+                ball_x_pattern_idx=new_x_ball_pattern_idx,
+                ball_x_counter=new_x_ball_id,
+                ball_curve=ball_curve,
+                round_overtime=round_overtime,
+                game_overtime=game_overtime,
+                ball_start=ball_start,
+                ball_end=ball_end,
+                side_switch_counter=new_side_switch_counter,
+                player_hit=player_hit,
+                enemy_hit=enemy_hit
+            )
+
+            returned_state = jax.lax.cond(
+                state.current_tick < WAIT_AFTER_GOAL,
+                lambda: state._replace(current_tick=state.current_tick + 1),
+                lambda: calculated_state,
+            )
+
+            return returned_state, self._get_observation(returned_state), self._get_reward(state, returned_state), self._get_done(returned_state), self._get_info(returned_state)
+
+        def game_over_freeze():
+            """Freezes the game after it's over."""
+            return state, self._get_observation(state), self._get_reward(state, state), jnp.bool(True), self._get_info(
+                state)
 
         return jax.lax.cond(
-            state.current_tick < WAIT_AFTER_GOAL,
-            lambda: state._replace(current_tick=state.current_tick + 1),
-            lambda: calculated_state,
+            self._get_done(state),
+            lambda: game_over_freeze(),
+            lambda: normal_play(),
         )
 
+class AnimatorState(NamedTuple):
+    r_x: chex.Array
+    r_y: chex.Array
+    r_f: chex.Array
+    r_bat_f: chex.Array
+    b_x: chex.Array
+    b_y: chex.Array
+    b_f: chex.Array
+    b_bat_f: chex.Array
 
-class Renderer:
-    def __init__(self):
-        pass
 
-    def display(self, screen, state):
-        """Displays the rendered game state using pygame."""
-        canvas = self.jax_rendering(state)
-        canvas_np = np.array(canvas)
-        canvas_np = np.flipud(np.rot90(canvas_np, k=1))
-        pygame_surface = pygame.surfarray.make_surface(canvas_np)
-        screen.blit(
-            pygame.transform.scale(pygame_surface, (COURT_WIDTH * 3, COURT_HEIGHT * 3)),
-            (0, 0),
+OFFSET_BAT_Y = jnp.array([7, 7, 5, 3])
+
+
+class Renderer_AJ:
+
+    @partial(jax.jit, static_argnums=(0,))
+    def next_body_frame(self, diff_x, diff_y, frame):
+
+        # Condition 1: r_x - state.player_x > 0 or r_y - state.player_y > 0
+        condition1 = (diff_x > 0) | (diff_y > 0)
+
+        # Condition 2: r_x - state.player_x == 0 and r_y - state.player_y == 0
+        condition2 = (diff_x == 0) & (diff_y == 0)
+
+        # Calculate next frame based on conditions
+        next_frame = jnp.where(
+            condition1, (frame + 1) % 16, jnp.where(condition2, 12, (frame - 1) % 16)
         )
-        pygame.display.flip()
 
-    def get_rgb_img(self, state: State) -> np.ndarray:
-        canvas = self.jax_rendering(state)
-        return np.array(canvas)
+        return next_frame
 
-    def jax_rendering(self, state: State):
-        """Renders the current state of the game matching the original Atari style."""
-        # Create dark green background
-        canvas = np.full((COURT_HEIGHT, COURT_WIDTH, 3), [0, 100, 0], dtype=np.uint8)
+    @partial(jax.jit, static_argnums=(0,))
+    def bat_position(self, body_x, body_y, body_direction, frame):
+        key_frame = frame // 4
+        offset_x = 8
 
-        # Create the color arrays with correct dtype
-        WHITE = np.array([255, 255, 255], dtype=np.uint8)
-        GRAY = np.array([200, 200, 200], dtype=np.uint8)
-        SHADOW = np.array([100, 100, 100], dtype=np.uint8)
-        BALL = np.array([25, 255, 255], dtype=np.uint8)
-        RED = np.array([255, 0, 0], dtype=np.uint8)  # For direction indicators
+        offset_y = OFFSET_BAT_Y[key_frame]
+        bat_x = jnp.where(body_direction, body_x - offset_x, body_x + offset_x)
+        bat_y = body_y + offset_y
+        return bat_x, bat_y
 
-        # Draw court outline (white lines)
-        canvas[NET_TOP_LEFT[1], NET_TOP_LEFT[0]:NET_TOP_RIGHT[0]] = WHITE
-        canvas[NET_BOTTOM_LEFT[1], NET_BOTTOM_LEFT[0]:NET_BOTTOM_RIGHT[0]] = WHITE
+    @partial(jax.jit, static_argnums=(0,))
+    def next_bat_frame(self, frame, hit):
+        cond = hit | (frame != 0)
+        return jnp.where(cond, (frame + 1) % 16, 0)
 
-        # Draw side lines with perspective
-        for y in range(NET_TOP_LEFT[1], NET_BOTTOM_LEFT[1] + 1):
-            progress = (y - NET_TOP_LEFT[1]) / (NET_BOTTOM_LEFT[1] - NET_TOP_LEFT[1])
-            left_x = int(NET_TOP_LEFT[0] + (NET_BOTTOM_LEFT[0] - NET_TOP_LEFT[0]) * progress)
-            right_x = int(NET_TOP_RIGHT[0] + (NET_BOTTOM_RIGHT[0] - NET_TOP_RIGHT[0]) * progress)
-            canvas[y, left_x] = WHITE
-            canvas[y, right_x] = WHITE
+    @partial(jax.jit, static_argnums=(0,))
+    def render(self, state, animator_state):
 
-        # Draw net (solid gray band)
-        net_y = (NET_RANGE[0] + NET_RANGE[1]) // 2
-        net_height = 15
-        for y in range(net_y - net_height // 2, net_y + net_height // 2):
-            progress = (y - NET_TOP_LEFT[1]) / (NET_BOTTOM_LEFT[1] - NET_TOP_LEFT[1])
-            left_x = int(NET_TOP_LEFT[0] + (NET_BOTTOM_LEFT[0] - NET_TOP_LEFT[0]) * progress)
-            right_x = int(NET_TOP_RIGHT[0] + (NET_BOTTOM_RIGHT[0] - NET_TOP_RIGHT[0]) * progress)
-            canvas[y, left_x:right_x] = GRAY
+        # render background
+        raster = jnp.zeros((COURT_WIDTH, COURT_HEIGHT, 3))
+        raster = aj.render_at(raster, 0, 0, BG)
 
-        # Player and enemy positions
-        player_x = int(state.player_x)
-        player_y = int(state.player_y)
-        enemy_x = int(state.enemy_x)
-        enemy_y = int(state.enemy_y)
-        ball_x = int(state.ball_x)
-        ball_y = int(state.ball_y)
-        shadow_x = int(state.shadow_x)
-        shadow_y = int(state.shadow_y)
-        player_direction = int(state.player_direction)
-        enemy_direction = int(state.enemy_direction)
+        # render player
+        raster = aj.render_at(
+            raster,
+            state.player_y,
+            state.player_x,
+            PL_R[animator_state.r_f // 4],
+            flip_horizontal=state.player_direction,
+        )
 
-        # Draw entities with bounds checking
-        if player_y >= 0 and player_y < COURT_HEIGHT - 23 and player_x >= 0 and player_x < COURT_WIDTH - 13:
-            canvas[player_y:player_y + 23, player_x:player_x + 13] = WHITE
+        # render enemy
+        raster = aj.render_at(
+            raster,
+            state.enemy_y,
+            state.enemy_x,
+            PL_B[animator_state.b_f // 4],
+            flip_horizontal=state.enemy_direction,
+        )
 
-            # Add player direction arrow
-            arrow_start_y = player_y + 11  # Middle of player vertically
-            if player_direction == 0:  # Right-facing
-                arrow_start_x = player_x + 13  # Right edge
-                for i in range(5):  # Draw a 5-pixel arrow
-                    canvas[arrow_start_y, arrow_start_x + i] = RED
-                # Draw arrowhead
-                canvas[arrow_start_y - 1, arrow_start_x + 3] = RED
-                canvas[arrow_start_y + 1, arrow_start_x + 3] = RED
-            else:  # Left-facing
-                arrow_start_x = player_x  # Left edge
-                for i in range(5):  # Draw a 5-pixel arrow
-                    canvas[arrow_start_y, arrow_start_x - i] = RED
-                # Draw arrowhead
-                canvas[arrow_start_y - 1, arrow_start_x - 3] = RED
-                canvas[arrow_start_y + 1, arrow_start_x - 3] = RED
+        # render ball
+        raster = aj.render_at(raster, state.ball_y, state.ball_x, BALL)
 
-        if enemy_y >= 0 and enemy_y < COURT_HEIGHT - 23 and enemy_x >= 0 and enemy_x < COURT_WIDTH - 13:
-            canvas[enemy_y:enemy_y + 23, enemy_x:enemy_x + 13] = WHITE
+        # render ball shade
 
-            # Add enemy direction arrow
-            arrow_start_y = enemy_y + 11  # Middle of enemy vertically
-            if enemy_direction == 0:  # Right-facing
-                arrow_start_x = enemy_x + 13  # Right edge
-                for i in range(5):  # Draw a 5-pixel arrow
-                    canvas[arrow_start_y, arrow_start_x + i] = RED
-                # Draw arrowhead
-                canvas[arrow_start_y - 1, arrow_start_x + 3] = RED
-                canvas[arrow_start_y + 1, arrow_start_x + 3] = RED
-            else:  # Left-facing
-                arrow_start_x = enemy_x  # Left edge
-                for i in range(5):  # Draw a 5-pixel arrow
-                    canvas[arrow_start_y, arrow_start_x - i] = RED
-                # Draw arrowhead
-                canvas[arrow_start_y - 1, arrow_start_x - 3] = RED
-                canvas[arrow_start_y + 1, arrow_start_x - 3] = RED
+        raster = aj.render_at(raster, state.shadow_y, state.shadow_x, BALL_SHADE)
 
-        # Draw shadow
-        if shadow_y >= 0 and shadow_y < COURT_HEIGHT - 2 and shadow_x >= 0 and shadow_x < COURT_WIDTH - 2:
-            canvas[shadow_y:shadow_y + 2, shadow_x:shadow_x + 2] = SHADOW
+        # render player bat
+        r_bat_x, r_bat_y = self.bat_position(
+            state.player_x,
+            state.player_y,
+            state.player_direction,
+            animator_state.r_bat_f,
+        )
 
-        # Draw ball
-        if ball_y >= 0 and ball_y < COURT_HEIGHT - 2 and ball_x >= 0 and ball_x < COURT_WIDTH - 2:
-            canvas[ball_y:ball_y + 2, ball_x:ball_x + 2] = BALL
+        raster = aj.render_at(
+            raster,
+            r_bat_y,
+            r_bat_x,
+            BAT_R[animator_state.r_bat_f // 4],
+            flip_horizontal=state.player_direction,
+        )
 
-        # Draw scores
-        score_size = 8
-        canvas[10:10 + score_size, COURT_WIDTH - 20:COURT_WIDTH - 20 + score_size] = WHITE
-        canvas[10:10 + score_size, 20:20 + score_size] = WHITE
+        # render enemy bat
 
-        return canvas
-    def draw_score(self, canvas, score, position):
-        """Draw score with improved visibility."""
-        x, y = position
-        score_str = str(score)
-        digit_color = [255, 255, 255]  # White color for score
+        b_bat_x, b_bat_y = self.bat_position(
+            state.enemy_x, state.enemy_y, state.enemy_direction, animator_state.b_bat_f
+        )
+        raster = aj.render_at(
+            raster,
+            b_bat_y,
+            b_bat_x,
+            BAT_B[animator_state.b_bat_f // 4],
+            flip_horizontal=state.enemy_direction,
+        )
 
-        # Draw background box for score
-        box_padding = 2
-        box_width = len(score_str) * 8 + box_padding * 2
-        box_height = 12
-        canvas[y - box_padding : y + box_height, x - box_padding : x + box_width] = [
-            0,
-            100,
-            0,
-        ]  # Dark green background
+        # render scores
+        
+        r_score_array = aj.int_to_digits(state.player_round_score, max_digits = 2)
+        b_score_array = aj.int_to_digits(state.enemy_round_score, max_digits = 2)
+        
+        raster = aj.render_label(raster, 10, 60, r_score_array, DIGITS_R, spacing=7)
+        raster = aj.render_label(raster, 10, 90, b_score_array, DIGITS_B, spacing=7)
 
-        # Draw digits
-        for digit in score_str:
-            # Simple digit rendering with improved spacing
-            digit_int = int(digit)
-            canvas[y : y + 8, x : x + 6] = digit_color
-            x += 8  # Increased spacing between digits
+        # state transition
 
-    def draw_net(self, canvas):
-        # Draw net (for simplicity it spans the whole x, and the y is the NET RANGE)
-        canvas[NET_RANGE[0] : NET_RANGE[1], :] = [255, 255, 255]
+        next_r_f = self.next_body_frame(
+            state.player_x - animator_state.r_x,
+            state.player_y - animator_state.r_y,
+            animator_state.r_f,
+        )
+        next_b_f = self.next_body_frame(
+            state.enemy_x - animator_state.b_x,
+            state.enemy_y - animator_state.b_y,
+            animator_state.b_f,
+        )
+
+        new_animator_state = AnimatorState(
+            r_x=state.player_x,
+            r_y=state.player_y,
+            r_f=next_r_f,
+            r_bat_f=self.next_bat_frame(animator_state.r_bat_f, state.player_hit),
+            b_x=state.enemy_x,
+            b_y=state.enemy_y,
+            b_f=next_b_f,
+            b_bat_f=self.next_bat_frame(animator_state.b_bat_f, state.enemy_hit),
+        )
+
+        return raster, new_animator_state
 
 
-# TODO: pull out the game loop into a main function that wraps all the different games
 if __name__ == "__main__":
     # Initialize Pygame
     pygame.init()
@@ -1330,19 +1982,20 @@ if __name__ == "__main__":
     clock = pygame.time.Clock()
 
     # Create game instance
-    game = Game(frameskip=1)
+    game = JaxTennis(frameskip=1)
 
     # Initialize renderer
-    renderer = Renderer()
-
-
+    renderer = Renderer_AJ()
+    animator_state = AnimatorState(
+        r_x=0, r_y=0, r_f=12, r_bat_f=0, b_x=0, b_y=0, b_f=12, b_bat_f=0
+    )
 
     # JIT compile main functions
     jitted_step = jax.jit(game.step)
     jitted_reset = jax.jit(game.reset)
 
     # Main game loop structure
-    curr_state = jitted_reset()
+    curr_state, curr_obs = jitted_reset()
     running = True
     frame_by_frame = False
     frameskip = game.frameskip
@@ -1364,19 +2017,20 @@ if __name__ == "__main__":
                 if event.key == pygame.K_n and frame_by_frame:
                     if counter % frameskip == 0:
                         action = get_human_action()
-                        curr_state = jitted_step(curr_state, action)
+                        curr_state, obs, reward, done, info = jitted_step(curr_state, action)
+                        # print the current game scores
+                        print(f"Player: {curr_state.player_score} - Enemy: {curr_state.enemy_score}")
 
         if not frame_by_frame:
             if counter % frameskip == 0:
                 # Get action (to be implemented with proper controls)
                 action = get_human_action()
-                curr_state: State = jitted_step(curr_state, action)
-                list_of_y.append(int(curr_state.ball_y))
-                list_of_z.append(int(curr_state.ball_z))
+                curr_state, obs, reward, done, info = jitted_step(curr_state, action)
 
-        renderer.display(screen, curr_state)
+        raster, animator_state = renderer.render(curr_state, animator_state)
+        aj.update_pygame(screen, raster, 4, COURT_WIDTH, COURT_HEIGHT)
 
         counter += 1
-        clock.tick(60)
+        clock.tick(30)
 
     pygame.quit()

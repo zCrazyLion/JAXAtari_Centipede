@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Tuple, NamedTuple
 import random
 
+from environment import JaxEnvironment
+
 NOOP = 0
 LEFT = 1
 RIGHT = 2
@@ -57,12 +59,32 @@ class GameState(NamedTuple):
     key: chex.Array
 
 
-class SkiingGameLogic:
-    def __init__(self, config: GameConfig):
-        self.config = config
+class EntityPosition(NamedTuple):
+    x: jnp.ndarray
+    y: jnp.ndarray
+    width: jnp.ndarray
+    height: jnp.ndarray
+
+
+class SkiingObservation(NamedTuple):
+    skier: EntityPosition
+    flags: jnp.ndarray
+    trees: jnp.ndarray
+    rocks: jnp.ndarray
+    score: jnp.ndarray
+
+
+class SkiingInfo(NamedTuple):
+    time: jnp.ndarray
+
+
+class SkiingGameLogic(JaxEnvironment[GameState, SkiingObservation, SkiingInfo]):
+    def __init__(self):
+        super().__init__()
+        self.config = GameConfig()
         self.state = self.reset()
 
-    def reset(self) -> GameState:
+    def reset(self) -> Tuple[GameState, SkiingObservation]:
         """Initialize a new game state"""
         flags = []
         y_spacing = (
@@ -102,7 +124,7 @@ class SkiingGameLogic:
             )
             rocks.append((float(x), float(y)))
 
-        return GameState(
+        state = GameState(
             skier_x=jnp.array(76.0),
             skier_pos=jnp.array(4),
             skier_fell=jnp.array(0),
@@ -117,11 +139,15 @@ class SkiingGameLogic:
             game_over=jnp.array(False),
             key=RANDOM_KEY,
         )
+        obs = self._get_observation(state)
+
+        return state, obs
 
     def _create_new_objs(self, state, new_flags, new_trees, new_rocks):
         k, k1, k2, k3, k4 = jax.random.split(state.key, num=5)
 
         k1 = jnp.array([k1, k2, k3, k4])
+
         def check_flags(i, flags):
             x_flag = jax.random.randint(
                 k1.at[i].get(),
@@ -132,9 +158,14 @@ class SkiingGameLogic:
                 - self.config.flag_distance,
             )
             x_flag = jnp.array(x_flag, jnp.float32)
-            y = BOTTOM_BORDER + jax.random.randint(k1.at[3-i].get(), [], 0, 100)
+            y = BOTTOM_BORDER + jax.random.randint(k1.at[3 - i].get(), [], 0, 100)
 
-            new_f = jax.lax.cond(jnp.less(flags.at[i, 1].get(), TOP_BORDER), lambda _: jnp.array([x_flag, y], jnp.float32), lambda _: flags.at[i].get(), operand=None)
+            new_f = jax.lax.cond(
+                jnp.less(flags.at[i, 1].get(), TOP_BORDER),
+                lambda _: jnp.array([x_flag, y], jnp.float32),
+                lambda _: flags.at[i].get(),
+                operand=None,
+            )
 
             flags = flags.at[i].set(new_f)
 
@@ -144,18 +175,23 @@ class SkiingGameLogic:
 
         k, k1, k2, k3, k4, k5, k6, k7, k8 = jax.random.split(k, 9)
         k1 = jnp.array([k1, k2, k3, k4, k5, k6, k7, k8])
+
         def check_trees(i, trees):
             x_tree = jax.random.randint(
                 k1.at[i].get(),
                 [],
-                self.config.tree_width, self.config.screen_width - self.config.tree_width
+                self.config.tree_width,
+                self.config.screen_width - self.config.tree_width,
             )
             x_tree = jnp.array(x_tree, jnp.float32)
-            y = BOTTOM_BORDER + jax.random.randint(k1.at[7-i].get(), [], 0, 100)
+            y = BOTTOM_BORDER + jax.random.randint(k1.at[7 - i].get(), [], 0, 100)
 
-            new_f = jax.lax.cond(jnp.less(trees.at[i, 1].get(), TOP_BORDER),
-                                 lambda _: jnp.array([x_tree, y], jnp.float32), lambda _: trees.at[i].get(),
-                                 operand=None)
+            new_f = jax.lax.cond(
+                jnp.less(trees.at[i, 1].get(), TOP_BORDER),
+                lambda _: jnp.array([x_tree, y], jnp.float32),
+                lambda _: trees.at[i].get(),
+                operand=None,
+            )
             trees = trees.at[i].set(new_f)
             return trees
 
@@ -163,6 +199,7 @@ class SkiingGameLogic:
 
         k, k1, k2, k3, k4, k5, k6 = jax.random.split(k, 7)
         k1 = jnp.array([k1, k2, k3, k4, k5, k6])
+
         def check_rocks(i, rocks):
             x_rock = jax.random.randint(
                 k1.at[i].get(),
@@ -171,11 +208,14 @@ class SkiingGameLogic:
                 self.config.screen_width - self.config.rock_width,
             )
             x_rock = jnp.array(x_rock, jnp.float32)
-            y = BOTTOM_BORDER + jax.random.randint(k1.at[5-i].get(), [], 0, 100)
+            y = BOTTOM_BORDER + jax.random.randint(k1.at[5 - i].get(), [], 0, 100)
 
-            new_f = jax.lax.cond(jnp.less(rocks.at[i, 1].get(), TOP_BORDER),
-                                 lambda _: jnp.array([x_rock, y], jnp.float32), lambda _: rocks.at[i].get(),
-                                 operand=None)
+            new_f = jax.lax.cond(
+                jnp.less(rocks.at[i, 1].get(), TOP_BORDER),
+                lambda _: jnp.array([x_rock, y], jnp.float32),
+                lambda _: rocks.at[i].get(),
+                operand=None,
+            )
             rocks = rocks.at[i].set(new_f)
             return rocks
 
@@ -186,11 +226,14 @@ class SkiingGameLogic:
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: GameState, action: int) -> GameState:
         #                              -->  --_      \     |     |    /    _-- <--
-        side_speed = jnp.array([-1.0, -0.5, -0.333, 0.0, 0.0, 0.333, 0.5, 1], jnp.float32)
+        side_speed = jnp.array(
+            [-1.0, -0.5, -0.333, 0.0, 0.0, 0.333, 0.5, 1], jnp.float32
+        )
 
         #                              -->  --_   \     |    |     /    _--  <--
-        down_speed = jnp.array([0.0, 0.5, 0.875, 1.0, 1.0, 0.875, 0.5, 0.0], jnp.float32)
-
+        down_speed = jnp.array(
+            [0.0, 0.5, 0.875, 1.0, 1.0, 0.875, 0.5, 0.0], jnp.float32
+        )
 
         """Take a step in the game given an action"""
 
@@ -229,10 +272,9 @@ class SkiingGameLogic:
 
         dx = side_speed.at[skier_pos].get()
 
-        new_skier_x_speed = state.skier_x_speed  + ((dx - state.skier_x_speed) * 0.1)
+        new_skier_x_speed = state.skier_x_speed + ((dx - state.skier_x_speed) * 0.1)
 
         new_skier_y_speed = state.skier_y_speed + ((dy - state.skier_y_speed) * 0.05)
-
 
         new_x = jnp.clip(
             state.skier_x + new_skier_x_speed,
@@ -263,10 +305,13 @@ class SkiingGameLogic:
             dx_1 = jnp.abs(new_x - x)
             dy_1 = jnp.abs(jnp.round(self.config.skier_y) - jnp.round(y))
 
-            dx_2 = jnp.abs(new_x - (x+self.config.flag_distance))
+            dx_2 = jnp.abs(new_x - (x + self.config.flag_distance))
             dy_2 = jnp.abs(jnp.round(self.config.skier_y) - jnp.round(y))
 
-            return jnp.logical_or(jnp.logical_and(dx_1 <= x_distance, dy_1 < y_distance), jnp.logical_and(dx_2 <= x_distance, dy_2 < y_distance))
+            return jnp.logical_or(
+                jnp.logical_and(dx_1 <= x_distance, dy_1 < y_distance),
+                jnp.logical_and(dx_2 <= x_distance, dy_2 < y_distance),
+            )
 
         def check_collision_tree(tree_pos, x_distance=3, y_distance=1):
             x, y = tree_pos
@@ -282,7 +327,9 @@ class SkiingGameLogic:
 
             return jnp.logical_and(dx < x_distance, dy < y_distance)
 
-        new_flags, new_trees, new_rocks, new_key = self._create_new_objs(state, new_flags, new_trees, new_rocks)
+        new_flags, new_trees, new_rocks, new_key = self._create_new_objs(
+            state, new_flags, new_trees, new_rocks
+        )
 
         passed_flags = jax.vmap(check_pass_flag)(jnp.array(new_flags))
 
@@ -290,7 +337,11 @@ class SkiingGameLogic:
         collisions_tree = jax.vmap(check_collision_tree)(jnp.array(new_trees))
         collisions_rocks = jax.vmap(check_collision_rock)(jnp.array(new_rocks))
 
-        num_colls = jnp.sum(collisions_tree) + jnp.sum(collisions_rocks) + jnp.sum(collisions_flag)
+        num_colls = (
+            jnp.sum(collisions_tree)
+            + jnp.sum(collisions_rocks)
+            + jnp.sum(collisions_flag)
+        )
 
         (
             new_x,
@@ -301,7 +352,7 @@ class SkiingGameLogic:
             new_rocks,
             skier_pos,
             new_skier_x_speed,
-            new_skier_y_speed
+            new_skier_y_speed,
         ) = jax.lax.cond(
             jnp.greater(state.skier_fell, 0),
             lambda _: (
@@ -313,7 +364,7 @@ class SkiingGameLogic:
                 state.rocks,
                 state.skier_pos,
                 state.skier_x_speed,
-                state.skier_y_speed
+                state.skier_y_speed,
             ),
             lambda _: (
                 new_x,
@@ -324,7 +375,7 @@ class SkiingGameLogic:
                 new_rocks,
                 skier_pos,
                 new_skier_x_speed,
-                new_skier_y_speed
+                new_skier_y_speed,
             ),
             operand=None,
         )
@@ -336,7 +387,12 @@ class SkiingGameLogic:
             operand=None,
         )
 
-        new_score = jax.lax.cond(jnp.equal(skier_fell, 0), lambda _: state.score - jnp.sum(passed_flags), lambda _:state.score, operand=None)
+        new_score = jax.lax.cond(
+            jnp.equal(skier_fell, 0),
+            lambda _: state.score - jnp.sum(passed_flags),
+            lambda _: state.score,
+            operand=None,
+        )
         game_over = jax.lax.cond(
             jnp.equal(new_score, 0),
             lambda _: jnp.array(True),
@@ -350,7 +406,7 @@ class SkiingGameLogic:
             operand=None,
         )
 
-        return GameState(
+        new_state = GameState(
             skier_x=new_x,
             skier_pos=jnp.array(skier_pos),
             skier_fell=skier_fell,
@@ -365,6 +421,84 @@ class SkiingGameLogic:
             game_over=game_over,
             key=new_key,
         )
+
+        done = self._get_done(new_state)
+        reward = self._get_reward(state, new_state)
+        obs = self._get_observation(new_state)
+        info = self._get_info(new_state)
+
+        return new_state, obs, reward, done, info
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_observation(self, state: GameState):
+        # create skier
+        skier = EntityPosition(
+            x=state.skier_x,
+            y=jnp.array(self.config.skier_y),
+            width=jnp.array(self.config.skier_width),
+            height=jnp.array(self.config.skier_height),
+        )
+
+        # create trees
+        trees = jnp.zeros((self.config.max_num_trees, 4))
+        for i in range(self.config.max_num_trees):
+            tree_pos = state.trees.at[i].get()
+            trees = trees.at[i].set(
+                jnp.array(
+                    [
+                        tree_pos.at[0].get(),  # x position
+                        tree_pos.at[1].get(),  # y position
+                        self.config.tree_width,  # width
+                        self.config.tree_height,  # height
+                    ]
+                )
+            )
+
+        # create flags
+        flags = jnp.zeros((self.config.max_num_flags, 4))
+        for i in range(self.config.max_num_flags):
+            flag_pos = state.flags.at[i].get()
+            flags = flags.at[i].set(
+                jnp.array(
+                    [
+                        flag_pos.at[0].get(),  # x position
+                        flag_pos.at[1].get(),  # y position
+                        self.config.flag_width,  # width
+                        self.config.flag_height,  # height
+                    ]
+                )
+            )
+
+        # create rocks
+        rocks = jnp.zeros((self.config.max_num_rocks, 4))
+        for i in range(self.config.max_num_rocks):
+            rock_pos = state.rocks.at[i].get()
+            rocks = rocks.at[i].set(
+                jnp.array(
+                    [
+                        rock_pos.at[0].get(),  # x position
+                        rock_pos.at[1].get(),  # y position
+                        self.config.rock_width,  # width
+                        self.config.rock_height,  # height
+                    ]
+                )
+            )
+
+        return SkiingObservation(
+            skier=skier, trees=trees, flags=flags, rocks=rocks, score=state.score
+        )
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_info(self, state: GameState) -> SkiingInfo:
+        return SkiingInfo(time=state.time)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_reward(self, previous_state: GameState, state: GameState):
+        return previous_state.score - state.score
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_done(self, state: GameState) -> bool:
+        return jnp.equal(state.score, 0)
 
 
 @dataclass
@@ -653,14 +787,15 @@ def main():
     render_config = RenderConfig()
 
     # Initialize game and renderer
-    game = SkiingGameLogic(game_config)
+    game = SkiingGameLogic()
+    state, _ = game.reset()
     renderer = GameRenderer(game_config, render_config)
 
     # Setup game loop
     clock = pygame.time.Clock()
     running = True
 
-    while running and not game.state.game_over:
+    while running and not state.game_over:
         # Handle events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -676,16 +811,16 @@ def main():
             action = NOOP
 
         # Update game state
-        game.state = game.step(game.state, action)
+        state, obs, reward, done, info = game.step(state, action)
 
         # Render
-        renderer.render(game.state)
+        renderer.render(state)
 
         # Cap at 60 FPS
         clock.tick(60)
 
     # If game over, wait before closing
-    if game.state.game_over:
+    if state.game_over:
         pygame.time.wait(2000)
 
     renderer.close()
