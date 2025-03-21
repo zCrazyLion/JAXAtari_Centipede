@@ -100,6 +100,13 @@ def run_parallel_jax(
         next_states = jit_parallel_step(states, actions)
         return (next_states, rng_key), None
 
+
+    # run a warmup of about 1000 steps
+    warmup_steps = 1000
+    (states, _), _ = jax.lax.scan(
+        run_one_step, (states, rng_key), None, length=warmup_steps
+    )
+
     steps_per_env = num_steps // num_envs
     start_time = time.time()
 
@@ -170,7 +177,7 @@ def run_scaling_benchmarks(
     cpu_workers = cpu_workers[: len(cpu_results)]
 
     # GPU scaling (JAX)
-    gpu_workers = [1, 2, 4, 8, 16, 32, 128, 1024, 4096]
+    gpu_workers = [32, 64, 128, 1024, 4096]
     gpu_results = []
     print("\nRunning JAX scaling tests...")
     for workers in gpu_workers:
@@ -384,7 +391,7 @@ if __name__ == "__main__":
         ("skiing", "Skiing", 3),
         ("tennis", "Tennis", 18),
     ]
-    NUMBER_OF_STEPS = 100_000
+    NUMBER_OF_STEPS = 1_000_000
     USE_RENDERER = False
 
     for game in GAMES_TO_TEST:
@@ -419,12 +426,12 @@ if __name__ == "__main__":
         # Run standard benchmarks for detailed comparison
         print("\nRunning standard benchmarks...")
         Path(f"./results/{jax_game_name}/raw/jax").mkdir(parents=True, exist_ok=True)
-        jax_results = run_parallel_jax(jax_game_name, num_actions=actions, render=USE_RENDERER)
+        jax_results = run_parallel_jax(jax_game_name, num_actions=actions, render=USE_RENDERER, num_steps=NUMBER_OF_STEPS, num_envs=2000)
         save_raw_files(jax_results, Path(f"./results/{jax_game_name}/raw/jax"))
         print_benchmark_results(f"JAX {jax_game_name}", *jax_results)
 
         Path(f"./results/{jax_game_name}/raw/oc").mkdir(parents=True, exist_ok=True)
-        ocatari_results = run_parallel_ocatari(oc_atari_game_name, num_actions=actions)
+        ocatari_results = run_parallel_ocatari(oc_atari_game_name, num_actions=actions, num_steps=NUMBER_OF_STEPS, num_envs=16)
         save_raw_files(jax_results, Path(f"./results/{jax_game_name}/raw/oc"))
         print_benchmark_results(f"OCAtari {jax_game_name}", *ocatari_results)
 
