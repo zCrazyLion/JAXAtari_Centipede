@@ -1953,16 +1953,20 @@ class Game:
         return jax.lax.cond(
             reset_cond,
             lambda: self.reset(state.current_level),
-            lambda: GameState(
-                player=new_player_state,
-                level=new_level_state,
-                score=state.score + score_addition,
-                current_level=new_current_level,
-                level_finished=level_finished,
-                levelup_timer=new_levelup_timer,
-                reset_coords=new_reset_coords,
-                levelup=new_levelup,
-                lives=new_lives,
+            lambda: jax.lax.cond(
+                state.lives <= 0,
+                lambda: state,
+                lambda: GameState(
+                    player=new_player_state,
+                    level=new_level_state,
+                    score=state.score + score_addition,
+                    current_level=new_current_level,
+                    level_finished=level_finished,
+                    levelup_timer=new_levelup_timer,
+                    reset_coords=new_reset_coords,
+                    levelup=new_levelup,
+                    lives=new_lives,
+                ),
             ),
         )
 
