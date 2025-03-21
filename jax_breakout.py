@@ -57,7 +57,7 @@ NUM_ROWS = 6
 BLOCK_START_Y = 57  # Starting Y position of first row
 BLOCK_START_X = 8  # Starting X position of blocks
 
-NUM_LIVES = 50
+NUM_LIVES = 5
 
 # Ball speed
 BALL_VELOCITIES_ABS = jnp.array([
@@ -99,6 +99,8 @@ class State(NamedTuple):
     acceleration_counter: chex.Array
     game_started: chex.Array
     blocks_hittable: chex.Array
+    wall_resets: chex.Array
+    all_blocks_cleared: chex.Array
 
 
 # Actions
@@ -217,6 +219,23 @@ def get_ball_velocity(speed_idx, direction_idx, step_counter):
     direction = BALL_DIRECTIONS[direction_idx]
     return abs_speed[0] * direction[0], abs_speed[1] * direction[1]
 
+
+def detect_paddle_hit(ball_x, ball_y, player_x, small_paddle):
+    """Detects if the ball has hit the paddle."""
+    paddle_width = jnp.where(small_paddle, PLAYER_SIZE_SMALL[0], PLAYER_SIZE[0])
+
+    paddle_hit_y = jnp.logical_and(
+        ball_y + BALL_SIZE[1] > PLAYER_START_Y,
+        ball_y + BALL_SIZE[1] <= PLAYER_START_Y + PLAYER_SIZE[1]
+    )
+
+    paddle_hit_x = jnp.logical_and(
+        ball_x + BALL_SIZE[0] >= player_x,
+        ball_x <= player_x + paddle_width
+    )
+
+    return jnp.logical_and(paddle_hit_x, paddle_hit_y)
+
 def ball_step(state, game_started, player_x):
     """Updates the ball's position, handles wall collisions, and paddle bounces."""
     # Compute spawn index and spawn position
@@ -274,18 +293,9 @@ def ball_step(state, game_started, player_x):
 
         # Set small_paddle to True when ball hits top wall
         small_paddle = jnp.logical_or(state.small_paddle, top_collision)
-        paddle_width = jnp.where(state.small_paddle, PLAYER_SIZE_SMALL[0], PLAYER_SIZE[0])
 
-        # Paddle collision
-        paddle_hit_y = jnp.logical_and(
-            ball_y + BALL_SIZE[1] > PLAYER_START_Y,
-            ball_y + BALL_SIZE[1] <= PLAYER_START_Y + PLAYER_SIZE[1]
-        )
-        paddle_hit_x = jnp.logical_and(
-            ball_x + BALL_SIZE[0] >= player_x,
-            ball_x <= player_x + paddle_width
-        )
-        paddle_hit = jnp.logical_and(paddle_hit_x, paddle_hit_y)
+        # Detect a paddle hit
+        paddle_hit = detect_paddle_hit(ball_x, ball_y, player_x, small_paddle)
 
         hit_wall_or_paddle = jnp.logical_or(hit_wall_or_paddle, paddle_hit)
 
@@ -366,7 +376,7 @@ def ball_step(state, game_started, player_x):
         )
         # if 12th consecutive hits, increase ball speed
         ball_speed_idx = jax.lax.cond(
-            new_consecutive_hits >= 12,
+            jnp.logical_and(new_consecutive_hits >= 12, ball_speed_idx != 4),
             lambda _: jnp.array(3, dtype=ball_speed_idx.dtype),
             lambda _: ball_speed_idx,
             operand=None
@@ -423,7 +433,7 @@ def check_block_collision(state, ball_x, ball_y, ball_speed_idx, ball_direction_
             )
 
             # Bounce condition
-            bounce = jnp.logical_and(block_hit, (jnp.abs((block_y + BLOCK_SIZE[1]) - ball_y) <= 3)) # 3 is the tolerance to somewhat also bounce "inside" the block
+            bounce = jnp.logical_and(block_hit, (jnp.abs((block_y + BLOCK_SIZE[1]) - ball_y) <= 4)) # 4 is the tolerance to somewhat also bounce "inside" the block
             new_direction_idx = jnp.where(
                 bounce,
                 REVERSE_Y[ball_direction_idx],
@@ -436,7 +446,7 @@ def check_block_collision(state, ball_x, ball_y, ball_speed_idx, ball_direction_
             updated_score = score + jnp.where(bounce, points, 0)
 
             # Accelerate ball if it hit block in upper three rows
-            accelerate = jnp.logical_and(block_hit, row < 3)
+            accelerate = jnp.logical_and(bounce, row < 3)
             updated_speed_idx = jnp.where(
                 jnp.logical_and(accelerate, ball_speed_idx != 4),
                 jnp.array(4, dtype=ball_speed_idx.dtype),
@@ -467,8 +477,11 @@ def check_block_collision(state, ball_x, ball_y, ball_speed_idx, ball_direction_
 
     new_vel_x, new_vel_y = get_ball_velocity(ball_speed_idx, ball_direction_idx, state.step_counter)
 
+    # Check if all blocks are destroyed
+    all_blocks_cleared = jnp.all(new_blocks == 0)
+
     return (new_blocks, new_score, ball_x, ball_y, new_vel_x, new_vel_y,
-            ball_speed_idx, ball_direction_idx, consecutive_hits, blocks_hittable)
+            ball_speed_idx, ball_direction_idx, consecutive_hits, blocks_hittable, all_blocks_cleared)
 
 class Game:
     def __init__(self, frameskip=1):
@@ -498,6 +511,8 @@ class Game:
             step_counter=jnp.array(0),
             acceleration_counter=jnp.array(0).astype(jnp.int32),
             game_started=jnp.array(0),
+            wall_resets=jnp.array(0),
+            all_blocks_cleared=jnp.array(False),
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -515,10 +530,27 @@ class Game:
             state, game_started, new_player_x
         )
 
+        # Detect paddle hit (for resetting the wall)
+        paddle_hit = detect_paddle_hit(ball_x, ball_y, new_player_x, small_paddle)
+
         # Check for block collisions
         (new_blocks, new_score, ball_x, ball_y, ball_vel_x, ball_vel_y, ball_speed_idx,
-         ball_direction_idx, consecutive_hits, blocks_hittable) = check_block_collision(
+         ball_direction_idx, consecutive_hits, blocks_hittable, all_blocks_cleared) = check_block_collision(
             state._replace(blocks_hittable=blocks_hittable), ball_x, ball_y, ball_speed_idx, ball_direction_idx, consecutive_hits
+        )
+
+        # Reset wall if paddle hit occurs after all blocks were cleared and we haven't reset the wall already
+        should_reset_wall = jnp.logical_and(
+            jnp.logical_and(state.all_blocks_cleared, paddle_hit),
+            state.wall_resets < 1
+        )
+        new_blocks = jnp.where(should_reset_wall, jnp.ones_like(new_blocks), new_blocks)
+        new_wall_resets = jnp.where(should_reset_wall, state.wall_resets + 1, state.wall_resets)
+
+        # Update all_blocks_cleared status
+        new_all_blocks_cleared = jnp.logical_and(
+            jnp.logical_or(state.all_blocks_cleared, all_blocks_cleared),
+            jnp.logical_not(should_reset_wall)  # Reset to False if we just reset the wall
         )
 
         # Handle life loss, etc.
@@ -552,6 +584,8 @@ class Game:
             step_counter=state.step_counter + 1,
             acceleration_counter=new_acceleration_counter,
             game_started=game_started,
+            wall_resets=new_wall_resets,
+            all_blocks_cleared=new_all_blocks_cleared,
         )
 
 
@@ -637,7 +671,7 @@ class Renderer:
 
 if __name__ == "__main__":
     # Initialize game and renderer
-    game = Game(frameskip=1)
+    game = Game(frameskip=2)
     renderer = Renderer()
 
     # Get jitted functions
