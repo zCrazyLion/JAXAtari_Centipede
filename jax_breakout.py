@@ -1,9 +1,11 @@
 from functools import partial
-from typing import NamedTuple
+from typing import NamedTuple, Tuple
 import jax
 import jax.numpy as jnp
 import chex
 import pygame
+
+from environment import JaxEnvironment
 
 # Constants for game environment
 WINDOW_WIDTH = 160 * 3
@@ -78,6 +80,25 @@ BALL_DIRECTIONS = jnp.array([
 # Lookup tables for reversing ball direction
 REVERSE_X = jnp.array([1, 0, 3, 2])
 REVERSE_Y = jnp.array([2, 3, 0, 1])
+
+
+
+class EntityPosition(NamedTuple):
+    x: chex.Array
+    y: chex.Array
+    width: chex.Array
+    height: chex.Array
+
+class BreakoutObservation(NamedTuple):
+    player: EntityPosition
+    ball: EntityPosition
+    blocks: chex.Array
+    score: chex.Array
+    lives: chex.Array
+
+class BreakoutInfo(NamedTuple):
+    time: chex.Array
+    wall_resets: chex.Array
 
 
 # Game state container
@@ -483,17 +504,18 @@ def check_block_collision(state, ball_x, ball_y, ball_speed_idx, ball_direction_
     return (new_blocks, new_score, ball_x, ball_y, new_vel_x, new_vel_y,
             ball_speed_idx, ball_direction_idx, consecutive_hits, blocks_hittable, all_blocks_cleared)
 
-class Game:
+class Game(JaxEnvironment[State, BreakoutObservation, BreakoutInfo]):
     def __init__(self, frameskip=1):
+        super().__init__()
         self.frameskip = frameskip
 
-    def reset(self) -> State:
+    def reset(self) -> tuple[State, BreakoutObservation]:
         """Initialize game state"""
         init_speed_idx = 0
         init_direction_idx = 0
         init_vel_x, init_vel_y = get_ball_velocity(init_speed_idx, init_direction_idx, 0)
 
-        return State(
+        state =  State(
             player_x=jnp.array(PLAYER_START_X),
             player_speed=jnp.array(0),
             small_paddle=jnp.array(False),
@@ -515,8 +537,21 @@ class Game:
             all_blocks_cleared=jnp.array(False),
         )
 
+        return state, self._get_observation(state)
+
     @partial(jax.jit, static_argnums=(0,))
-    def step(self, state: State, action: chex.Array) -> State:
+    def step(self, state: State, action: chex.Array) -> Tuple[
+        State, BreakoutObservation, chex.Array, chex.Array, BreakoutInfo]:
+        prev_score = state.score
+        new_state = self._step(state, action)
+        obs = self._get_observation(new_state)
+        reward = self._get_reward(prev_score, new_state.score)
+        done = self._get_done(new_state)
+        info = self._get_info(new_state)
+        return new_state, obs, reward, done, info
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _step(self, state: State, action: chex.Array) -> State:
         # Update player position
         new_player_x, new_paddle_v, new_acceleration_counter = player_step(
             state.player_x, state.player_speed, state.acceleration_counter, action
@@ -587,6 +622,47 @@ class Game:
             wall_resets=new_wall_resets,
             all_blocks_cleared=new_all_blocks_cleared,
         )
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_observation(self, state: State) -> BreakoutObservation:
+        paddle_width = jnp.where(state.small_paddle, PLAYER_SIZE_SMALL[0], PLAYER_SIZE[0])
+
+        player = EntityPosition(
+            x=state.player_x,
+            y=jnp.array(PLAYER_START_Y),
+            width=paddle_width,
+            height=jnp.array(PLAYER_SIZE[1]),
+        )
+
+        ball = EntityPosition(
+            x=state.ball_x,
+            y=state.ball_y,
+            width=jnp.array(BALL_SIZE[0]),
+            height=jnp.array(BALL_SIZE[1]),
+        )
+
+        return BreakoutObservation(
+            player=player,
+            ball=ball,
+            blocks=state.blocks,
+            score=state.score,
+            lives=state.lives,
+        )
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_info(self, state: State) -> BreakoutInfo:
+        return BreakoutInfo(
+            time=state.step_counter,
+            wall_resets=state.wall_resets
+        )
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_reward(self, previous_score: chex.Array, current_score: chex.Array) -> chex.Array:
+        return current_score - previous_score
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_done(self, state: State) -> chex.Array:
+        return state.lives <= 0
 
 
 class Renderer:
@@ -671,14 +747,14 @@ class Renderer:
 
 if __name__ == "__main__":
     # Initialize game and renderer
-    game = Game(frameskip=2)
+    game = Game(frameskip=1)
     renderer = Renderer()
 
     # Get jitted functions
     jitted_step = jax.jit(game.step)
     jitted_reset = jax.jit(game.reset)
 
-    curr_state = jitted_reset()
+    curr_state, obs = jitted_reset()
 
     # Game loop
     running = True
@@ -699,18 +775,18 @@ if __name__ == "__main__":
                 if event.key == pygame.K_n and frame_by_frame:
                     if counter % frameskip == 0:
                         action = get_human_action()
-                        curr_state = jitted_step(curr_state, action)
+                        curr_state, obs, reward, done, info = jitted_step(curr_state, action)
+                        if done:
+                            running = False
 
         if not frame_by_frame:
             if counter % frameskip == 0:
                 action = get_human_action()
-                curr_state = jitted_step(curr_state, action)
+                curr_state, obs, reward, done, info = jitted_step(curr_state, action)
+                if done:
+                    running = False
 
-        if curr_state.lives <= 0:
-            running = False
-        else:
-            renderer.render(curr_state)
-
+        renderer.render(curr_state)
         counter += 1
         renderer.clock.tick(60)
 
