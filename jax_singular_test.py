@@ -170,7 +170,7 @@ def run_scaling_benchmarks(
     cpu_workers = cpu_workers[: len(cpu_results)]
 
     # GPU scaling (JAX)
-    gpu_workers = [1, 10, 100, 1000, 5000]
+    gpu_workers = [1, 2, 4, 8, 16, 32, 128, 1024, 4096]
     gpu_results = []
     print("\nRunning JAX scaling tests...")
     for workers in gpu_workers:
@@ -247,7 +247,7 @@ def plot_scaling_results(cpu_workers, cpu_results, gpu_workers, gpu_results, tim
         gpu_values = [results[metric_idx] for results in gpu_results]
         plt.plot(gpu_workers, gpu_values, "r-o", label="JAX (GPU)")
 
-        plt.xscale("log")
+        plt.xscale("log", base=2)
         plt.yscale("log")
         plt.xlabel("Number of Workers/Environments")
         plt.ylabel(ylabel)
@@ -288,7 +288,7 @@ def plot_scaling_results(cpu_workers, cpu_results, gpu_workers, gpu_results, tim
         gpu_values = [results[metric_idx] for results in gpu_results]
         axes[i].plot(gpu_workers, gpu_values, "r-o", label="JAX (GPU)")
 
-        axes[i].set_xscale("log")
+        axes[i].set_xscale('log', base=2)
         axes[i].set_yscale("log")
         axes[i].set_xlabel("Number of Workers/Environments")
         axes[i].set_ylabel(ylabel)
