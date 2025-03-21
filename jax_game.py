@@ -7,6 +7,7 @@ from jax_freeway import FreewayGameLogic as JaxFreeway
 from jax_seaquest import JaxSeaquest, Renderer_AtraJaxis
 from jax_skiing import SkiingGameLogic as JaxSkiing
 from jax_tennis import JaxTennis, Renderer_AJ
+from jax_kangaroo import Game as JaxKangaroo
 
 
 class JAXAtari:
@@ -27,6 +28,8 @@ class JAXAtari:
                 renderer = Renderer_AtraJaxis()
             case "tennis":
                 env = JaxTennis()
+            case "kangaroo":
+                env = JaxKangaroo()
             case _:
                 raise NotImplementedError(f"The game {game_name} does not exist")
         self.env: JaxEnvironment = env

@@ -1232,7 +1232,7 @@ def step_enemy_movement(
             new_shark_positions = new_shark_positions.at[slot_idx].set(new_pos)
 
             new_survived = new_survived.at[slot_idx].set(
-                jnp.where(survived, direction_of_shark, new_survived[slot_idx])
+                jnp.where(survived, direction_of_shark, new_survived[slot_idx]).astype(new_survived.dtype)
             )
 
         lane_survived = jax.lax.dynamic_slice(new_survived, (i * 3,), (3,))
@@ -1279,7 +1279,7 @@ def step_enemy_movement(
             new_sub_positions = new_sub_positions.at[slot_idx].set(new_pos)
 
             new_survived = new_survived.at[slot_idx].set(
-                jnp.where(survived, direction_of_sub, new_survived[slot_idx])
+                jnp.where(survived, direction_of_sub, new_survived[slot_idx]).astype(new_survived.dtype)
             )
 
         lane_survived = jax.lax.dynamic_slice(new_survived, (i * 3,), (3,))
@@ -1896,7 +1896,7 @@ def surface_sub_step(state: SeaquestState) -> chex.Array:
 
 
 def enemy_missiles_step(
-    curr_sub_positions, curr_enemy_missile_positions, step_counter
+    curr_sub_positions, curr_enemy_missile_positions, step_counter, difficulty
 ) -> chex.Array:
 
     def calculate_missile_speed(step_counter, difficulty):
@@ -2007,7 +2007,7 @@ def enemy_missiles_step(
         )
 
         movement_speed = calculate_missile_speed(
-            step_counter, curr_state.spawn_state.difficulty
+            step_counter, difficulty
         )
         velocity = movement_speed * new_missile[2]
 
@@ -2688,6 +2688,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
                 new_sub_positions,
                 state_updated.enemy_missile_positions,
                 state_updated.step_counter,
+                state_updated.spawn_state.difficulty,
             )
 
             # append the surface submarine to the other submarines for the collision check

@@ -1739,8 +1739,8 @@ class Game(JaxEnvironment[GameState, GameObservation, GameInfo]):
     def __init__(self, frameskip: int = 1):
         self.frameskip = frameskip
 
-    def reset(self) -> GameState:
-        return self.reset_level(self, 1)
+    def reset(self) -> Tuple[GameState, GameObservation]:
+        return self.reset_level(1), self._get_observation(self.reset_level(1))
 
     def reset_level(self, next_level=1) -> GameState:
 
