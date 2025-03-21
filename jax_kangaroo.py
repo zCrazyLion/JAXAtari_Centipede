@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import chex
 import pygame
 from jax import Array
+from environment import JaxEnvironment
 
 from kangaroo_levels import (
     LevelConstants,
@@ -166,6 +167,14 @@ class GameState(NamedTuple):
     reset_coords: chex.Array
     levelup: chex.Array
     lives: chex.Array
+
+
+class GameObservation(NamedTuple):
+    garnis: chex.Array
+
+
+class GameInfo(NamedTuple):
+    garnis: chex.Array
 
 
 # Level Constants
@@ -1726,11 +1735,14 @@ def monkey_controller(state: GameState, punching: chex.Array):
 
 
 # -------- Game Interface for Reset and Step --------
-class Game:
+class Game(JaxEnvironment[GameState, GameObservation, GameInfo]):
     def __init__(self, frameskip: int = 1):
         self.frameskip = frameskip
 
-    def reset(self, next_level=1) -> GameState:
+    def reset(self) -> Tuple[GameState, GameObservation]:
+        return self.reset_level(1), self._get_observation(self.reset_level(1))
+
+    def reset_level(self, next_level=1) -> GameState:
 
         next_level = jnp.clip(next_level, 1, 3)
         level_constants: LevelConstants = get_level_constants(next_level)
@@ -1797,7 +1809,9 @@ class Game:
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def step(self, state: GameState, action: chex.Array) -> GameState:
+    def step(
+        self, state: GameState, action: chex.Array
+    ) -> Tuple[GameState, GameObservation, float, bool, GameInfo]:
         reset_cond = jnp.any(jnp.array([action == RESET]))
 
         # Update player state
@@ -1872,10 +1886,10 @@ class Game:
 
         new_level_state = jax.lax.cond(
             new_levelup,
-            lambda: self.reset(new_current_level).level,
+            lambda: self.reset_level(new_current_level).level,
             lambda: jax.lax.cond(
                 crash_timer_done,
-                lambda: self.reset(state.current_level).level,
+                lambda: self.reset_level(state.current_level).level,
                 lambda: LevelState(
                     bell_position=state.level.bell_position,
                     fruit_positions=state.level.fruit_positions,
@@ -1925,7 +1939,7 @@ class Game:
 
         new_player_state = jax.lax.cond(
             crash_timer_done,
-            lambda: self.reset(state.current_level).player,
+            lambda: self.reset_level(state.current_level).player,
             lambda: PlayerState(
                 x=player_x,
                 y=player_y,
@@ -1950,21 +1964,64 @@ class Game:
             ),
         )
 
-        return jax.lax.cond(
-            reset_cond,
-            lambda: self.reset(state.current_level),
-            lambda: GameState(
-                player=new_player_state,
-                level=new_level_state,
-                score=state.score + score_addition,
-                current_level=new_current_level,
-                level_finished=level_finished,
-                levelup_timer=new_levelup_timer,
-                reset_coords=new_reset_coords,
-                levelup=new_levelup,
-                lives=new_lives,
+        return (
+            jax.lax.cond(
+                reset_cond,
+                lambda: self.reset_level(state.current_level),
+                lambda: jax.lax.cond(
+                    state.lives <= 0,
+                    lambda: state,
+                    lambda: GameState(
+                        player=new_player_state,
+                        level=new_level_state,
+                        score=state.score + score_addition,
+                        current_level=new_current_level,
+                        level_finished=level_finished,
+                        levelup_timer=new_levelup_timer,
+                        reset_coords=new_reset_coords,
+                        levelup=new_levelup,
+                        lives=new_lives,
+                    ),
+                ),
             ),
+            GameObservation(garnis=0),
+            0.0,
+            False,
+            GameInfo(garnis=0),
         )
+
+    def render(self, state: GameState) -> Tuple[jnp.ndarray]:
+        pass
+
+    def get_action_space(self) -> Tuple:
+        """
+        Returns the action space of the environment.
+        Returns: The action space of the environment as a tuple.
+        """
+        raise NotImplementedError("Abstract method")
+
+    def get_observation_space(self) -> Tuple:
+        """
+        Returns the observation space of the environment.
+        Returns: The observation space of the environment as a tuple.
+        """
+        raise NotImplementedError("Abstract method")
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_observation(self, state: GameState) -> GameObservation:
+        return GameObservation(garnis=0)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_info(self, state: GameState) -> GameInfo:
+        return GameInfo(garnis=0)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_reward(self, previous_state: GameState, state: GameState) -> float:
+        return state.score - previous_state.score
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_done(self, state: GameState) -> bool:
+        return state.lives <= 0
 
 
 # ----------------------------------------------------------------
@@ -2226,12 +2283,12 @@ if __name__ == "__main__":
                 if event.key == pygame.K_n and frame_by_frame:
                     if counter % frameskip == 0:
                         action = get_human_action()
-                        curr_state = jitted_step(curr_state, action)
+                        (curr_state, _, _, _, _) = jitted_step(curr_state, action)
 
         if not frame_by_frame:
             if counter % frameskip == 0:
                 action = get_human_action()
-                curr_state = jitted_step(curr_state, action)
+                (curr_state, _, _, _, _) = jitted_step(curr_state, action)
 
         renderer.render(curr_state)
         counter += 1

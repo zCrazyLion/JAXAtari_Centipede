@@ -100,6 +100,13 @@ def run_parallel_jax(
         next_states = jit_parallel_step(states, actions)
         return (next_states, rng_key), None
 
+
+    # run a warmup of about 1000 steps
+    warmup_steps = 1000
+    (states, _), _ = jax.lax.scan(
+        run_one_step, (states, rng_key), None, length=warmup_steps
+    )
+
     steps_per_env = num_steps // num_envs
     start_time = time.time()
 
@@ -170,7 +177,7 @@ def run_scaling_benchmarks(
     cpu_workers = cpu_workers[: len(cpu_results)]
 
     # GPU scaling (JAX)
-    gpu_workers = [1, 10, 100, 1000, 5000]
+    gpu_workers = [32, 64, 128, 1024, 4096]
     gpu_results = []
     print("\nRunning JAX scaling tests...")
     for workers in gpu_workers:
@@ -247,7 +254,7 @@ def plot_scaling_results(cpu_workers, cpu_results, gpu_workers, gpu_results, tim
         gpu_values = [results[metric_idx] for results in gpu_results]
         plt.plot(gpu_workers, gpu_values, "r-o", label="JAX (GPU)")
 
-        plt.xscale("log")
+        plt.xscale("log", base=2)
         plt.yscale("log")
         plt.xlabel("Number of Workers/Environments")
         plt.ylabel(ylabel)
@@ -288,7 +295,7 @@ def plot_scaling_results(cpu_workers, cpu_results, gpu_workers, gpu_results, tim
         gpu_values = [results[metric_idx] for results in gpu_results]
         axes[i].plot(gpu_workers, gpu_values, "r-o", label="JAX (GPU)")
 
-        axes[i].set_xscale("log")
+        axes[i].set_xscale('log', base=2)
         axes[i].set_yscale("log")
         axes[i].set_xlabel("Number of Workers/Environments")
         axes[i].set_ylabel(ylabel)
@@ -384,7 +391,7 @@ if __name__ == "__main__":
         ("skiing", "Skiing", 3),
         ("tennis", "Tennis", 18),
     ]
-    NUMBER_OF_STEPS = 100_000
+    NUMBER_OF_STEPS = 1_000_000
     USE_RENDERER = False
 
     for game in GAMES_TO_TEST:
@@ -419,12 +426,12 @@ if __name__ == "__main__":
         # Run standard benchmarks for detailed comparison
         print("\nRunning standard benchmarks...")
         Path(f"./results/{jax_game_name}/raw/jax").mkdir(parents=True, exist_ok=True)
-        jax_results = run_parallel_jax(jax_game_name, num_actions=actions, render=USE_RENDERER)
+        jax_results = run_parallel_jax(jax_game_name, num_actions=actions, render=USE_RENDERER, num_steps=NUMBER_OF_STEPS, num_envs=2000)
         save_raw_files(jax_results, Path(f"./results/{jax_game_name}/raw/jax"))
         print_benchmark_results(f"JAX {jax_game_name}", *jax_results)
 
         Path(f"./results/{jax_game_name}/raw/oc").mkdir(parents=True, exist_ok=True)
-        ocatari_results = run_parallel_ocatari(oc_atari_game_name, num_actions=actions)
+        ocatari_results = run_parallel_ocatari(oc_atari_game_name, num_actions=actions, num_steps=NUMBER_OF_STEPS, num_envs=16)
         save_raw_files(jax_results, Path(f"./results/{jax_game_name}/raw/oc"))
         print_benchmark_results(f"OCAtari {jax_game_name}", *ocatari_results)
 
