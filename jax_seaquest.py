@@ -3156,7 +3156,6 @@ if __name__ == "__main__":
                 curr_state, curr_obs, reward, done, info = jitted_step(
                     curr_state, action
                 )
-                print("successful rescues: ", info.successful_rescues)
 
         # render and update pygame
         raster = renderer_AtraJaxis.render(curr_state)
