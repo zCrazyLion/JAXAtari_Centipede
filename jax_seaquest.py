@@ -696,9 +696,6 @@ def update_enemy_spawns(
     Returns:
         Tuple of updated spawn state, shark positions, sub positions, and updated RNG key
     """
-    # Initialize random key if not provided
-    if rng is None:
-        rng = jax.random.PRNGKey(42)
 
     def initialize_new_spawn_cycle(i, carry):
         spawn_state, shark_positions, sub_positions, rng = carry

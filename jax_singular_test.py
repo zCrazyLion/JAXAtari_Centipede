@@ -100,12 +100,16 @@ def run_parallel_jax(
         next_states = jit_parallel_step(states, actions)
         return (next_states, rng_key), None
 
-
-    # run a warmup of about 1000 steps
     warmup_steps = 1000
-    (states, _), _ = jax.lax.scan(
-        run_one_step, (states, rng_key), None, length=warmup_steps
-    )
+    print("Starting warmup and compilation...")
+    warmup_start = time.time()
+    jit_parallel_step(states, jax.random.randint(rng_key, shape=(num_envs,), minval=0, maxval=num_actions))
+    (states, _), _ = jax.lax.scan(run_one_step, (states, rng_key), None, length=warmup_steps)
+    warmup_time = time.time() - warmup_start
+    print(f"Warmup completed in {warmup_time:.2f} seconds")
+
+    # Wait a moment to ensure any background compilations complete
+    time.sleep(1)
 
     steps_per_env = num_steps // num_envs
     start_time = time.time()
@@ -177,7 +181,7 @@ def run_scaling_benchmarks(
     cpu_workers = cpu_workers[: len(cpu_results)]
 
     # GPU scaling (JAX)
-    gpu_workers = [32, 64, 128, 1024, 4096]
+    gpu_workers = [1, 16, 64, 128, 1024, 2048]
     gpu_results = []
     print("\nRunning JAX scaling tests...")
     for workers in gpu_workers:
@@ -363,7 +367,7 @@ def save_raw_files_scaling(cpu_results, gpu_results, cpu_workers, gpu_workers, p
     atari_values_time = [results[0] for results in cpu_results]
     p = path / "atari_values_time"
     np.save(p, atari_values_time)
-    atari_values_throughput = [results[0] for results in cpu_results]
+    atari_values_throughput = [results[1] for results in cpu_results]
     p = path / "atari_values_throughput"
     np.save(p, atari_values_throughput)
     atari_workers = cpu_workers
@@ -384,12 +388,13 @@ def save_raw_files_scaling(cpu_results, gpu_results, cpu_workers, gpu_workers, p
 if __name__ == "__main__":
     GAMES_TO_TEST = [
         ("pong", "Pong-v4", 6),
-        #("breakout", "Breakout", 4),
-        #("kangaroo", "Kangaroo", 18),
+        ("breakout", "Breakout", 4),
+        ("kangaroo", "Kangaroo", 18),
         ("freeway", "Freeway", 3),
         ("seaquest", "Seaquest", 18),
         ("skiing", "Skiing", 3),
         ("tennis", "Tennis", 18),
+
     ]
     NUMBER_OF_STEPS = 1_000_000
     USE_RENDERER = False
@@ -432,7 +437,7 @@ if __name__ == "__main__":
 
         Path(f"./results/{jax_game_name}/raw/oc").mkdir(parents=True, exist_ok=True)
         ocatari_results = run_parallel_ocatari(oc_atari_game_name, num_actions=actions, num_steps=NUMBER_OF_STEPS, num_envs=16)
-        save_raw_files(jax_results, Path(f"./results/{jax_game_name}/raw/oc"))
+        save_raw_files(ocatari_results, Path(f"./results/{jax_game_name}/raw/oc"))
         print_benchmark_results(f"OCAtari {jax_game_name}", *ocatari_results)
 
         # Plot comparison results
