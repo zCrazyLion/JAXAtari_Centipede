@@ -11,7 +11,6 @@ from jax import Array
 
 from environment import JaxEnvironment
 
-# TODO: is it implemented that you get a submarine at 10000 points?
 # TODO: surface submarine at 6 divers collected + difficulty 1
 # Game Constants
 WINDOW_WIDTH = 160 * 3
@@ -2621,7 +2620,8 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
                     player_y=state.player_y,
                     player_direction=state.player_direction,
                     score=state.score,
-                    successful_rescues=state.successful_rescues + 1,
+                    lives=state.lives,
+                    successful_rescues=state.successful_rescues,
                     divers_collected=jnp.array(0),
                     spawn_state=soft_reset_spawn_state(state.spawn_state),
                     surface_sub_position=state.surface_sub_position,
@@ -2860,7 +2860,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
             # Check for additional life every 10,000 points
             additional_lives = (final_state.score // 10000) - (state.score // 10000)
-            new_lives = jnp.minimum(final_state.lives + additional_lives, 6)
+            new_lives = jnp.minimum(final_state.lives + additional_lives, 6) # max 6 lives possible
 
             # Update the final state with new lives
             final_state = final_state._replace(lives=new_lives)
@@ -3159,6 +3159,7 @@ if __name__ == "__main__":
                 curr_state, curr_obs, reward, done, info = jitted_step(
                     curr_state, action
                 )
+                print("successful rescues: ", info.successful_rescues)
 
         # render and update pygame
         raster = renderer_AtraJaxis.render(curr_state)
