@@ -1,3 +1,4 @@
+import json
 import jax
 
 from environment import JaxEnvironment
@@ -10,7 +11,7 @@ from jax_tennis import JaxTennis, Renderer_AJ
 from jax_kangaroo import Game as JaxKangaroo
 
 
-class JAXAtari:
+class JAXtari:
     def __init__(self, game_name):
         renderer = None
         match game_name:
@@ -25,9 +26,9 @@ class JAXAtari:
                 renderer = Renderer_AtraJaxis()
             case "skiing":
                 env = JaxSkiing()
-                renderer = Renderer_AtraJaxis()
             case "tennis":
                 env = JaxTennis()
+                renderer = Renderer_AJ()
             case "kangaroo":
                 env = JaxKangaroo()
             case _:
@@ -41,13 +42,35 @@ class JAXAtari:
         return state
 
     def step_state_only(self, state, action):
-        state, obs, reward, done, info = self.env.step(state, action)
+        fn = jax.jit(self.env.step)
+        state, obs, reward, done, info = fn(state, action)
         return state
 
     def step_with_render(self, state, action):
-        state, obs, reward, done, info = self.env.step(state, action)
-        self.renderer.render(state)
+        fn = jax.jit(self.env.step)
+        state, obs, reward, done, info = fn(state, action)
+
+        fn_2 = jax.jit(self.env.render)
+        fn_2(state)
         return state
 
     def step(self, state, action):
-        return self.env.step(state, action)
+        fn = jax.jit(self.env.step)
+        return fn(state, action)
+
+    def render(self, state):
+        fn = jax.jit(self.env.render)
+        fn(state)
+
+    def save_state_as_json(self, state, path):
+        state_dict = state._asdict()
+        for item in state_dict:
+            state_dict[item] = state_dict[item].tolist()
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(state_dict, f, ensure_ascii=False, indent=4)
+
+    def load_state_from_json(self, curr_state, path):
+        with open(path, 'r', encoding='utf-8') as f:
+            state = json.load(f)
+        new_state = curr_state.__class__(**state)
+        return new_state
