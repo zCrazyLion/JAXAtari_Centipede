@@ -990,22 +990,25 @@ def player_step(state: GameState, action: chex.Array):
 
     valid_platforms = get_valid_platforms(level_constants)
 
-    def get_platform_dependent_y(i, curr_y):
-        is_valid = valid_platforms[i]
-        platform_y = jnp.where(
-            jnp.logical_and(platform_bools[i], is_valid),
-            jnp.where(
-                ~state.player.is_climbing & new_is_climbing & press_down,
-                new_y,
-                jnp.clip(new_y, 0, platform_ys[i] - new_player_height),
-            ),
-            curr_y,
-        )
-        return platform_y
+    # Vectorized platform-dependent y calculation
+    # Create a mask for valid platforms that affect the player
+    valid_and_affecting = jnp.logical_and(platform_bools, valid_platforms)
 
-    # iterate the platform bools and check which is true, then return the corresponding y value
-    platform_dependent_y = jax.lax.fori_loop(
-        0, len(platform_bools), get_platform_dependent_y, new_y
+    # Calculate potential y-values for all platforms at once
+    climbing_transition = ~state.player.is_climbing & new_is_climbing & press_down
+
+    # For each platform, calculate what y would be if player is positioned on it
+    platform_y_values = jnp.where(
+        climbing_transition, new_y, jnp.clip(new_y, 0, platform_ys - new_player_height)
+    )
+
+    # Apply the mask to get only values for platforms that affect the player
+    masked_platform_y_values = jnp.where(valid_and_affecting, platform_y_values, new_y)
+
+    # Take the minimum valid y-value to ensure player doesn't fall through platforms
+    # This works because y increases downward in screen coordinates
+    platform_dependent_y = jnp.min(
+        jnp.where(valid_and_affecting, masked_platform_y_values, SCREEN_HEIGHT)
     )
 
     y = jnp.where(
@@ -1095,51 +1098,47 @@ def lives_controller(state: GameState):
 
     # monkey touch check
 
-    monkey_collision = jnp.zeros(state.level.monkey_states.shape[0], dtype=bool)
-
-    def check_morris_collision(i, carry):
-        monkey_pos = state.level.monkey_positions[i]
-        collision = entities_collide(
-            state.player.x,
-            state.player.y,
-            PLAYER_WIDTH,
-            state.player.height,
-            monkey_pos[0],
-            monkey_pos[1],
-            MONKEY_WIDTH,
-            MONKEY_HEIGHT,
+    def check_monkey_collision(p_x, p_y, p_w, p_h, m_x, m_y, m_w, m_h, m_state):
+        return jnp.logical_and(
+            entities_collide(p_x, p_y, p_w, p_h, m_x, m_y, m_w, m_h), m_state != 0
         )
-        return carry.at[i].set(collision & (state.level.monkey_states[i] != 0))
 
-    monkey_collision = jax.lax.fori_loop(
-        0, state.level.monkey_states.shape[0], check_morris_collision, monkey_collision
+    monkey_collision = jax.vmap(
+        check_monkey_collision,
+        in_axes=(None, None, None, None, 0, 0, None, None, 0),
+    )(
+        state.player.x,
+        state.player.y,
+        PLAYER_WIDTH,
+        state.player.height,
+        state.level.monkey_positions[:, 0],
+        state.level.monkey_positions[:, 1],
+        MONKEY_WIDTH,
+        MONKEY_HEIGHT,
+        state.level.monkey_states,
     )
 
     player_collided_with_monkey = jnp.any(monkey_collision)
 
     # coconut touch check
-
-    morris_collision = jnp.zeros(state.level.morris_coco_states.shape[0], dtype=bool)
-
-    def check_morris_collision(i, carry):
-        morris_pos = state.level.morris_coco_positions[i]
-        collision = entities_collide(
-            state.player.x,
-            state.player.y,
-            PLAYER_WIDTH,
-            state.player.height,
-            morris_pos[0],
-            morris_pos[1],
-            COCONUT_WIDTH,
-            COCONUT_HEIGHT - 1,
+    def check_morris_collision(p_x, p_y, p_w, p_h, m_x, m_y, m_w, m_h, m_state):
+        return jnp.logical_and(
+            entities_collide(p_x, p_y, p_w, p_h, m_x, m_y, m_w, m_h - 1), m_state != 0
         )
-        return carry.at[i].set(collision & (state.level.morris_coco_states[i] != 0))
 
-    morris_collision = jax.lax.fori_loop(
-        0,
-        state.level.morris_coco_states.shape[0],
+    morris_collision = jax.vmap(
         check_morris_collision,
-        morris_collision,
+        in_axes=(None, None, None, None, 0, 0, None, None, 0),
+    )(
+        state.player.x,
+        state.player.y,
+        PLAYER_WIDTH,
+        state.player.height,
+        state.level.morris_coco_positions[:, 0],
+        state.level.morris_coco_positions[:, 1],
+        COCONUT_WIDTH,
+        COCONUT_HEIGHT,
+        state.level.morris_coco_states,
     )
 
     player_collided_with_morris = jnp.any(morris_collision)
@@ -1279,13 +1278,8 @@ def falling_coconut_controller(state: GameState):
 def monkey_controller(state: GameState, punching: chex.Array):
     """Monkey controller function."""
 
-    def count_existing_monkeys(i, carry):
-        """Returns number of monkeys on screen."""
-        return jnp.where(state.level.monkey_states[i] != 0, carry + 1, carry)
-
-    current_monkeys_existing = jax.lax.fori_loop(
-        0, state.level.monkey_states.shape[0], count_existing_monkeys, 0
-    )
+    # Count non-zero monkey states with a vectorized operation
+    current_monkeys_existing = jnp.sum(state.level.monkey_states != 0)
 
     ## state 0 -> 1
 
@@ -1295,14 +1289,13 @@ def monkey_controller(state: GameState, punching: chex.Array):
         & (state.level.step_counter == 16)
     )
 
-    def get_first_non_existing_monkey_index(i, carry):
-        """Returns index of first non-existing monkey."""
-        return jnp.where(
-            carry == -1, jnp.where(state.level.monkey_states[i] == 0, i, carry), carry
-        )
-
-    first_non_existing_monkey_index = jax.lax.fori_loop(
-        0, state.level.monkey_states.shape[0], get_first_non_existing_monkey_index, -1
+    # Vectorized approach to find first non-existing monkey
+    monkey_states_is_zero = state.level.monkey_states == 0
+    # Find the index of the first zero value using argmin
+    first_non_existing_monkey_index = jnp.argmin(~monkey_states_is_zero)
+    # Make sure we only use this index if there's at least one non-existing monkey
+    first_non_existing_monkey_index = jnp.where(
+        jnp.any(monkey_states_is_zero), first_non_existing_monkey_index, jnp.array(-1)
     )
 
     # update monkey states
@@ -1315,77 +1308,54 @@ def monkey_controller(state: GameState, punching: chex.Array):
 
     # State 1 -> 2
 
-    def check_transition_1_to_2(i, carry):
-        """Check if monkey should transition from state 1 to 2."""
-        monkey_lower_y = state.level.monkey_positions[i][1] + MONKEY_HEIGHT
-        monkey_on_p1 = monkey_lower_y == 172
-        monkey_on_p2 = monkey_lower_y == 124
-        monkey_on_p3 = monkey_lower_y == 76
+    # Vectorized implementation - replace the for loop with array operations
+    monkey_lower_y = state.level.monkey_positions[:, 1] + MONKEY_HEIGHT
+    monkey_on_p1 = monkey_lower_y == 172
+    monkey_on_p2 = monkey_lower_y == 124
+    monkey_on_p3 = monkey_lower_y == 76
 
-        # monke goes left if the player is in the same band between platforms as the monkey
-        # if the player is on a higher platform will go to a max y of <idk>, step left once
-        # and then transition to state 5
+    platform_y_under_player = get_y_of_platform_below_player(state)
 
-        platform_y_under_player = get_y_of_platform_below_player(state)
-
-        transition_1_to_2 = (
-            (
-                monkey_on_p1
-                & (platform_y_under_player <= 172)
-                & (platform_y_under_player > 124)
-            )
-            | (
-                monkey_on_p2
-                & (platform_y_under_player <= 124)
-                & (platform_y_under_player > 76)
-            )
-            | (
-                monkey_on_p3
-                & (platform_y_under_player <= 76)
-                & (platform_y_under_player > 28)
-            )
+    transition_1_to_2 = (
+        (
+            monkey_on_p1
+            & (platform_y_under_player <= 172)
+            & (platform_y_under_player > 124)
         )
-
-        new_state = jnp.where(
-            carry[i] == 1,
-            jnp.where(
-                transition_1_to_2,
-                2,
-                1,
-            ),
-            carry[i],
+        | (
+            monkey_on_p2
+            & (platform_y_under_player <= 124)
+            & (platform_y_under_player > 76)
         )
-        return carry.at[i].set(new_state)
+        | (
+            monkey_on_p3
+            & (platform_y_under_player <= 76)
+            & (platform_y_under_player > 28)
+        )
+    )
 
-    new_monkey_states = jax.lax.fori_loop(
-        0,
-        state.level.monkey_states.shape[0],
-        check_transition_1_to_2,
-        new_monkey_states,
+    # Apply the transition to all monkeys at once
+    new_monkey_states = jnp.where(
+        (new_monkey_states == 1) & transition_1_to_2, 2, new_monkey_states
     )
 
     ### It might be possible for the monkey to change from 1 to 5 if the player is on a higher platform...?
 
     # State 1 -> 5
 
-    def check_transition_1_to_5(i, carry):
-        """Check if monkey should transition from state 1 to 5."""
-        new_state = jnp.where(
-            carry[i] == 1,
-            jnp.where(
-                (state.level.monkey_positions[i][1] + MONKEY_HEIGHT) >= 172,
-                5,
-                1,
-            ),
-            carry[i],
-        )
-        return carry.at[i].set(new_state)
+    # Vectorized implementation for state 1 -> 5 transition
+    # Create a mask for monkeys in state 1
+    in_state_1 = new_monkey_states == 1
 
-    new_monkey_states = jax.lax.fori_loop(
-        0,
-        state.level.monkey_states.shape[0],
-        check_transition_1_to_5,
-        new_monkey_states,
+    # Check which monkeys should transition (y + height >= 172)
+    should_transition = (state.level.monkey_positions[:, 1] + MONKEY_HEIGHT) >= 172
+
+    # Combine conditions and update states
+    # Only monkeys that are in state 1 AND meet the transition condition should change to state 5
+    new_monkey_states = jnp.where(
+        in_state_1 & should_transition,
+        5,  # New state for monkeys meeting the condition
+        new_monkey_states,  # Keep original state for others
     )
 
     # State 2 -> 3
@@ -1394,99 +1364,72 @@ def monkey_controller(state: GameState, punching: chex.Array):
     ### If so, change state to 3
     ### If not, keep state 2
 
-    def check_transition_2_to_3(i, carry):
-        monkey_x = state.level.monkey_positions[i][0]
-        min_x_reached = monkey_x <= 107
-        transition_2_to_3 = min_x_reached  # | other_things
+    # Vectorized implementation for state 2 -> 3 transition
+    # Create a mask for monkeys in state 2
+    in_state_2 = new_monkey_states == 2
 
-        new_state = jnp.where(
-            carry[i] == 2,
-            jnp.where(
-                transition_2_to_3,
-                3,
-                2,
-            ),
-            carry[i],
-        )
-        return carry.at[i].set(new_state)
+    # Check which monkeys have reached the threshold x position
+    monkey_x_positions = state.level.monkey_positions[:, 0]
+    min_x_reached = monkey_x_positions <= 107
 
-    new_monkey_states = jax.lax.fori_loop(
-        0,
-        state.level.monkey_states.shape[0],
-        check_transition_2_to_3,
-        new_monkey_states,
+    # Combine conditions and update states
+    # Only monkeys that are in state 2 AND meet the transition condition should change to state 3
+    new_monkey_states = jnp.where(
+        in_state_2 & min_x_reached,
+        3,  # New state for monkeys meeting the condition
+        new_monkey_states,  # Keep original state for others
     )
 
     # State 3 -> 4
     ## If the waiting timer is over, change state to 4
 
-    def check_transition_3_to_4(i, carry):
-        new_state = jnp.where(
-            state.level.monkey_states[i] == 3,
-            jnp.where(
-                state.level.monkey_throw_timers[i] == 0,
-                4,
-                3,
-            ),
-            carry[i],
-        )
-        return carry.at[i].set(new_state)
+    # Create mask for monkeys in state 3
+    in_state_3 = new_monkey_states == 3
 
-    new_monkey_states = jax.lax.fori_loop(
-        0,
-        state.level.monkey_states.shape[0],
-        check_transition_3_to_4,
-        new_monkey_states,
-    )
+    # Check which monkeys have their throw timer at 0
+    timer_is_zero = state.level.monkey_throw_timers == 0
+
+    # Combine conditions for state transition (from 3 to 4 when timer is 0)
+    should_transition = in_state_3 & timer_is_zero & (state.level.monkey_states == 3)
+
+    # Update states all at once: change to state 4 for monkeys that should transition
+    new_monkey_states = jnp.where(should_transition, 4, new_monkey_states)
 
     # State 4 -> 5
     ## If the monkey is at x == 130 wait for 8 frames and then change state to 5
 
-    def check_transition_4_to_5(i, carry):
-        monkey_x = state.level.monkey_positions[i][0]
-        transition_4_to_5 = monkey_x >= 146
+    # Vectorized implementation for state 4 -> 5 transition
+    # Create a mask for monkeys in state 4
+    in_state_4 = new_monkey_states == 4
 
-        new_state = jnp.where(
-            carry[i] == 4,
-            jnp.where(
-                transition_4_to_5,
-                5,
-                4,
-            ),
-            carry[i],
-        )
-        return carry.at[i].set(new_state)
+    # Check which monkeys have reached the threshold x position
+    monkey_x_positions = state.level.monkey_positions[:, 0]
+    reached_right_position = monkey_x_positions >= 146
 
-    new_monkey_states = jax.lax.fori_loop(
-        0,
-        state.level.monkey_states.shape[0],
-        check_transition_4_to_5,
-        new_monkey_states,
+    # Combine conditions and update states all at once
+    # Only monkeys that are in state 4 AND have reached position should change to state 5
+    new_monkey_states = jnp.where(
+        in_state_4 & reached_right_position,
+        5,  # New state for monkeys meeting both conditions
+        new_monkey_states,  # Keep original state for others
     )
 
     # State 5 -> 0
     ## If the monkey is at y == 5 change state to 0 and reset the position to the starting position
 
-    def check_transition_5_to_0(i, carry):
-        monkey_y = state.level.monkey_positions[i][1]
-        transition_5_to_0 = monkey_y <= 5
+    # Vectorized approach for state 5 -> 0 transition
+    # Create a mask for monkeys in state 5
+    in_state_5 = new_monkey_states == 5
 
-        new_state = jnp.where(
-            carry[i] == 5,
-            jnp.where(
-                transition_5_to_0,
-                0,
-                5,
-            ),
-            carry[i],
-        )
-        return carry.at[i].set(new_state)
+    # Check which monkeys have reached the top position for transition
+    monkey_y_positions = state.level.monkey_positions[:, 1]
+    reached_top_position = monkey_y_positions <= 5
 
-    new_monkey_states = jax.lax.fori_loop(
-        0,
-        state.level.monkey_states.shape[0],
-        check_transition_5_to_0,
-        new_monkey_states,
+    # Update states in a single vectorized operation
+    new_monkey_states = jnp.where(
+        in_state_5 & reached_top_position,
+        0,  # New state for monkeys meeting transition conditions
+        new_monkey_states,  # Keep original state for others
     )
 
     # Additional
@@ -1539,77 +1482,98 @@ def monkey_controller(state: GameState, punching: chex.Array):
         new_monkey_states,
     )
 
-    # Update monkey positions
-    def update_monkey_positions(i, carry):
-        """Update monkey positions."""
-        new_monkey_position = jnp.where(
-            new_monkey_states[i] == 0,  # monkey does not exist
+    # Update monkey positions using vectorization
+    def update_single_monkey_position(
+        state_monkey, position_monkey, new_state_monkey, step_counter
+    ):
+        """Update position for a single monkey."""
+        should_update = step_counter % 16 == 0
+
+        # Calculate potential new positions for each state
+        # State 0: Reset position
+        pos_state_0 = jnp.array([152, 5])
+
+        # State 1: Moving down
+        pos_state_1 = jnp.where(
+            state_monkey == 0,
             jnp.array([152, 5]),
+            jnp.array([position_monkey[0], position_monkey[1] + 8]),
+        )
+
+        # State 2: Moving left
+        pos_state_2 = jnp.array([position_monkey[0] - 3, position_monkey[1]])
+
+        # State 3: Waiting/throwing
+        pos_state_3 = position_monkey
+
+        # State 4: Moving right
+        pos_state_4 = jnp.array([position_monkey[0] + 3, position_monkey[1]])
+
+        # State 5: Moving up
+        pos_state_5 = jnp.where(
+            state_monkey == 1,
+            jnp.array([146, position_monkey[1]]),
+            jnp.array([position_monkey[0], position_monkey[1] - 16]),
+        )
+
+        # Select new position based on monkey state
+        new_pos = jnp.where(
+            new_state_monkey == 0,
+            pos_state_0,
             jnp.where(
-                state.level.step_counter % 16 == 0,
+                new_state_monkey == 1,
+                pos_state_1,
                 jnp.where(
-                    new_monkey_states[i] == 1,  # monkey moving down
+                    new_state_monkey == 2,
+                    pos_state_2,
                     jnp.where(
-                        state.level.monkey_states[i] == 0,
-                        jnp.array([152, 5]),
-                        carry[i].at[1].set(carry[i][1] + 8),
-                    ),
-                    jnp.where(
-                        new_monkey_states[i] == 2,  # monkey moving left
-                        carry[i].at[0].set(carry[i][0] - 3),
+                        new_state_monkey == 3,
+                        pos_state_3,
                         jnp.where(
-                            new_monkey_states[i] == 3,  # monkey waiting
-                            carry[i],
+                            new_state_monkey == 4,
+                            pos_state_4,
                             jnp.where(
-                                new_monkey_states[i] == 4,  # monkey moving right
-                                carry[i].at[0].set(carry[i][0] + 3),
-                                jnp.where(
-                                    new_monkey_states[i] == 5,  # monkey moving up
-                                    jnp.where(
-                                        state.level.monkey_states[i] == 1,
-                                        carry[i].at[0].set(146),
-                                        carry[i]
-                                        .at[1]
-                                        .set(carry[i][1] - 16),  # monkey moving up
-                                    ),
-                                    carry[i],
-                                ),
+                                new_state_monkey == 5, pos_state_5, position_monkey
                             ),
                         ),
                     ),
                 ),
-                carry[i],
             ),
         )
-        return carry.at[i].set(new_monkey_position)
 
-    new_monkey_positions = jax.lax.fori_loop(
-        0,
-        state.level.monkey_positions.shape[0],
-        update_monkey_positions,
+        # Only apply updates when step counter allows it
+        return jnp.where(should_update, new_pos, position_monkey)
+
+    # Apply vectorized function to all monkeys at once
+    new_monkey_positions = jax.vmap(
+        update_single_monkey_position, in_axes=(0, 0, 0, None)
+    )(
+        state.level.monkey_states,
         state.level.monkey_positions,
+        new_monkey_states,
+        state.level.step_counter,
     )
 
     # update monkey throw timers
 
-    def update_monkey_throw_timers(i, carry):
-        """Update monkey throw timers."""
-        new_timer = jnp.where(
-            new_monkey_states[i] == 3,
+    # Vectorized update of monkey throw timers
+    def update_timer(new_state, old_state, current_timer, step_counter):
+        """Update a single monkey throw timer."""
+        return jnp.where(
+            new_state == 3,
             jnp.where(
-                state.level.monkey_states[i] == 2,
+                old_state == 2,
                 4,
-                jnp.where(state.level.step_counter % 16 == 0, carry[i] - 1, carry[i]),
+                jnp.where(step_counter % 16 == 0, current_timer - 1, current_timer),
             ),
-            carry[i],
+            current_timer,
         )
-        return carry.at[i].set(new_timer)
 
-    new_monkey_throw_timers = jax.lax.fori_loop(
-        0,
-        state.level.monkey_throw_timers.shape[0],
-        update_monkey_throw_timers,
+    new_monkey_throw_timers = jax.vmap(update_timer, in_axes=(0, 0, 0, None))(
+        new_monkey_states,
+        state.level.monkey_states,
         state.level.monkey_throw_timers,
+        state.level.step_counter,
     )
 
     # Morris coco controller
