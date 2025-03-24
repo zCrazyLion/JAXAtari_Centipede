@@ -251,7 +251,7 @@ def get_valid_platforms(level_constants: LevelConstants) -> chex.Array:
     return level_constants.platform_positions[:, 0] != -1
 
 
-@partial(jax.jit, static_argnums=(1))
+@partial(jax.jit, static_argnums=(1), donate_argnums=(0))
 def get_platforms_below_player(state: GameState, y_offset=0) -> chex.Array:
     """Returns array of booleans indicating if player is on a platform."""
     player_x = state.player.x
@@ -351,7 +351,7 @@ def entities_collide(
     )
 
 
-@partial(jax.jit, static_argnums=(1, 2))
+@partial(jax.jit, static_argnums=(1, 2), donate_argnums=(0))
 def player_is_above_ladder(
     state: GameState,
     threshold: float = 0.3,
@@ -382,7 +382,7 @@ def player_is_above_ladder(
     )
 
 
-@partial(jax.jit, static_argnums=(1))
+@partial(jax.jit, static_argnums=(1), donate_argnums=(0))
 def check_ladder_collisions(state: GameState, threshold: float = 0.3) -> chex.Array:
     """Vectorized ladder collision checking."""
 
@@ -409,6 +409,7 @@ def check_ladder_collisions(state: GameState, threshold: float = 0.3) -> chex.Ar
     )
 
 
+@partial(jax.jit, donate_argnums=(0), static_argnums=(3))
 def player_is_on_ladder(
     state: GameState,
     ladder_pos: chex.Array,
@@ -431,7 +432,7 @@ def player_is_on_ladder(
     )
 
 
-@partial(jax.jit, static_argnums=())
+@partial(jax.jit, donate_argnums=(0))
 # -------- Jumping and Climbing --------
 def player_jump_controller(
     state: GameState, jump_pressed: chex.Array, ladder_intersect: chex.Array
@@ -539,7 +540,7 @@ def player_jump_controller(
     )
 
 
-@partial(jax.jit, static_argnums=())
+@partial(jax.jit, donate_argnums=(0))
 def player_climb_controller(
     state: GameState,
     y: chex.Array,
@@ -682,7 +683,7 @@ def player_height_controller(
     return new_height
 
 
-@partial(jax.jit, static_argnums=(1))
+@partial(jax.jit, static_argnums=(1), donate_argnums=(0))
 def get_y_of_platform_below_player(state: GameState, y_offset=0) -> chex.Array:
     """Gets the y-position of the next platform below the player."""
 
@@ -703,7 +704,7 @@ def get_y_of_platform_below_player(state: GameState, y_offset=0) -> chex.Array:
     return jnp.where(has_platform_below, platform_y, jnp.array(1000))
 
 
-@partial(jax.jit, static_argnums=())
+@partial(jax.jit, donate_argnums=(0))
 def fruits_step(state: GameState) -> Tuple[chex.Array, chex.Array]:
     """Handles fruit collection and scoring."""
 
@@ -776,7 +777,7 @@ def fruits_step(state: GameState) -> Tuple[chex.Array, chex.Array]:
     return new_score, activations, new_stages, counter
 
 
-@partial(jax.jit, static_argnums=())
+@partial(jax.jit, donate_argnums=(0))
 def child_step(state: GameState) -> Tuple[chex.Array]:
 
     RESET_TIMER_AFTER = 50
@@ -852,7 +853,7 @@ def get_level_constants(current_level: int) -> LevelConstants:
     )
 
 
-@partial(jax.jit, static_argnums=())
+@partial(jax.jit, donate_argnums=(0))
 def player_step(state: GameState, action: chex.Array):
     """Main player movement and state update function."""
     level_constants = get_level_constants(state.current_level)
@@ -1052,14 +1053,14 @@ def player_step(state: GameState, action: chex.Array):
     )
 
 
-@partial(jax.jit, static_argnums=())
+@partial(jax.jit, donate_argnums=(0))
 def timer_controller(state: GameState):
     return jnp.where(
         state.level.step_counter == 255, state.level.timer - 100, state.level.timer
     )
 
 
-@partial(jax.jit, static_argnums=())
+@partial(jax.jit, donate_argnums=(0))
 def next_level(state: GameState):
 
     RESET_AFTER_TICKS = 256
@@ -1078,7 +1079,7 @@ def next_level(state: GameState):
     return current_level, counter, reset_coords, levelup
 
 
-@partial(jax.jit, static_argnums=())
+@partial(jax.jit, donate_argnums=(0))
 def lives_controller(state: GameState):
     # timer check
     is_time_over = state.level.timer <= 0
@@ -1190,7 +1191,7 @@ def lives_controller(state: GameState):
     )
 
 
-@partial(jax.jit, static_argnums=())
+@partial(jax.jit, donate_argnums=(0))
 def falling_coconut_controller(state: GameState):
     falling_coco_exists = (state.level.falling_coco_position[0] != 13) | (
         state.level.falling_coco_position[1] != -1
@@ -1274,7 +1275,7 @@ def falling_coconut_controller(state: GameState):
     )
 
 
-@partial(jax.jit, static_argnums=())
+@partial(jax.jit, donate_argnums=(0))
 def monkey_controller(state: GameState, punching: chex.Array):
     """Monkey controller function."""
 
@@ -1727,7 +1728,7 @@ class Game(JaxEnvironment[GameState, GameObservation, GameInfo]):
             lives=jnp.array(3),
         )
 
-    @partial(jax.jit, static_argnums=(0))
+    @partial(jax.jit, static_argnums=(0), donate_argnums=(1))
     def step(
         self, state: GameState, action: chex.Array
     ) -> Tuple[GameState, GameObservation, float, bool, GameInfo]:
