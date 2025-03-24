@@ -1,3 +1,4 @@
+import os
 from functools import partial
 from typing import NamedTuple, Tuple
 from environment import JaxEnvironment, EnvState, EnvObs, EnvInfo
@@ -9,37 +10,38 @@ import pygame
 import atraJaxis as aj
 
 def load_sprites():
-    BG = aj.loadFrame("sprites/tennis/bg/1.npy")
+    MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BG = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/tennis/bg/1.npy"))
     
     frames_pl_r = []
     for i in range(1, 5):
-        frame = aj.loadFrame(f"sprites/tennis/pl_red/{i}.npy")
+        frame = aj.loadFrame(os.path.join(MODULE_DIR, f"sprites/tennis/pl_red/{i}.npy"))
         frames_pl_r.append(frame)
     PL_R = jnp.array(aj.pad_to_match(frames_pl_r))
     
     frames_bat_r = []
     for i in range(1, 5):
-        frame = aj.loadFrame(f"sprites/tennis/bat_r/{i}.npy")
+        frame = aj.loadFrame(os.path.join(MODULE_DIR, f"sprites/tennis/bat_r/{i}.npy"))
         frames_bat_r.append(frame)
     BAT_R = jnp.array(aj.pad_to_match(frames_bat_r))
     
     frames_pl_b = []
     for i in range(1, 5):
-        frame = aj.loadFrame(f"sprites/tennis/pl_blue/{i}.npy")
+        frame = aj.loadFrame(os.path.join(MODULE_DIR, f"sprites/tennis/pl_blue/{i}.npy"))
         frames_pl_b.append(frame)
     PL_B = jnp.array(aj.pad_to_match(frames_pl_b))
     
     frames_bat_b = []
     for i in range(1, 5):
-        frame = aj.loadFrame(f"sprites/tennis/bat_b/{i}.npy")
+        frame = aj.loadFrame(os.path.join(MODULE_DIR, f"sprites/tennis/bat_b/{i}.npy"))
         frames_bat_b.append(frame)
     BAT_B = jnp.array(aj.pad_to_match(frames_bat_b))
     
-    BALL = aj.loadFrame("sprites/tennis/ball/1.npy")
-    BALL_SHADE = aj.loadFrame("sprites/tennis/ball_shade/1.npy")
+    BALL = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/tennis/ball/1.npy"))
+    BALL_SHADE = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/tennis/ball_shade/1.npy"))
     
-    DIGITS_R = aj.load_and_pad_digits("sprites/tennis/digits_r/{}.npy")
-    DIGITS_B = aj.load_and_pad_digits("sprites/tennis/digits_b/{}.npy")
+    DIGITS_R = aj.load_and_pad_digits(os.path.join(MODULE_DIR, "sprites/tennis/digits_r/{}.npy"))
+    DIGITS_B = aj.load_and_pad_digits(os.path.join(MODULE_DIR, "sprites/tennis/digits_b/{}.npy"))
 
 
     return BG, PL_R, BAT_R, PL_B, BAT_B, BALL, BALL_SHADE, DIGITS_R, DIGITS_B

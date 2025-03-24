@@ -1,3 +1,4 @@
+import os
 import sys
 from functools import partial
 from typing import Tuple, NamedTuple, Any
@@ -217,20 +218,21 @@ class CarryState(NamedTuple):
 
 # RENDER CONSTANTS
 def load_sprites():
+    MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
     # Load sprites - no padding needed for background since it's already full size
-    bg1 = aj.loadFrame("sprites/seaquest/bg/1.npy")
-    pl_sub1 = aj.loadFrame("sprites/seaquest/player_sub/1.npy")
-    pl_sub2 = aj.loadFrame("sprites/seaquest/player_sub/2.npy")
-    pl_sub3 = aj.loadFrame("sprites/seaquest/player_sub/3.npy")
-    diver1 = aj.loadFrame("sprites/seaquest/diver/1.npy")
-    diver2 = aj.loadFrame("sprites/seaquest/diver/2.npy")
-    shark1 = aj.loadFrame("sprites/seaquest/shark/1.npy")
-    shark2 = aj.loadFrame("sprites/seaquest/shark/2.npy")
-    enemy_sub1 = aj.loadFrame("sprites/seaquest/enemy_sub/1.npy")
-    enemy_sub2 = aj.loadFrame("sprites/seaquest/enemy_sub/2.npy")
-    enemy_sub3 = aj.loadFrame("sprites/seaquest/enemy_sub/3.npy")
-    pl_torp = aj.loadFrame("sprites/seaquest/player_torp/1.npy")
-    en_torp = aj.loadFrame("sprites/seaquest/enemy_torp/1.npy")
+    bg1 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/bg/1.npy"))
+    pl_sub1 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/player_sub/1.npy"))
+    pl_sub2 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/player_sub/2.npy"))
+    pl_sub3 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/player_sub/3.npy"))
+    diver1 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/diver/1.npy"))
+    diver2 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/diver/2.npy"))
+    shark1 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/shark/1.npy"))
+    shark2 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/shark/2.npy"))
+    enemy_sub1 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/enemy_sub/1.npy"))
+    enemy_sub2 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/enemy_sub/2.npy"))
+    enemy_sub3 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/enemy_sub/3.npy"))
+    pl_torp = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/player_torp/1.npy"))
+    en_torp = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/enemy_torp/1.npy"))
 
     # Pad player submarine sprites to match each other
     pl_sub_sprites = aj.pad_to_match([pl_sub1, pl_sub2, pl_sub3])
@@ -287,9 +289,9 @@ def load_sprites():
         ]
     )
 
-    DIGITS = aj.load_and_pad_digits("./sprites/seaquest/digits/{}.npy")
-    LIFE_INDICATOR = aj.loadFrame("sprites/seaquest/life_indicator/1.npy")
-    DIVER_INDICATOR = aj.loadFrame("./sprites/seaquest/diver_indicator/1.npy")
+    DIGITS = aj.load_and_pad_digits(os.path.join(MODULE_DIR, "./sprites/seaquest/digits/{}.npy"))
+    LIFE_INDICATOR = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/life_indicator/1.npy"))
+    DIVER_INDICATOR = aj.loadFrame(os.path.join(MODULE_DIR, "./sprites/seaquest/diver_indicator/1.npy"))
 
     # Player torpedo sprites
     SPRITE_PL_TORP = jnp.repeat(pl_torp_sprites[0][None], 1, axis=0)
@@ -696,6 +698,32 @@ def update_enemy_spawns(
         Tuple of updated spawn state, shark positions, sub positions, and updated RNG key
     """
 
+    # count down the spawn timers
+    new_spawn_timers = jnp.where(
+        spawn_state.spawn_timers > 0,
+        spawn_state.spawn_timers - 1,
+        spawn_state.spawn_timers,
+    )
+
+    new_state = spawn_state._replace(spawn_timers=new_spawn_timers)
+
+    # Define a function for jax.lax.scan to process each lane
+    def scan_lanes(carry, lane_idx):
+        curr_state, curr_shark_positions, curr_sub_positions, curr_rng = carry
+
+        # Check if this lane needs an update
+        needs_update = lane_needs_update(lane_idx, curr_state, curr_shark_positions, curr_sub_positions)
+
+        # Process the lane if needed
+        new_carry = jax.lax.cond(
+            needs_update,
+            lambda x: process_lane(lane_idx, x),
+            lambda x: x,
+            (curr_state, curr_shark_positions, curr_sub_positions, curr_rng),
+        )
+
+        return new_carry, None  # None for outputs as we only care about final state
+
     def initialize_new_spawn_cycle(i, carry):
         spawn_state, shark_positions, sub_positions, rng = carry
 
@@ -985,32 +1013,6 @@ def update_enemy_spawns(
         )
 
         return jnp.logical_or(lane_empty, jnp.any(relevant_to_be_spawned))
-
-    # count down the spawn timers
-    new_spawn_timers = jnp.where(
-        spawn_state.spawn_timers > 0,
-        spawn_state.spawn_timers - 1,
-        spawn_state.spawn_timers,
-    )
-
-    new_state = spawn_state._replace(spawn_timers=new_spawn_timers)
-
-    # Define a function for jax.lax.scan to process each lane
-    def scan_lanes(carry, lane_idx):
-        curr_state, curr_shark_positions, curr_sub_positions, curr_rng = carry
-
-        # Check if this lane needs an update
-        needs_update = lane_needs_update(lane_idx, curr_state, curr_shark_positions, curr_sub_positions)
-
-        # Process the lane if needed
-        new_carry = jax.lax.cond(
-            needs_update,
-            lambda x: process_lane(lane_idx, x),
-            lambda x: x,
-            (curr_state, curr_shark_positions, curr_sub_positions, curr_rng),
-        )
-
-        return new_carry, None  # None for outputs as we only care about final state
 
     # Replace the manual loop with lax.scan
     lane_indices = jnp.arange(4)
@@ -2537,7 +2539,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
         return reset_state, initial_obs
 
-    @partial(jax.jit, static_argnums=(0,))
+    @partial(jax.jit, static_argnums=(0, ))
     def step(
         self, state: SeaquestState, action: chex.Array
     ) -> Tuple[SeaquestState, SeaquestObservation, float, bool, SeaquestInfo]:

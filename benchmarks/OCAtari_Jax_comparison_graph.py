@@ -67,21 +67,13 @@ def create_jax_vs_ocatari_comparison(games, display_names=None, output_file="jax
         display_names: Optional display names for the games (defaults to games list)
         output_file: Filename for the SVG output
     """
-    """
-    Create a visualization comparing JAX vs OCAtari performance across all games.
-
-    Args:
-        games: List of game names matching the data directory structure
-        display_names: Optional display names for the games (defaults to games list)
-        output_file: Filename for the SVG output
-    """
     if display_names is None:
         display_names = [g.capitalize() for g in games]
 
     # Create a larger figure for the comparison
     plt.figure(figsize=(20, 14))
 
-    # Define marker styles for better distinction 
+    # Define marker styles for better distinction
     jax_markers = ['o', 's', '^', 'D', 'v', 'p']
     ocatari_markers = ['o', 's', '^', 'D', 'v', 'p']
 
@@ -177,9 +169,19 @@ def create_jax_vs_ocatari_comparison(games, display_names=None, output_file="jax
                facecolor='white', edgecolor='gray', framealpha=0.9, fontsize=14,
                columnspacing=1.5, handletextpad=0.7)
 
-    # Tight layout with space for the legend only
+    # Add hardware configuration details below the plot
+    hardware_text = (
+        "Benchmark testing was conducted using 250000 steps per environment on an Intel(R) Core(TM) i9 - 9900KF CPU @ 3.60 GHz processor with an NVIDIA RTX 2070 graphics card."
+    )
+
+    # Add the hardware information as a text box at the bottom of the figure
+    plt.figtext(0.5, 0.02, hardware_text, ha='center', fontsize=14,
+                bbox=dict(boxstyle='round', facecolor='#f0f0f0', alpha=0.8,
+                          edgecolor='#cccccc', pad=0.8))
+
+    # Tight layout with space for the legend and hardware info
     plt.tight_layout()
-    plt.subplots_adjust(bottom=0.18)
+    plt.subplots_adjust(bottom=0.1)
 
     # Save the figure as SVG
     plt.savefig(output_file, format='svg', bbox_inches='tight')
@@ -193,8 +195,8 @@ def create_jax_vs_ocatari_comparison(games, display_names=None, output_file="jax
 
 if __name__ == "__main__":
     # Games to visualize
-    games = ['seaquest', 'kangaroo', 'pong', 'tennis', 'skiing', 'freeway']
-    display_names = ['Seaquest', 'Kangaroo', 'Pong', 'Tennis', 'Skiing', 'Freeway']
+    games = ['seaquest', 'kangaroo', 'pong', 'tennis', 'skiing', 'freeway', 'breakout']
+    display_names = ['Seaquest', 'Kangaroo', 'Pong', 'Tennis', 'Skiing', 'Freeway', 'Breakout']
 
     try:
         fig = create_jax_vs_ocatari_comparison(games, display_names, "jax_vs_ocatari_comparison.svg")

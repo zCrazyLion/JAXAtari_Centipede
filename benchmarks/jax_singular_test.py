@@ -12,7 +12,7 @@ import subprocess
 import matplotlib.pyplot as plt
 from datetime import datetime
 import threading
-from jax_game import JAXAtari
+from jax_game import JAXtari
 from ocatari import OCAtari
 
 
@@ -71,12 +71,12 @@ class ResourceMonitor:
 
 
 def run_parallel_jax(
-    game_name, num_steps: int = 1_000_000, num_envs: int = 2000, num_actions: int = None, render: bool = False
+    game_name, num_steps_per_env: int = 1_000_000, num_envs: int = 2000, num_actions: int = None, render: bool = False
 ) -> Tuple[float, float, int, Dict]:
     monitor = ResourceMonitor()
     monitor.start()
 
-    jaxgame = JAXAtari(game_name)
+    jaxgame = JAXtari(game_name)
     init_state = jaxgame.get_init_state()
     states = jax.tree_util.tree_map(lambda x: jnp.stack([x] * num_envs), init_state)
 
@@ -111,7 +111,8 @@ def run_parallel_jax(
     # Wait a moment to ensure any background compilations complete
     time.sleep(1)
 
-    steps_per_env = num_steps // num_envs
+    # Each environment runs the full number of steps
+    steps_per_env = num_steps_per_env
     start_time = time.time()
 
     (final_states, _), _ = jax.lax.scan(
@@ -119,7 +120,7 @@ def run_parallel_jax(
     )
 
     total_time = time.time() - start_time
-    total_steps = steps_per_env * num_envs
+    total_steps = steps_per_env * num_envs  # Total steps across all environments
     steps_per_second = total_steps / total_time
 
     monitor.stop()
@@ -140,12 +141,13 @@ def run_ocatari_worker(steps_per_env: int, game_name: str, num_actions:int) -> i
 
 
 def run_parallel_ocatari(
-    game_name, num_steps: int = 1_000_000, num_envs: int = None, num_actions: int = None
+    game_name, num_steps_per_env: int = 1_000_000, num_envs: int = None, num_actions: int = None
 ) -> Tuple[float, float, int, Dict]:
     if num_envs is None:
         num_envs = mp.cpu_count()
 
-    steps_per_env = num_steps // num_envs
+    # Each environment runs the full number of steps
+    steps_per_env = num_steps_per_env
     monitor = ResourceMonitor()
     monitor.start()
     start_time = time.time()
@@ -155,7 +157,7 @@ def run_parallel_ocatari(
         results = pool.map(run_ocatari_worker_set, [steps_per_env] * num_envs)
 
     total_time = time.time() - start_time
-    total_steps = sum(results)
+    total_steps = sum(results)  # Total steps across all environments
     steps_per_second = total_steps / total_time
 
     monitor.stop()
@@ -165,28 +167,30 @@ def run_parallel_ocatari(
 
 
 def run_scaling_benchmarks(
-    jax_game_name, oc_atari_game_name, num_steps: int = 1_000_000, num_actions: int = None, render: bool = False
+    jax_game_name, oc_atari_game_name, num_steps_per_env: int = 1_000_000, num_actions: int = None, render: bool = False
 ):
     # CPU scaling (OCAtari)
-    cpu_workers = [1, 2, 4, 8, 16]
+    cpu_workers = [1, 4, 8, 16]
     cpu_results = []
     print("\nRunning OCAtari scaling tests...")
     for workers in cpu_workers:
         if workers <= mp.cpu_count():
-            print(f"Testing with {workers} workers...")
+            print(f"Testing with {workers} workers (250K steps per worker, {workers*250}K total steps)...")
             results = run_parallel_ocatari(
-                oc_atari_game_name, num_steps=num_steps, num_envs=workers, num_actions=num_actions
+                oc_atari_game_name, num_steps_per_env=num_steps_per_env, num_envs=workers, num_actions=num_actions
             )
             cpu_results.append(results)
     cpu_workers = cpu_workers[: len(cpu_results)]
 
     # GPU scaling (JAX)
-    gpu_workers = [1, 16, 64, 128, 1024, 2048]
+    gpu_workers = [1, 8, 16, 64, 128, 1024, 2048, 8192, 16384]
     gpu_results = []
     print("\nRunning JAX scaling tests...")
     for workers in gpu_workers:
-        print(f"Testing with {workers} parallel environments...")
-        results = run_parallel_jax(jax_game_name, num_steps=num_steps, num_envs=workers, num_actions=num_actions, render=render)
+        print(f"Testing with {workers} parallel environments (250K steps per env, {workers*250}K total steps)...")
+        results = run_parallel_jax(
+            jax_game_name, num_steps_per_env=num_steps_per_env, num_envs=workers, num_actions=num_actions, render=render
+        )
         gpu_results.append(results)
 
     return cpu_workers, cpu_results, gpu_workers, gpu_results
@@ -260,7 +264,7 @@ def plot_scaling_results(cpu_workers, cpu_results, gpu_workers, gpu_results, tim
 
         plt.xscale("log", base=2)
         plt.yscale("log")
-        plt.xlabel("Number of Workers/Environments")
+        plt.xlabel("Number of Workers/Environments (each running 250K steps)")
         plt.ylabel(ylabel)
         plt.title(f"{metric_name} Scaling Comparison")
         plt.legend()
@@ -301,7 +305,7 @@ def plot_scaling_results(cpu_workers, cpu_results, gpu_workers, gpu_results, tim
 
         axes[i].set_xscale('log', base=2)
         axes[i].set_yscale("log")
-        axes[i].set_xlabel("Number of Workers/Environments")
+        axes[i].set_xlabel("Number of Workers/Environments (each running 250K steps)")
         axes[i].set_ylabel(ylabel)
         axes[i].set_title(f"{metric_name} Scaling")
         axes[i].legend()
@@ -340,7 +344,9 @@ def print_benchmark_results(
     folder = name.split(" ")[1]
     with open(f"./results/{folder}/logging_{timestamp}_{name}.txt", "a") as f:
         print(f"\n{name} Benchmark Results:", file=f)
-        print(f"Total steps completed: {total_steps:,}", file=f)
+        print(f"Total steps completed across all environments: {total_steps:,}", file=f)
+        print(f"Steps per environment: 1,000,000", file=f)
+        print(f"Number of environments: {total_steps // 1_000_000:,}", file=f)
         print(f"Total time: {total_time:.2f} seconds", file=f)
         print(f"Average steps per second: {steps_per_second:,.2f}", file=f)
         print(
@@ -394,9 +400,8 @@ if __name__ == "__main__":
         ("seaquest", "Seaquest", 18),
         ("skiing", "Skiing", 3),
         ("tennis", "Tennis", 18),
-
     ]
-    NUMBER_OF_STEPS = 1_000_000
+    STEPS_PER_ENVIRONMENT = 250_000  # Each environment now runs 250K steps
     USE_RENDERER = False
 
     for game in GAMES_TO_TEST:
@@ -413,11 +418,12 @@ if __name__ == "__main__":
             print(f"CPU cores available: {mp.cpu_count()}", file=f)
             print("Available devices:", jax.devices(), file=f)
             print("Default device:", jax.default_device(), file=f)
+            print(f"Steps per environment: {STEPS_PER_ENVIRONMENT:,}", file=f)
 
         # Run scaling benchmarks
-        print("\nRunning scaling benchmarks...")
+        print(f"\nRunning scaling benchmarks (250K steps per environment)...")
         cpu_workers, cpu_results, gpu_workers, gpu_results = run_scaling_benchmarks(
-            jax_game_name, oc_atari_game_name, num_steps=NUMBER_OF_STEPS, num_actions=actions, render=USE_RENDERER
+            jax_game_name, oc_atari_game_name, num_steps_per_env=STEPS_PER_ENVIRONMENT, num_actions=actions, render=USE_RENDERER
         )
         Path(f"./results/{jax_game_name}/raw").mkdir(parents=True, exist_ok=True)
         save_raw_files_scaling(cpu_results, gpu_results, cpu_workers, gpu_workers, Path(f"./results/{jax_game_name}/raw"))
@@ -431,12 +437,18 @@ if __name__ == "__main__":
         # Run standard benchmarks for detailed comparison
         print("\nRunning standard benchmarks...")
         Path(f"./results/{jax_game_name}/raw/jax").mkdir(parents=True, exist_ok=True)
-        jax_results = run_parallel_jax(jax_game_name, num_actions=actions, render=USE_RENDERER, num_steps=NUMBER_OF_STEPS, num_envs=2000)
+        jax_results = run_parallel_jax(
+            jax_game_name, num_actions=actions, render=USE_RENDERER,
+            num_steps_per_env=STEPS_PER_ENVIRONMENT, num_envs=2000
+        )
         save_raw_files(jax_results, Path(f"./results/{jax_game_name}/raw/jax"))
         print_benchmark_results(f"JAX {jax_game_name}", *jax_results)
 
         Path(f"./results/{jax_game_name}/raw/oc").mkdir(parents=True, exist_ok=True)
-        ocatari_results = run_parallel_ocatari(oc_atari_game_name, num_actions=actions, num_steps=NUMBER_OF_STEPS, num_envs=16)
+        ocatari_results = run_parallel_ocatari(
+            oc_atari_game_name, num_actions=actions,
+            num_steps_per_env=STEPS_PER_ENVIRONMENT, num_envs=16
+        )
         save_raw_files(ocatari_results, Path(f"./results/{jax_game_name}/raw/oc"))
         print_benchmark_results(f"OCAtari {jax_game_name}", *ocatari_results)
 
