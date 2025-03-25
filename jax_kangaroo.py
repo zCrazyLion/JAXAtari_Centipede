@@ -1443,44 +1443,32 @@ def monkey_controller(state: GameState, punching: chex.Array):
     fist_w = 3
     fist_h = 4
 
-    def check_punch(i, carry):
-        monkey_pos = state.level.monkey_positions[i]
-        collision = entities_collide(
-            fist_x,
-            fist_y,
-            fist_w,
-            fist_h,
-            monkey_pos[0],
-            monkey_pos[1],
-            MONKEY_WIDTH,
-            MONKEY_HEIGHT,
-        )
-        return carry.at[i].set(
-            collision & (state.level.monkey_states[i] != 0) & punching
+    def check_punch(f_x, f_y, f_w, f_h, m_x, m_y, m_w, m_h, m_state, punching):
+        return jnp.logical_and(
+            entities_collide(f_x, f_y, f_w, f_h, m_x, m_y, m_w, m_h),
+            jnp.logical_and(m_state != 0, punching),
         )
 
-    monkeys_punched = jax.lax.fori_loop(
-        0,
-        state.level.monkey_states.shape[0],
+    monkeys_punched = jax.vmap(
         check_punch,
-        jnp.zeros(state.level.monkey_states.shape[0], dtype=bool),
+        in_axes=(None, None, None, None, 0, 0, None, None, 0, None),
+    )(
+        fist_x,
+        fist_y,
+        fist_w,
+        fist_h,
+        state.level.monkey_positions[:, 0],
+        state.level.monkey_positions[:, 1],
+        MONKEY_WIDTH,
+        MONKEY_HEIGHT,
+        state.level.monkey_states,
+        punching,
     )
-
-    def reset_punched_monkeys(i, carry):
-        new_state = jnp.where(
-            monkeys_punched[i],
-            0,
-            carry[i],
-        )
-        return carry.at[i].set(new_state)
 
     score_addition = jnp.sum(monkeys_punched) * 200
 
-    new_monkey_states = jax.lax.fori_loop(
-        0,
-        state.level.monkey_states.shape[0],
-        reset_punched_monkeys,
-        new_monkey_states,
+    new_monkey_states = jax.vmap(lambda a, b: jnp.where(b, 0, a), in_axes=(0, 0))(
+        new_monkey_states, monkeys_punched
     )
 
     # Update monkey positions using vectorization
@@ -1577,69 +1565,67 @@ def monkey_controller(state: GameState, punching: chex.Array):
         state.level.step_counter,
     )
 
-    # Morris coco controller
-    def update_morris_coco_state(i, carry):
-        updated_state = jnp.where(
-            (state.level.monkey_states[i] != 3) & (new_monkey_states[i] == 3),
+    def update_morris_coco_state(
+        old_m_state, new_m_state, old_m_timer, new_m_timer, c_state, c_pos_x
+    ):
+        return jnp.where(
+            (old_m_state != 3) & (new_m_state == 3),
             1,
             jnp.where(
-                (state.level.morris_coco_states[i] == 1)
-                & (state.level.monkey_throw_timers[i] == 3)
-                & (new_monkey_throw_timers[i] == 2),
+                (c_state == 1) & (old_m_timer == 3) & (new_m_timer == 2),
                 2,
-                jnp.where(state.level.morris_coco_positions[i][0] <= 15, 0, carry[i]),
+                jnp.where(c_pos_x <= 15, 0, c_state),
             ),
         )
 
-        return carry.at[i].set(updated_state)
-
-    new_morris_coco_states = jax.lax.fori_loop(
-        0,
-        state.level.monkey_states.shape[0],
-        update_morris_coco_state,
+    new_morris_coco_states = jax.vmap(
+        update_morris_coco_state, in_axes=(0, 0, 0, 0, 0, 0)
+    )(
+        state.level.monkey_states,
+        new_monkey_states,
+        state.level.monkey_throw_timers,
+        new_monkey_throw_timers,
         state.level.morris_coco_states,
+        state.level.morris_coco_positions[:, 0],
     )
 
-    def update_morris_coco_positions(i, carry):
-        updated_pos = jnp.where(
-            new_morris_coco_states[i] == 2,
+    def update_morris_coco_positions(
+        new_c_state, old_c_state, stepc, old_c_pos, new_m_pos
+    ):
+        return jnp.where(
+            new_c_state == 2,
             jnp.where(
-                state.level.step_counter % 2 == 0,
-                jnp.array([carry[i][0] - 2, carry[i][1]]),
-                carry[i],
+                stepc % 2 == 0,
+                jnp.array([old_c_pos[0] - 2, old_c_pos[1]]),
+                old_c_pos,
             ),
             jnp.where(
-                (new_morris_coco_states[i] == 1)
-                & (state.level.morris_coco_states[i] == 0),
+                (new_c_state == 1) & (old_c_state == 0),
                 jnp.array(
                     [
-                        new_monkey_positions[i][0] - 6,
+                        new_m_pos[0] - 6,
                         jnp.where(
                             state.level.morris_spawn_position,
-                            new_monkey_positions[i][1] - 5,
-                            new_monkey_positions[i][1] + MONKEY_HEIGHT - COCONUT_HEIGHT,
+                            new_m_pos[1] - 5,
+                            new_m_pos[1] + MONKEY_HEIGHT - COCONUT_HEIGHT,
                         ),
                     ]
                 ),
-                carry[i],
+                old_c_pos,
             ),
         )
-        return carry.at[i].set(updated_pos)
 
-    new_morris_coco_positions = jax.lax.fori_loop(
-        0,
-        state.level.monkey_positions.shape[0],
-        update_morris_coco_positions,
+    new_morris_coco_positions = jax.vmap(
+        update_morris_coco_positions, in_axes=(0, 0, None, 0, 0)
+    )(
+        new_morris_coco_states,
+        state.level.morris_coco_states,
+        state.level.step_counter,
         state.level.morris_coco_positions,
+        new_monkey_positions,
     )
 
-    def detect_morris_spawn(i, carry):
-        spawned = (state.level.monkey_states[i] != 3) & (new_monkey_states[i] == 3)
-        return carry | spawned
-
-    morris_flip = jax.lax.fori_loop(
-        0, state.level.monkey_states.shape[0], detect_morris_spawn, False
-    )
+    morris_flip = jnp.any((state.level.monkey_states != 3) & (new_monkey_states == 3))
 
     return (
         new_monkey_states,
