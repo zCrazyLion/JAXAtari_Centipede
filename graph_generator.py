@@ -209,8 +209,8 @@ def create_visualization(games, display_names=None):
 
 if __name__ == "__main__":
     # Games from the script - use only those that have been benchmarked
-    games = ['seaquest', 'kangaroo', 'pong', 'tennis', 'skiing', 'freeway']
-    display_names = ['Seaquest', 'Kangaroo', 'Pong', 'Tennis', 'Skiing', 'Freeway']
+    games = ['seaquest', 'kangaroo', 'pong', 'tennis', 'skiing', 'freeway', 'breakout']
+    display_names = ['Seaquest', 'Kangaroo', 'Pong', 'Tennis', 'Skiing', 'Freeway', 'Breakout']
 
     try:
         fig, axes = create_visualization(games, display_names)

@@ -2,17 +2,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.ticker as ticker
 from pathlib import Path
+import os
 
-# Set style for scientific paper quality with enhanced readability
+# Set a clean, simple style
 plt.style.use('seaborn-v0_8-whitegrid')
-plt.rcParams['font.family'] = 'serif'
-plt.rcParams['font.size'] = 14  # Base font size
-plt.rcParams['axes.labelsize'] = 18  # Axis label size
-plt.rcParams['axes.titlesize'] = 20  # Title size
-plt.rcParams['xtick.labelsize'] = 16  # X-tick label size
-plt.rcParams['ytick.labelsize'] = 16  # Y-tick label size
-plt.rcParams['legend.fontsize'] = 14  # Legend font size
-plt.rcParams['figure.titlesize'] = 22  # Figure title size
+plt.rcParams['font.family'] = 'DejaVu Sans'
+plt.rcParams['font.size'] = 12
+
+# Constants for hardware and configuration
+CPU_INFO = "Intel(R) Core(TM) i9-9900KF CPU @ 3.60GHz"
+GPU_INFO = "NVIDIA RTX 2070"
+STEPS_PER_ENV = 250_000
+OUTPUT_DIR = "visualizations"
 
 
 def load_game_data(game_name):
@@ -71,7 +72,7 @@ def create_jax_vs_ocatari_comparison(games, display_names=None, output_file="jax
         display_names = [g.capitalize() for g in games]
 
     # Create a larger figure for the comparison
-    plt.figure(figsize=(20, 14))
+    plt.figure(figsize=(20, 12))  # Change from (20, 14) to (20, 12)
 
     # Define marker styles for better distinction
     jax_markers = ['o', 's', '^', 'D', 'v', 'p']
@@ -121,8 +122,8 @@ def create_jax_vs_ocatari_comparison(games, display_names=None, output_file="jax
                 textcoords="offset points",
                 xytext=(5, 10),  # Offset slightly right to avoid overlap with line
                 ha='left',  # Left-align text
-                fontsize=12,  # Larger font
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8)  # Add background
+                fontsize=11,  # Appropriate font size
+                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="gray", alpha=0.8)  # Add background
             )
 
             max_atari_idx = np.argmax(data['atari_throughput'])
@@ -132,8 +133,8 @@ def create_jax_vs_ocatari_comparison(games, display_names=None, output_file="jax
                 textcoords="offset points",
                 xytext=(-5, -15),  # Offset below and left to avoid overlap
                 ha='right',  # Right-align text
-                fontsize=12,  # Larger font
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8)  # Add background
+                fontsize=11,  # Appropriate font size
+                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="gray", alpha=0.8)  # Add background
             )
 
         except RuntimeError as e:
@@ -143,9 +144,9 @@ def create_jax_vs_ocatari_comparison(games, display_names=None, output_file="jax
     # Set axis properties
     plt.xscale('log', base=2)
     plt.yscale('log', base=10)
-    plt.xlabel('Number of Parallel Environments')
-    plt.ylabel('Steps per Second')
-    plt.title('JAXtari vs OCAtari Performance Comparison Across Games', pad=25, fontsize=22)
+    plt.xlabel('Number of Parallel Environments', fontsize=14, fontweight='bold')
+    plt.ylabel('Steps per Second', fontsize=14, fontweight='bold')
+    plt.title('JAXtari vs OCAtari Performance Comparison Across Games', fontsize=18, fontweight='bold', pad=20)
     plt.grid(True, which="both", ls="-", alpha=0.2)
 
     # Configure x-axis to use powers of 2
@@ -164,31 +165,27 @@ def create_jax_vs_ocatari_comparison(games, display_names=None, output_file="jax
         lambda x, pos: f'$2^{{{int(np.log2(x))}}}$' if x > 0 else '0'
     ))
 
-    # Create a more organized legend with a better layout, positioned closer to the plot
+    # Create a more organized legend with a better layout
     plt.legend(loc='upper center', bbox_to_anchor=(0.5, 0.15), ncol=3, frameon=True,
-               facecolor='white', edgecolor='gray', framealpha=0.9, fontsize=14,
-               columnspacing=1.5, handletextpad=0.7)
+               facecolor='white', edgecolor='gray', framealpha=0.9)
 
-    # Add hardware configuration details below the plot
-    hardware_text = (
-        "Benchmark testing was conducted using 250000 steps per environment on an Intel(R) Core(TM) i9 - 9900KF CPU @ 3.60 GHz processor with an NVIDIA RTX 2070 graphics card."
-    )
+    # Add annotation about hardware and steps per env
+    plt.figtext(0.5, 0.02,
+                f"Benchmark testing was conducted using {STEPS_PER_ENV:,} steps per environment on an {CPU_INFO} processor with an {GPU_INFO} graphics card.",
+                ha='center', fontsize=11, color='#333333', style='italic')
 
-    # Add the hardware information as a text box at the bottom of the figure
-    plt.figtext(0.5, 0.02, hardware_text, ha='center', fontsize=14,
-                bbox=dict(boxstyle='round', facecolor='#f0f0f0', alpha=0.8,
-                          edgecolor='#cccccc', pad=0.8))
-
-    # Tight layout with space for the legend and hardware info
+    # Tight layout with space for the legend only
     plt.tight_layout()
-    plt.subplots_adjust(bottom=0.1)
+    plt.subplots_adjust(bottom=0.1)  # Change from 0.18 to 0.12
 
-    # Save the figure as SVG
-    plt.savefig(output_file, format='svg', bbox_inches='tight')
-    print(f"Figure saved as {output_file}")
+    # Create output directory
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # Also save as PNG for easier viewing
-    plt.savefig(output_file.replace('.svg', '.png'), dpi=300, bbox_inches='tight')
+    # Save the figure
+    for fmt in ['png', 'svg']:
+        out_path = f"{OUTPUT_DIR}/{output_file.replace('.svg', f'.{fmt}')}"
+        plt.savefig(out_path, format=fmt, dpi=300, bbox_inches='tight')
+        print(f"Figure saved as {out_path}")
 
     return plt.gcf()
 
