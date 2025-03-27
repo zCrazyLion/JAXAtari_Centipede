@@ -6,11 +6,11 @@ import jax
 import jax.numpy as jnp
 import chex
 import pygame
-import atraJaxis as aj
+import jaxtari.atraJaxis as aj
 import numpy as np
 from jax import Array
 
-from environment import JaxEnvironment
+from jaxtari.environment import JaxEnvironment
 
 # TODO: surface submarine at 6 divers collected + difficulty 1
 # Game Constants
