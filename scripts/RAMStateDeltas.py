@@ -122,7 +122,7 @@ class Renderer:
 
                 self.current_frame = self.env.render().copy()
 
-                ale = self.env.unwrapped.ale
+                ale = self.env._ale
                 self.past_ram = self.ram
                 self.ram = ale.getRAM()
 
@@ -391,7 +391,7 @@ class Renderer:
         self.clock.tick(1000)
 
     def _render_ram(self):
-        ale = self.env.unwrapped.ale
+        ale = self.env._ale
         ram = ale.getRAM()
 
         for i, value in enumerate(ram):

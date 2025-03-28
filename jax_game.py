@@ -8,7 +8,7 @@ from jax_freeway import FreewayGameLogic as JaxFreeway
 from jax_seaquest import JaxSeaquest, Renderer_AtraJaxis
 from jax_skiing import SkiingGameLogic as JaxSkiing
 from jax_tennis import JaxTennis, Renderer_AJ
-from jax_kangaroo import Game as JaxKangaroo
+from jax_kangaroo import Kangaroo as JaxKangaroo
 
 
 class JAXtari:
@@ -66,11 +66,11 @@ class JAXtari:
         state_dict = state._asdict()
         for item in state_dict:
             state_dict[item] = state_dict[item].tolist()
-        with open(path, 'w', encoding='utf-8') as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(state_dict, f, ensure_ascii=False, indent=4)
 
     def load_state_from_json(self, curr_state, path):
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, "r", encoding="utf-8") as f:
             state = json.load(f)
         new_state = curr_state.__class__(**state)
         return new_state

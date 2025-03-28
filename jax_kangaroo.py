@@ -157,7 +157,7 @@ class LevelState(NamedTuple):
     """
 
 
-class GameState(NamedTuple):
+class KangarooState(NamedTuple):
     player: PlayerState
     level: LevelState
     score: chex.Array
@@ -169,11 +169,11 @@ class GameState(NamedTuple):
     lives: chex.Array
 
 
-class GameObservation(NamedTuple):
+class KangarooObservation(NamedTuple):
     garnis: chex.Array
 
 
-class GameInfo(NamedTuple):
+class KangarooInfo(NamedTuple):
     garnis: chex.Array
 
 
@@ -252,7 +252,7 @@ def get_valid_platforms(level_constants: LevelConstants) -> chex.Array:
 
 
 @partial(jax.jit, static_argnums=(1), donate_argnums=(0))
-def get_platforms_below_player(state: GameState, y_offset=0) -> chex.Array:
+def get_platforms_below_player(state: KangarooState, y_offset=0) -> chex.Array:
     """Returns array of booleans indicating if player is on a platform."""
     player_x = state.player.x
     player_y = state.player.y + y_offset
@@ -353,7 +353,7 @@ def entities_collide(
 
 @partial(jax.jit, static_argnums=(1, 2), donate_argnums=(0))
 def player_is_above_ladder(
-    state: GameState,
+    state: KangarooState,
     threshold: float = 0.3,
     virtual_hitbox_height: float = 12.0,
 ) -> chex.Array:
@@ -383,7 +383,7 @@ def player_is_above_ladder(
 
 
 @partial(jax.jit, static_argnums=(1), donate_argnums=(0))
-def check_ladder_collisions(state: GameState, threshold: float = 0.3) -> chex.Array:
+def check_ladder_collisions(state: KangarooState, threshold: float = 0.3) -> chex.Array:
     """Vectorized ladder collision checking."""
 
     level_constants: LevelConstants = get_level_constants(state.current_level)
@@ -411,7 +411,7 @@ def check_ladder_collisions(state: GameState, threshold: float = 0.3) -> chex.Ar
 
 @partial(jax.jit, donate_argnums=(0), static_argnums=(3))
 def player_is_on_ladder(
-    state: GameState,
+    state: KangarooState,
     ladder_pos: chex.Array,
     ladder_size: chex.Array,
     threshold: float = 0.3,
@@ -435,7 +435,7 @@ def player_is_on_ladder(
 @partial(jax.jit, donate_argnums=(0))
 # -------- Jumping and Climbing --------
 def player_jump_controller(
-    state: GameState, jump_pressed: chex.Array, ladder_intersect: chex.Array
+    state: KangarooState, jump_pressed: chex.Array, ladder_intersect: chex.Array
 ):
     """
     Schedule:
@@ -542,7 +542,7 @@ def player_jump_controller(
 
 @partial(jax.jit, donate_argnums=(0))
 def player_climb_controller(
-    state: GameState,
+    state: KangarooState,
     y: chex.Array,
     press_up: chex.Array,
     press_down: chex.Array,
@@ -684,7 +684,7 @@ def player_height_controller(
 
 
 @partial(jax.jit, static_argnums=(1), donate_argnums=(0))
-def get_y_of_platform_below_player(state: GameState, y_offset=0) -> chex.Array:
+def get_y_of_platform_below_player(state: KangarooState, y_offset=0) -> chex.Array:
     """Gets the y-position of the next platform below the player."""
 
     level_constants: LevelConstants = get_level_constants(state.current_level)
@@ -705,7 +705,7 @@ def get_y_of_platform_below_player(state: GameState, y_offset=0) -> chex.Array:
 
 
 @partial(jax.jit, donate_argnums=(0))
-def fruits_step(state: GameState) -> Tuple[chex.Array, chex.Array]:
+def fruits_step(state: KangarooState) -> Tuple[chex.Array, chex.Array]:
     """Handles fruit collection and scoring."""
 
     fruit_x = state.level.fruit_positions[:, 0]
@@ -778,7 +778,7 @@ def fruits_step(state: GameState) -> Tuple[chex.Array, chex.Array]:
 
 
 @partial(jax.jit, donate_argnums=(0))
-def child_step(state: GameState) -> Tuple[chex.Array]:
+def child_step(state: KangarooState) -> Tuple[chex.Array]:
 
     RESET_TIMER_AFTER = 50
 
@@ -854,7 +854,7 @@ def get_level_constants(current_level: int) -> LevelConstants:
 
 
 @partial(jax.jit, donate_argnums=(0))
-def player_step(state: GameState, action: chex.Array):
+def player_step(state: KangarooState, action: chex.Array):
     """Main player movement and state update function."""
     level_constants = get_level_constants(state.current_level)
     x, y = state.player.x, state.player.y
@@ -1054,14 +1054,14 @@ def player_step(state: GameState, action: chex.Array):
 
 
 @partial(jax.jit, donate_argnums=(0))
-def timer_controller(state: GameState):
+def timer_controller(state: KangarooState):
     return jnp.where(
         state.level.step_counter == 255, state.level.timer - 100, state.level.timer
     )
 
 
 @partial(jax.jit, donate_argnums=(0))
-def next_level(state: GameState):
+def next_level(state: KangarooState):
 
     RESET_AFTER_TICKS = 256
 
@@ -1080,7 +1080,7 @@ def next_level(state: GameState):
 
 
 @partial(jax.jit, donate_argnums=(0))
-def lives_controller(state: GameState):
+def lives_controller(state: KangarooState):
     # timer check
     is_time_over = state.level.timer <= 0
 
@@ -1192,7 +1192,7 @@ def lives_controller(state: GameState):
 
 
 @partial(jax.jit, donate_argnums=(0))
-def falling_coconut_controller(state: GameState):
+def falling_coconut_controller(state: KangarooState):
     falling_coco_exists = (state.level.falling_coco_position[0] != 13) | (
         state.level.falling_coco_position[1] != -1
     )
@@ -1276,7 +1276,7 @@ def falling_coconut_controller(state: GameState):
 
 
 @partial(jax.jit, donate_argnums=(0))
-def monkey_controller(state: GameState, punching: chex.Array):
+def monkey_controller(state: KangarooState, punching: chex.Array):
     """Monkey controller function."""
 
     # Count non-zero monkey states with a vectorized operation
@@ -1639,21 +1639,21 @@ def monkey_controller(state: GameState, punching: chex.Array):
 
 
 # -------- Game Interface for Reset and Step --------
-class Game(JaxEnvironment[GameState, GameObservation, GameInfo]):
+class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo]):
     def __init__(self, frameskip: int = 1):
         self.frameskip = frameskip
 
     @partial(jax.jit, static_argnums=(0,))
-    def reset(self) -> Tuple[GameState, GameObservation]:
+    def reset(self) -> Tuple[KangarooState, KangarooObservation]:
         return self.reset_level(1), self._get_observation(self.reset_level(1))
 
     @partial(jax.jit, static_argnums=(0))
-    def reset_level(self, next_level=1) -> GameState:
+    def reset_level(self, next_level=1) -> KangarooState:
 
         next_level = jnp.clip(next_level, 1, 3)
         level_constants: LevelConstants = get_level_constants(next_level)
 
-        return GameState(
+        return KangarooState(
             player=PlayerState(
                 x=jnp.array(PLAYER_START_X),
                 y=jnp.array(PLAYER_START_Y),
@@ -1716,8 +1716,8 @@ class Game(JaxEnvironment[GameState, GameObservation, GameInfo]):
 
     @partial(jax.jit, static_argnums=(0), donate_argnums=(1))
     def step(
-        self, state: GameState, action: chex.Array
-    ) -> Tuple[GameState, GameObservation, float, bool, GameInfo]:
+        self, state: KangarooState, action: chex.Array
+    ) -> Tuple[KangarooState, KangarooObservation, float, bool, KangarooInfo]:
         reset_cond = jnp.any(jnp.array([action == RESET]))
 
         # Update player state
@@ -1781,8 +1781,11 @@ class Game(JaxEnvironment[GameState, GameObservation, GameInfo]):
 
         # reset_current_level_progress()
 
+        # add the time after finishing a level
+        score_addition3 = jnp.where(level_finished, state.level.timer, 0)
+
         # add score if levelup from lvl3 to lvl1
-        score_addition = score_addition + score_addition2
+        score_addition = score_addition + score_addition2 + score_addition3
         score_addition = jax.lax.cond(
             new_current_level == 4,
             lambda: score_addition + 1400,
@@ -1870,33 +1873,35 @@ class Game(JaxEnvironment[GameState, GameObservation, GameInfo]):
             ),
         )
 
-        return (
-            jax.lax.cond(
-                reset_cond,
-                lambda: self.reset_level(state.current_level),
-                lambda: jax.lax.cond(
-                    state.lives <= 0,
-                    lambda: state,
-                    lambda: GameState(
-                        player=new_player_state,
-                        level=new_level_state,
-                        score=state.score + score_addition,
-                        current_level=new_current_level,
-                        level_finished=level_finished,
-                        levelup_timer=new_levelup_timer,
-                        reset_coords=new_reset_coords,
-                        levelup=new_levelup,
-                        lives=new_lives,
-                    ),
+        new_state = jax.lax.cond(
+            reset_cond,
+            lambda: self.reset_level(state.current_level),
+            lambda: jax.lax.cond(
+                state.lives <= 0,
+                lambda: state,
+                lambda: KangarooState(
+                    player=new_player_state,
+                    level=new_level_state,
+                    score=state.score + score_addition,
+                    current_level=new_current_level,
+                    level_finished=level_finished,
+                    levelup_timer=new_levelup_timer,
+                    reset_coords=new_reset_coords,
+                    levelup=new_levelup,
+                    lives=new_lives,
                 ),
             ),
-            GameObservation(garnis=0),
-            0.0,
-            False,
-            GameInfo(garnis=0),
         )
 
-    def render(self, state: GameState) -> Tuple[jnp.ndarray]:
+        return (
+            new_state,
+            KangarooObservation(garnis=0),
+            self._get_reward(state, new_state),
+            self._get_done(new_state),
+            KangarooInfo(garnis=0),
+        )
+
+    def render(self, state: KangarooState) -> Tuple[jnp.ndarray]:
         pass
 
     def get_action_space(self) -> Tuple:
@@ -1914,19 +1919,19 @@ class Game(JaxEnvironment[GameState, GameObservation, GameInfo]):
         raise NotImplementedError("Abstract method")
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_observation(self, state: GameState) -> GameObservation:
-        return GameObservation(garnis=0)
+    def _get_observation(self, state: KangarooState) -> KangarooObservation:
+        return KangarooObservation(garnis=0)
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: GameState) -> GameInfo:
-        return GameInfo(garnis=0)
+    def _get_info(self, state: KangarooState) -> KangarooInfo:
+        return KangarooInfo(garnis=0)
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_reward(self, previous_state: GameState, state: GameState) -> float:
+    def _get_reward(self, previous_state: KangarooState, state: KangarooState) -> float:
         return state.score - previous_state.score
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_done(self, state: GameState) -> bool:
+    def _get_done(self, state: KangarooState) -> bool:
         return state.lives <= 0
 
 
@@ -1942,7 +1947,7 @@ class Renderer:
         )
         pygame.display.set_caption("Kangaroo")
 
-    def render(self, state: GameState):
+    def render(self, state: KangarooState):
         self.screen.fill(BACKGROUND_COLOR)
 
         # Walls
@@ -2167,7 +2172,7 @@ class Renderer:
 
 if __name__ == "__main__":
     pygame.init()
-    game = Game()
+    game = Kangaroo()
     renderer = Renderer()
     jitted_step = jax.jit(game.step)
     jitted_reset = jax.jit(game.reset)
