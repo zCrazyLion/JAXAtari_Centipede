@@ -2415,6 +2415,8 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
     def __init__(self, frameskip: int = 1, reward_funcs: list[callable] =None):
         super().__init__()
         self.frameskip = frameskip
+        if reward_funcs is not None:
+            reward_funcs = tuple(reward_funcs)
         self.reward_funcs = reward_funcs 
         self.action_set = { 
             NOOP,
@@ -2550,7 +2552,9 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_all_rewards(self, previous_state: SeaquestState, state: SeaquestState) -> jnp.ndarray:
-        rewards = jnp.array([r(previous_state, state) for r in self.reward_funcs])
+        if self.reward_funcs is None:
+            return jnp.zeros(1)
+        rewards = jnp.array([reward_func(previous_state, state) for reward_func in self.reward_funcs])
         return rewards 
 
     @partial(jax.jit, static_argnums=(0,))

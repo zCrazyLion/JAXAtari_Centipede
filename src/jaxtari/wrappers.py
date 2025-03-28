@@ -67,6 +67,55 @@ class FlattenObservationWrapper(GymnaxWrapper):
         info = info._asdict()
         return obs, state, reward, done, info
 
+@struct.dataclass 
+class AtariState:
+    env_state: EnvState 
+    step: int
+    prev_action: int
+    
+class AtariWrapper(GymnaxWrapper):
+    def __init__(self, env, sticky_actions: bool = True, frame_skip: int = 4, max_episode_length: int = 10_000):
+        super().__init__(env)
+        self.sticky_actions = sticky_actions
+        self.frame_skip = frame_skip
+        self.max_episode_length = max_episode_length
+
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def reset(self, key: chex.PRNGKey) -> Tuple[chex.Array, EnvState]:
+        obs, env_state = self._env.reset(key)
+        step = jnp.array(0)
+        prev_action = jnp.array(0)
+        return obs, AtariState(env_state, step, prev_action)
+
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def step(self, key: chex.PRNGKey, state: AtariState, action: Union[int, float]) -> Tuple[chex.Array, EnvState, float, bool, Dict[Any, Any]]:
+
+        if self.sticky_actions:
+            # With probability 0.25, we repeat the previous action
+            repeat_prev_action_mask = jax.random.uniform(key, shape=action.shape) < 0.25
+            new_action = jnp.where(repeat_prev_action_mask, state.prev_action, action)
+        
+        # if episode is longer than max_episode_length, reset the env
+        # max_episode_mask = state.step < self.max_episode_length
+
+        # new_env_state = jax.lax.cond(
+        #     max_episode_mask,
+        #     lambda _: state.env_state,
+        #     lambda _: self._env.reset(key)[1],
+        #     None,
+        # )
+
+        # NOTE: frame_skipping is currently naiv: just step N times.
+        # def step_fn(env_state, action):
+        #     _, new_env_state, _, _, _ = self._env.step(key, env_state, action)
+        #     return new_env_state 
+
+        # # -1, because the last step is done outside the loop        
+        # new_env_state = jax.lax.fori_loop(0, self.frame_skip-1, lambda i, env_state: step_fn(env_state, action), new_env_state)
+        new_obs, new_env_state, reward, done, info = self._env.step(key, state.env_state, new_action)
+        new_state = AtariState(new_env_state, state.step + 1, new_action)
+        return new_obs, new_state, reward, done, info
+        
 
 @struct.dataclass
 class LogEnvState:
