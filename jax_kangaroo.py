@@ -398,9 +398,9 @@ def check_ladder_collisions(state: KangarooState, threshold: float = 0.3) -> che
         in_axes=(None, None, None, None, 0, 0, 0, 0, None),
     )(
         state.player.x,
-        state.player.y,
+        state.player.y + 16,
         PLAYER_WIDTH,
-        state.player.height,
+        state.player.height - 16,
         ladder_x,
         ladder_y,
         ladder_w,
@@ -487,7 +487,7 @@ def player_jump_controller(
             (count < 41),
         ]
         values = [
-            0,
+            -1,
             -8,
             -8,
             -16,
@@ -663,11 +663,13 @@ def player_height_controller(
 
     def jump_based_height(count):
         conditions = [
+            (count < 8),
             (count < 16),
             (count < 24),
             (count < 40),
         ]
         values = [
+            23,
             24,
             15,
             23,
@@ -1115,7 +1117,7 @@ def lives_controller(state: KangarooState):
         state.level.monkey_positions[:, 0],
         state.level.monkey_positions[:, 1],
         MONKEY_WIDTH,
-        MONKEY_HEIGHT,
+        MONKEY_HEIGHT - 1,
         state.level.monkey_states,
     )
 
@@ -1506,28 +1508,29 @@ def monkey_controller(state: KangarooState, punching: chex.Array):
         )
 
         # Select new position based on monkey state
-        new_pos = jnp.where(
-            new_state_monkey == 0,
-            pos_state_0,
-            jnp.where(
-                new_state_monkey == 1,
+        def new_state(state_monkey):
+            return jnp.array(
+                [
+                    (state_monkey == 0),
+                    (state_monkey == 1),
+                    (state_monkey == 2),
+                    (state_monkey == 3),
+                    (state_monkey == 4),
+                    (state_monkey == 5),
+                ]
+            )
+
+        new_pos = jnp.select(
+            new_state(new_state_monkey),
+            [
+                pos_state_0,
                 pos_state_1,
-                jnp.where(
-                    new_state_monkey == 2,
-                    pos_state_2,
-                    jnp.where(
-                        new_state_monkey == 3,
-                        pos_state_3,
-                        jnp.where(
-                            new_state_monkey == 4,
-                            pos_state_4,
-                            jnp.where(
-                                new_state_monkey == 5, pos_state_5, position_monkey
-                            ),
-                        ),
-                    ),
-                ),
-            ),
+                pos_state_2,
+                pos_state_3,
+                pos_state_4,
+                pos_state_5,
+            ],
+            default=position_monkey,
         )
 
         # Only apply updates when step counter allows it
@@ -1875,7 +1878,7 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
 
         new_state = jax.lax.cond(
             reset_cond,
-            lambda: self.reset_level(state.current_level),
+            lambda: self.reset_level(1),
             lambda: jax.lax.cond(
                 state.lives <= 0,
                 lambda: state,
