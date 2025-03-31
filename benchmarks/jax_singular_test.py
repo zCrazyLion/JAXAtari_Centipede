@@ -478,7 +478,7 @@ if __name__ == "__main__":
             print("\nSystem Information:", file=f)
             print(f"CPU cores available: {mp.cpu_count()}", file=f)
             print("Available devices:", jax.devices(), file=f)
-            print("Default device:", jax.default_device(), file=f)
+            print("Default backend:", jax.default_backend(), file=f)
             print(f"Steps per environment: {STEPS_PER_ENVIRONMENT:,}", file=f)
 
         # Run scaling benchmarks
