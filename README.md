@@ -51,12 +51,20 @@ Lorem Ipsum (TODO)
 
 ## Usage
 
+Running a game:
 ```bash
 # python <game>
 # e.g.:
 
 python jax_kangaroo.py
 ```
+
+Running the benchmarks:
+```bash
+python benchmarks/jax_singular_test.py
+```
+
+In the `jax_singular_test.py` script, the games can be commented out to only run specific games.
 
 ---
 
