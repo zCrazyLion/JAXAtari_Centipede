@@ -57,6 +57,7 @@ class ResourceMonitor:
                     lines = result.stdout.strip().split("\n")
                     util = float(lines[0])
                     mem = float(lines[1])
+                    return util, mem
                 return 0.0, 0.0
             except:
                 return 0.0, 0.0
