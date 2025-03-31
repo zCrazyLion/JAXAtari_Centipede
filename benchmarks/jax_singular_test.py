@@ -45,7 +45,21 @@ class ResourceMonitor:
                 return util, mem
             return 0.0, 0.0
         except:
-            return 0.0, 0.0
+            try:
+                result = subprocess.run(
+                    [
+                        'rocm-smi -u --showmemuse --json | jq -rc \'.card0["GPU use (%)"], .card0["GPU Memory Allocated (VRAM%)"]\'',
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    lines = result.stdout.strip().split("\n")
+                    util = float(lines[0])
+                    mem = float(lines[1])
+                return 0.0, 0.0
+            except:
+                return 0.0, 0.0
 
     def monitor(self):
         while not self._stop:
