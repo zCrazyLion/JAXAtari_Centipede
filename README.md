@@ -51,9 +51,11 @@ Lorem Ipsum (TODO)
 
 ## Usage
 
-```python
+```bash
+# python <game>
+# e.g.:
+
 python jax_kangaroo.py
-python <game>
 ```
 
 ---
