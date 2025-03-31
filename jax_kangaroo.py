@@ -1904,23 +1904,6 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
             KangarooInfo(garnis=0),
         )
 
-    def render(self, state: KangarooState) -> Tuple[jnp.ndarray]:
-        pass
-
-    def get_action_space(self) -> Tuple:
-        """
-        Returns the action space of the environment.
-        Returns: The action space of the environment as a tuple.
-        """
-        raise NotImplementedError("Abstract method")
-
-    def get_observation_space(self) -> Tuple:
-        """
-        Returns the observation space of the environment.
-        Returns: The observation space of the environment as a tuple.
-        """
-        raise NotImplementedError("Abstract method")
-
     @partial(jax.jit, static_argnums=(0,))
     def _get_observation(self, state: KangarooState) -> KangarooObservation:
         return KangarooObservation(garnis=0)
