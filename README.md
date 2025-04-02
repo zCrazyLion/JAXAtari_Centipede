@@ -11,7 +11,7 @@ Quentin Delfosse, Daniel Kirn, Dominik Mandok, Paul Seitz, Lars Teubner, Sebasti
 
 **JAXtari** introduces a GPU-accelerated, object-centric Atari environment framework powered by [JAX](https://github.com/google/jax). Inspired by [OCAtari](https://github.com/k4ntz/OC_Atari), this framework enables up to **16,000x faster training speeds** through just-in-time (JIT) compilation, vectorization, and massive parallelization on GPU.
 
----
+<!-- --- -->
 
 ## Features
 - Object-centric extraction of Atari game states.
@@ -19,19 +19,23 @@ Quentin Delfosse, Daniel Kirn, Dominik Mandok, Paul Seitz, Lars Teubner, Sebasti
 - Compatible API with ALE to ease integration.
 - Benchmarking tools.
 
-[**📘 JAXtari Documentation (TODO)**]
+<!-- [**📘 JAXtari Documentation**] -->
 
----
 
 ## Getting Started
 
-### Prerequisites
-### Install Stuff
+<!-- ### Prerequisites -->
+### Install
 ```bash
-Lorem Ipsum (TODO)
+python3 -m venv .venv
+source .venv/bin/activate
+
+pip install -U pip
+pip install -r requirements.txt
+pip install "gymnasium[atari, accept-rom-license]"
 ```
 
-### Installation
+<!-- ### Installation
 
 **Option 1: Install via pip (once released)**  
 ```bash
@@ -42,15 +46,25 @@ Lorem Ipsum (TODO)
 
 ```bash
 Lorem Ipsum (TODO)
-```
+``` -->
 
----
 
 ## Usage
 
-```python
-Lorem Ipsum (TODO)
+Running a game:
+```bash
+# python <game>
+# e.g.:
+
+python jax_kangaroo.py
 ```
+
+Running the benchmarks:
+```bash
+python benchmarks/jax_singular_test.py
+```
+
+In the `jax_singular_test.py` script, the games can be commented out to only run specific games.
 
 ---
 
