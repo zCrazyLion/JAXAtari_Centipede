@@ -2432,6 +2432,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
     def flatten_entity_position(self, entity: EntityPosition) -> jnp.ndarray:
         return jnp.concatenate([entity.x, entity.y, entity.width, entity.height, entity.active])
 
+    @partial(jax.jit, static_argnums=(0,))
     def obs_to_flat_array(self, obs: SeaquestObservation) -> jnp.ndarray:
         return jnp.concatenate([
             self.flatten_entity_position(obs.player),
@@ -2973,8 +2974,9 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
         # Choose between death animation and normal game step
         return return_state, observation, env_reward, done, info
 
+from jaxtari.renderers import AtraJaxisRenderer
 
-class Renderer_AtraJaxis:
+class Renderer_AtraJaxis(AtraJaxisRenderer):
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state):
         raster = jnp.zeros((WIDTH, HEIGHT, 3))
