@@ -13,11 +13,6 @@ from jaxtari.kangaroo_levels import (
     Kangaroo_Level_1,
     Kangaroo_Level_2,
     Kangaroo_Level_3,
-    MAX_PLATFORMS,
-    MAX_LADDERS,
-    MAX_FRUITS,
-    MAX_BELLS,
-    MAX_CHILD
 )
 
 # -------- Action constants --------
@@ -1680,10 +1675,10 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
             RIGHT,
             LEFT,
             DOWN,
-            # UPRIGHT,
-            # UPLEFT,
-            # DOWNRIGHT,
-            # DOWNLEFT 
+            UPRIGHT,
+            UPLEFT,
+            DOWNRIGHT,
+            DOWNLEFT 
         }
         self.obs_size = 205
         # self.obs_size = 3+2*2*MAX_PLATFORMS+2*2*MAX_LADDERS+2*MAX_FRUITS+MAX_FRUITS+MAX_FRUITS+2*MAX_BELLS+2*MAX_CHILD+2+4+2*4+2*4+4
