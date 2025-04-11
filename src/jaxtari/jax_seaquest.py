@@ -3127,10 +3127,6 @@ class Renderer_AtraJaxis(AtraJaxisRenderer):
         )
         return raster
 
-    #     self.hud_oxygen.current_value = state.oxygen.item()
-    #     # finally, update the canvas
-    #     self.canvas.update()
-
 
 def get_human_action() -> chex.Array:
     """Get human action from keyboard with support for diagonal movement and combined fire"""
