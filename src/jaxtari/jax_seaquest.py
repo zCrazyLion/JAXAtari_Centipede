@@ -6,11 +6,12 @@ import jax
 import jax.numpy as jnp
 import chex
 import pygame
-import atraJaxis as aj
+import jaxtari.atraJaxis as aj
 import numpy as np
 from jax import Array
+from gymnax.environments import spaces
 
-from environment import JaxEnvironment
+from jaxtari.environment import JaxEnvironment
 
 # TODO: surface submarine at 6 divers collected + difficulty 1
 # Game Constants
@@ -99,7 +100,6 @@ MISSILE_SPAWN_POSITIONS = jnp.array([39, 126])  # Right, Left
 # First wave directions from original code
 FIRST_WAVE_DIRS = jnp.array([False, False, False, True])
 
-
 class SpawnState(NamedTuple):
     difficulty: chex.Array  # Current difficulty level (0-7)
     lane_dependent_pattern: chex.Array  # Track waves independently per lane [4 lanes]
@@ -147,7 +147,6 @@ def soft_reset_spawn_state(spawn_state: SpawnState) -> SpawnState:
         spawn_timers=jnp.array([277, 277, 277, 277 + 60], dtype=jnp.int32)
     )
 
-
 # Game state container
 class SeaquestState(NamedTuple):
     player_x: chex.Array
@@ -178,6 +177,7 @@ class SeaquestState(NamedTuple):
         chex.Array
     )  # Number of times the player has surfaced with all six divers
     death_counter: chex.Array  # Counter for tracking death animation
+    obs_stack: chex.ArrayTree  # Observation stack for frame stacking
     rng_key: chex.PRNGKey
 
 
@@ -202,11 +202,11 @@ class SeaquestObservation(NamedTuple):
     lives: jnp.ndarray
     oxygen_level: jnp.ndarray  # Oxygen level (0-255)
 
-
 class SeaquestInfo(NamedTuple):
     difficulty: jnp.ndarray  # Current difficulty level
     successful_rescues: jnp.ndarray  # Number of successful rescues
     step_counter: jnp.ndarray  # Current step count
+    all_rewards: jnp.ndarray  # All rewards for the current step
 
 
 class CarryState(NamedTuple):
@@ -2412,9 +2412,53 @@ def calculate_kill_points(successful_rescues: chex.Array) -> chex.Array:
 
 
 class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInfo]):
-    def __init__(self, frameskip: int = 1):
+    def __init__(self, frameskip: int = 1, reward_funcs: list[callable] =None):
         super().__init__()
         self.frameskip = frameskip
+        if reward_funcs is not None:
+            reward_funcs = tuple(reward_funcs)
+        self.reward_funcs = reward_funcs 
+        self.action_set = { 
+            NOOP,
+            FIRE,
+            UP,
+            RIGHT, 
+            LEFT,
+            DOWN,
+        }
+        self.frame_stack_size = 4
+        self.obs_size = 5 + 12 * 5 + 12 * 5 + 4 * 5 + 4 * 5 + 5 + 5 + 4
+
+    def flatten_entity_position(self, entity: EntityPosition) -> jnp.ndarray:
+        return jnp.concatenate([entity.x, entity.y, entity.width, entity.height, entity.active])
+
+    @partial(jax.jit, static_argnums=(0,))
+    def obs_to_flat_array(self, obs: SeaquestObservation) -> jnp.ndarray:
+        return jnp.concatenate([
+            self.flatten_entity_position(obs.player),
+            obs.sharks.flatten(),
+            obs.submarines.flatten(),
+            obs.divers.flatten(),
+            obs.enemy_missiles.flatten(),
+            self.flatten_entity_position(obs.surface_submarine),
+            self.flatten_entity_position(obs.player_missile),
+            obs.collected_divers.flatten(),
+            obs.player_score.flatten(),
+            obs.lives.flatten(),
+            obs.oxygen_level.flatten(),
+        ])
+
+
+    def action_space(self) -> spaces.Discrete:
+        return spaces.Discrete(len(self.action_set))
+
+    def observation_space(self) -> spaces.Box:
+        return spaces.Box(
+            low=0,
+            high=255,
+            shape=None,
+            dtype=np.uint8,
+        )
 
     @partial(jax.jit, static_argnums=(0, ))
     def _get_observation(self, state: SeaquestState) -> SeaquestObservation:
@@ -2495,16 +2539,24 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: SeaquestState) -> SeaquestInfo:
+    def _get_info(self, state: SeaquestState, all_rewards: jnp.ndarray) -> SeaquestInfo:
         return SeaquestInfo(
             successful_rescues=state.successful_rescues,
             difficulty=state.spawn_state.difficulty,
             step_counter=state.step_counter,
+            all_rewards=all_rewards,
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_reward(self, previous_state: SeaquestState, state: SeaquestState):
+    def _get_env_reward(self, previous_state: SeaquestState, state: SeaquestState): 
         return state.score - previous_state.score
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_all_rewards(self, previous_state: SeaquestState, state: SeaquestState) -> jnp.ndarray:
+        if self.reward_funcs is None:
+            return jnp.zeros(1)
+        rewards = jnp.array([reward_func(previous_state, state) for reward_func in self.reward_funcs])
+        return rewards 
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: SeaquestState) -> bool:
@@ -2532,11 +2584,19 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
             just_surfaced=jnp.array(-1),
             successful_rescues=jnp.array(0),
             death_counter=jnp.array(0),
+            obs_stack=None, #fill later
             rng_key=jax.random.PRNGKey(42),
         )
 
         initial_obs = self._get_observation(reset_state)
 
+        def expand_and_copy(x):
+            x_expanded = jnp.expand_dims(x, axis=0)
+            return jnp.concatenate([x_expanded] * self.frame_stack_size, axis=0)
+
+        # Apply transformation to each leaf in the pytree
+        initial_obs = jax.tree_map(expand_and_copy, initial_obs)
+        reset_state = reset_state._replace(obs_stack=initial_obs)
         return reset_state, initial_obs
 
     @partial(jax.jit, static_argnums=(0, ))
@@ -2838,6 +2898,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
                 just_surfaced=new_just_surfaced,
                 successful_rescues=state_updated.successful_rescues,
                 death_counter=jnp.array(0),
+                obs_stack=state_updated.obs_stack,
                 rng_key=new_rng_key,
             )
 
@@ -2893,16 +2954,29 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
         # Get observation and info
         observation = self._get_observation(return_state)
-        info = self._get_info(return_state)
 
         done = self._get_done(return_state)
-        reward = self._get_reward(previous_state, return_state)
+        env_reward = self._get_env_reward(previous_state, return_state)
+        all_rewards = self._get_all_rewards(previous_state, return_state)
+        info = self._get_info(return_state, all_rewards)
+
+        observation = jax.tree_map(lambda stack, obs: jnp.concatenate([stack[1:], jnp.expand_dims(obs, axis=0)], axis=0), return_state.obs_stack, observation)
+        return_state = return_state._replace(obs_stack=observation)
+
+        # once done, reset the env
+        return_state, observation = jax.lax.cond(
+            done, 
+            lambda _: self.reset(),
+            lambda _: (return_state, observation),
+            operand=None
+        )
 
         # Choose between death animation and normal game step
-        return return_state, observation, reward, done, info
+        return return_state, observation, env_reward, done, info
 
+from jaxtari.renderers import AtraJaxisRenderer
 
-class Renderer_AtraJaxis:
+class Renderer_AtraJaxis(AtraJaxisRenderer):
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state):
         raster = jnp.zeros((WIDTH, HEIGHT, 3))

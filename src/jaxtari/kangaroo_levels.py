@@ -3,7 +3,12 @@ from typing import NamedTuple
 import chex
 
 # --------------------  Constants --------------------
-
+MAX_LADDERS = 6
+MAX_PLATFORMS = 20
+MAX_FRUITS = 3
+MAX_BELLS = 1
+MAX_CHILD = 1
+MAX_OBJECTS = MAX_LADDERS + MAX_PLATFORMS + MAX_FRUITS + MAX_BELLS + MAX_CHILD
 
 class LevelConstants(NamedTuple):
     ladder_positions: chex.Array

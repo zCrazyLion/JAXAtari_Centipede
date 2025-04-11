@@ -1,0 +1,7 @@
+class PyGameRenderer:
+    def __init__(self):
+        pass
+
+class AtraJaxisRenderer:
+    def __init__(self):
+        pass
