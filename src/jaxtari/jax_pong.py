@@ -1,10 +1,15 @@
+import os
 from functools import partial
 from typing import NamedTuple, Tuple
 import jax.lax
 import jax.numpy as jnp
 import chex
+import matplotlib.pyplot as plt
 import numpy as np
 import pygame
+import jaxtari.atraJaxis as aj
+from more_itertools.recipes import transpose
+from numpy.ma.core import shape
 
 from environment import JaxEnvironment
 from numbers_impl import digits
@@ -13,6 +18,8 @@ from numbers_impl import digits
 MAX_SPEED = 12
 BALL_SPEED = jnp.array([-1, 1])  # Ball speed in x and y direction
 ENEMY_STEP_SIZE = 2
+WIDTH = 160
+HEIGHT = 210
 
 # Constants for ball physics
 BASE_BALL_SPEED = 1
@@ -135,7 +142,7 @@ class PongObservation(NamedTuple):
 class PongInfo(NamedTuple):
     time: jnp.ndarray
 
-
+@partial(jax.jit, static_argnums=(0,))
 def player_step(
     state_player_y, state_player_speed, acceleration_counter, action: chex.Array
 ):
@@ -371,7 +378,7 @@ def enemy_step(state, step_counter, ball_y, ball_speed_y):
         should_move, lambda _: new_y, lambda _: state.enemy_y, operand=None
     )
 
-
+@jax.jit
 def _reset_ball_after_goal(
     state_and_goal: Tuple[State, bool]
 ) -> Tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
@@ -404,7 +411,7 @@ def _reset_ball_after_goal(
     )
 
 
-class Game(JaxEnvironment[State, PongObservation, PongInfo]):
+class JaxPong(JaxEnvironment[State, PongObservation, PongInfo]):
     def __init__(self, frameskip=0):
         super().__init__()
         self.frameskip = frameskip + 1
@@ -597,108 +604,137 @@ class Game(JaxEnvironment[State, PongObservation, PongInfo]):
         )
 
 
-class Renderer:
-    def __init__(self, jax_translator):
-        self.translator = jax_translator
+def load_sprites():
+    """Load all sprites required for Pong rendering."""
+    MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-    def display(self, screen, state):
+    # Load sprites
+    player = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/player.npy"), transpose=True)
+    enemy = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/enemy.npy"), transpose=True)
+    ball = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/ball.npy"), transpose=True)
+
+    bg = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/background.npy"), transpose=True)
+
+    # TODO: get a correctly sized background image / resize the saved image..
+    #bg = jax.image.resize(bg, (WIDTH, HEIGHT, 4), method='bicubic')
+
+    # Convert all sprites to the expected format (add frame dimension)
+    SPRITE_BG = jnp.expand_dims(bg, axis=0)
+    SPRITE_PLAYER = jnp.expand_dims(player, axis=0)
+    SPRITE_ENEMY = jnp.expand_dims(enemy, axis=0)
+    SPRITE_BALL = jnp.expand_dims(ball, axis=0)
+
+    # Load digits for scores
+    PLAYER_DIGIT_SPRITES = aj.load_and_pad_digits(
+        os.path.join(MODULE_DIR, "sprites/pong/player_score_{}.npy"),
+        num_chars=10,
+    )
+    ENEMY_DIGIT_SPRITES = aj.load_and_pad_digits(
+        os.path.join(MODULE_DIR, "sprites/pong/enemy_score_{}.npy"),
+        num_chars=10,
+    )
+
+    return (
+        SPRITE_BG,
+        SPRITE_PLAYER,
+        SPRITE_ENEMY,
+        SPRITE_BALL,
+        PLAYER_DIGIT_SPRITES,
+        ENEMY_DIGIT_SPRITES
+    )
+
+
+class Renderer_AtraJaxisPong:
+    """JAX-based Pong game renderer, optimized with JIT compilation."""
+
+    def __init__(self):
+        (
+            self.SPRITE_BG,
+            self.SPRITE_PLAYER,
+            self.SPRITE_ENEMY,
+            self.SPRITE_BALL,
+            self.PLAYER_DIGIT_SPRITES,
+            self.ENEMY_DIGIT_SPRITES,
+        ) = load_sprites()
+
+    @partial(jax.jit, static_argnums=(0,))
+    def render(self, state):
         """
-        Displays the rendered game state using pygame.
-        """
-        canvas = self.jax_rendering(self.convert_jax_arr(state))
-        canvas_np = np.array(canvas)
-        canvas_np = np.flipud(
-            np.rot90(canvas_np, k=1)
-        )  # Rotate 90 degrees counterclockwise and flip vertically to fix orientation
-        pygame_surface = pygame.surfarray.make_surface(canvas_np)
-        screen.blit(
-            pygame.transform.scale(pygame_surface, (WINDOW_WIDTH, WINDOW_HEIGHT)),
-            (0, 0),
-        )
-        pygame.display.flip()
-
-    def get_rgb_img(self, state: jnp.ndarray) -> np.ndarray:
-        canvas = self.jax_rendering(self.convert_jax_arr(state))
-        return np.array(canvas)
-
-    def convert_jax_arr(self, state: jnp.array) -> dict:
-        """
-        Converts a JAX array to a dict using the translator
-        """
-        state_dict = {}
-        for i in range(len(state)):
-            state_dict[self.translator[i]] = state[i]
-
-        return state_dict
-
-    def jax_rendering(self, state: dict):
-        """
-        Renders the current state of the game
-        """
-        # Create a blank canvas with background color
-        canvas = np.full((210, 160, 3), BACKGROUND_COLOR, dtype=np.uint8)
-
-        # Draw player, ball, and enemy on the canvas
-        if 0 <= int(state["player_y"]) < canvas.shape[0] - PLAYER_SIZE[1]:
-            canvas[
-                int(state["player_y"]) : int(state["player_y"]) + PLAYER_SIZE[1],
-                PLAYER_X : PLAYER_X + PLAYER_SIZE[0],
-            ] = PLAYER_COLOR  # Player paddle
-        if 0 <= int(state["enemy_y"]) < canvas.shape[0] - ENEMY_SIZE[1]:
-            canvas[
-                int(state["enemy_y"]) : int(state["enemy_y"]) + ENEMY_SIZE[1],
-                ENEMY_X : ENEMY_X + ENEMY_SIZE[0],
-            ] = ENEMY_COLOR  # Enemy paddle
-        if (
-            0 <= int(state["ball_y"]) < canvas.shape[0] - BALL_SIZE[1]
-            and 0 <= int(int(state["ball_x"])) < canvas.shape[1] - BALL_SIZE[0]
-        ):
-            canvas[
-                int(state["ball_y"]) : int(state["ball_y"]) + BALL_SIZE[1],
-                int(state["ball_x"]) : int(state["ball_x"]) + BALL_SIZE[0],
-            ] = BALL_COLOR  # Ball
-
-        # Draw walls
-        canvas[WALL_TOP_Y : WALL_TOP_Y + WALL_TOP_HEIGHT, :] = WALL_COLOR  # Top wall
-        canvas[WALL_BOTTOM_Y : WALL_BOTTOM_Y + WALL_BOTTOM_HEIGHT, :] = (
-            WALL_COLOR  # Bottom wall
-        )
-
-        # Draw scores
-        self.draw_score(
-            canvas, state["player_score"], position=(116, 1), color=PLAYER_COLOR
-        )
-        self.draw_score(
-            canvas, state["enemy_score"], position=(36, 1), color=ENEMY_COLOR
-        )
-
-        return jnp.array(canvas)
-
-    def draw_score(self, canvas, score, position, color):
-        """
-        Draws the score on the canvas.
+        Renders the current game state using JAX operations.
 
         Args:
-            canvas: The canvas to draw on.
-            score: The score to draw.
-            position: The (x, y) position to start drawing the score.
-            color: The color to use for the score.
+            state: A State object containing the current game state.
+
+        Returns:
+            A JAX array representing the rendered frame.
         """
-        x_offset, y_offset = position
-        score_str = str(score)
-        for digit_char in score_str:
-            digit = digits[int(digit_char)]
-            for i in range(digit.shape[0]):
-                for j in range(digit.shape[1]):
-                    if digit[i, j] == 1:
-                        for di in range(4):  # Zoom each pixel by 4 times vertically
-                            for dj in range(
-                                4
-                            ):  # Zoom each pixel by 4 times horizontally
-                                canvas[y_offset + i * 4 + di, x_offset + j * 4 + dj] = (
-                                    color
-                                )
-            x_offset += 16  # Space between digits (4 times the original space)
+        # Create empty raster with CORRECT orientation for atraJaxis framework
+        # Note: For pygame, the raster is expected to be (width, height, channels)
+        # where width corresponds to the horizontal dimension of the screen
+        raster = jnp.zeros((WIDTH, HEIGHT, 3))
+
+        # Render background - (0, 0) is top-left corner
+        frame_bg = aj.get_sprite_frame(self.SPRITE_BG, 0)
+        raster = aj.render_at(raster, 0, 0, frame_bg)
+
+        # Render player paddle - IMPORTANT: Swap x and y coordinates
+        # render_at takes (raster, y, x, sprite) but we need to swap them due to transposition
+        frame_player = aj.get_sprite_frame(self.SPRITE_PLAYER, 0)
+        raster = aj.render_at(raster, state.player_y, PLAYER_X, frame_player)
+
+        # Render enemy paddle - same swap needed
+        frame_enemy = aj.get_sprite_frame(self.SPRITE_ENEMY, 0)
+        raster = aj.render_at(raster, state.enemy_y, ENEMY_X, frame_enemy)
+
+        # Render ball - ball position is (ball_x, ball_y) but needs to be swapped
+        frame_ball = aj.get_sprite_frame(self.SPRITE_BALL, 0)
+        raster = aj.render_at(raster,  state.ball_y, state.ball_x, frame_ball)
+
+        wall_color = jnp.array(WALL_COLOR, dtype=jnp.uint8)
+        # Top Wall: Full width (x=0 to WIDTH), y from WALL_TOP_Y to WALL_TOP_Y + WALL_TOP_HEIGHT
+        top_wall_y_start = WALL_TOP_Y
+        top_wall_y_end = WALL_TOP_Y + WALL_TOP_HEIGHT
+        raster = raster.at[:, top_wall_y_start:top_wall_y_end, :].set(wall_color)
+
+        # Bottom Wall: Full width, y from WALL_BOTTOM_Y to WALL_BOTTOM_Y + WALL_BOTTOM_HEIGHT
+        bottom_wall_y_start = WALL_BOTTOM_Y
+        bottom_wall_y_end = WALL_BOTTOM_Y + WALL_BOTTOM_HEIGHT
+        raster = raster.at[:, bottom_wall_y_start:bottom_wall_y_end, :].set(wall_color)
+
+        # 1. Get digit arrays (always 2 digits)
+        player_score_digits = aj.int_to_digits(state.player_score, max_digits=2)
+        enemy_score_digits = aj.int_to_digits(state.enemy_score, max_digits=2)
+
+        # 2. Determine parameters for player score rendering using jax.lax.select
+        is_player_single_digit = state.player_score < 10
+        player_start_index = jax.lax.select(is_player_single_digit, 1, 0) # Start at index 1 if single, 0 if double
+        player_num_to_render = jax.lax.select(is_player_single_digit, 1, 2) # Render 1 digit if single, 2 if double
+        # Adjust X position: If single digit, center it slightly by moving right by half the spacing
+        player_render_x = jax.lax.select(is_player_single_digit,
+                                         120 + 16 // 2,
+                                         120)
+
+        # 3. Render player score using the selective renderer
+        raster = aj.render_label_selective(raster, 3, player_render_x,
+                                            player_score_digits, self.PLAYER_DIGIT_SPRITES,
+                                            player_start_index, player_num_to_render,
+                                            spacing=16)
+
+        # 4. Determine parameters for enemy score rendering
+        is_enemy_single_digit = state.enemy_score < 10
+        enemy_start_index = jax.lax.select(is_enemy_single_digit, 1, 0)
+        enemy_num_to_render = jax.lax.select(is_enemy_single_digit, 1, 2)
+        enemy_render_x = jax.lax.select(is_enemy_single_digit,
+                                        10 + 16 // 2,
+                                        10)
+
+        # 5. Render enemy score
+        raster = aj.render_label_selective(raster, 3, enemy_render_x,
+                                           enemy_score_digits, self.ENEMY_DIGIT_SPRITES,
+                                           enemy_start_index, enemy_num_to_render,
+                                           spacing=16)
+
+        return raster
 
 
 if __name__ == "__main__":
@@ -708,21 +744,23 @@ if __name__ == "__main__":
     pygame.display.set_caption("Pong Game")
     clock = pygame.time.Clock()
 
-    # Create a Game instance
-    game = Game(frameskip=1)
+    game = JaxPong(frameskip=1)
 
-    # create a Renderer instance
-    renderer = Renderer(STATE_TRANSLATOR)
+    # Create the JAX renderer
+    renderer = Renderer_AtraJaxisPong()
 
+    # Get jitted functions
     jitted_step = jax.jit(game.step)
     jitted_reset = jax.jit(game.reset)
 
     curr_state, obs = jitted_reset()
-    # Run the game until the user quits
+
+    # Game loop
     running = True
     frame_by_frame = False
     frameskip = game.frameskip
     counter = 1
+
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -731,7 +769,7 @@ if __name__ == "__main__":
                 if event.key == pygame.K_f:
                     frame_by_frame = not frame_by_frame
             elif event.type == pygame.KEYDOWN or (
-                event.type == pygame.KEYUP and event.key == pygame.K_n
+                    event.type == pygame.KEYUP and event.key == pygame.K_n
             ):
                 if event.key == pygame.K_n and frame_by_frame:
                     if counter % frameskip == 0:
@@ -745,9 +783,14 @@ if __name__ == "__main__":
                 action = get_human_action()
                 curr_state, obs, reward, done, info = jitted_step(curr_state, action)
 
-        renderer.display(screen, curr_state)
+        print(curr_state.player_score)
+
+        # Render and display
+        raster = renderer.render(curr_state)
+
+        aj.update_pygame(screen, raster, 3, WIDTH, HEIGHT)
+
         counter += 1
         clock.tick(60)
 
-    # Quit Pygame
     pygame.quit()

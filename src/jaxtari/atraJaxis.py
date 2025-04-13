@@ -181,6 +181,41 @@ def render_label(raster, y, x, text, char_sprites, spacing=15):
     raster = jax.lax.fori_loop(0, sprites.shape[0], render_char, raster)
     return raster
 
+@partial(jax.jit, static_argnames=["spacing"])
+def render_label_selective(raster, y, x,
+                           all_digits,    # The full array, e.g., [0, 7] or [1, 5]
+                           char_sprites,
+                           start_index,   # Index in all_digits to start rendering from (0 or 1)
+                           num_to_render, # Number of digits to render (1 or 2)
+                           spacing=15):
+    """
+    Renders a specified number of digits from a digit array at a given position.
+
+    Args:
+        raster: The target raster.
+        y: Top y-coordinate.
+        x: Left x-coordinate for the *first rendered digit*.
+        all_digits: JAX array containing all potential digits (e.g., from int_to_digits).
+        char_sprites: JAX array of sprite frames for each digit (0-9).
+        start_index: The index within `all_digits` to start rendering from.
+        num_to_render: How many digits to render sequentially from `start_index`.
+        spacing: Horizontal space between digits.
+    """
+    # Select the sprites corresponding to the digits we might render
+    # Note: It's often efficient to fetch all needed sprites outside the loop if possible,
+    # but here the selection depends on the dynamic `all_digits` content.
+
+    def render_char(i, current_raster):
+        # i is the loop index (0 or 1 if num_to_render is 2)
+        digit_index_in_array = start_index + i # Get the actual index in all_digits
+        digit_value = all_digits[digit_index_in_array]
+        sprite_to_render = char_sprites[digit_value]
+        render_x = x + i * spacing # Calculate x position based on loop index
+        return render_at(current_raster, y, render_x, sprite_to_render)
+
+    # Loop only for the number of digits we actually need to render
+    raster = jax.lax.fori_loop(0, num_to_render, render_char, raster)
+    return raster
 
 @jax.jit
 def render_indicator(raster, y, x, value, sprite, spacing=15):

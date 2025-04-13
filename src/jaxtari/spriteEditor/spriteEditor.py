@@ -83,6 +83,9 @@ class NPYImageEditor:
         file_menu.add_command(
             label="Save Selection", command=lambda: self.save_selection(None)
         )
+        file_menu.add_command(
+            label="Save full image", command=lambda: self.save_full_image(None)
+        )
         file_menu.add_command(label="Exit", command=self.root.quit)
 
         edit_menu = tk.Menu(menu, tearoff=0)
@@ -362,6 +365,18 @@ class NPYImageEditor:
             messagebox.showinfo("Saved", f"Selection saved to {file_path}")
         else:
             messagebox.showwarning("Warning", "Invalid Path.")
+
+
+    def save_full_image(self, _):
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".npy", filetypes=[("NumPy files", "*.npy")]
+        )
+        if file_path:
+            np.save(file_path, self.image)
+            messagebox.showinfo("Saved", f"Image saved to {file_path}")
+        else:
+            messagebox.showwarning("Warning", "Invalid Path.")
+
 
     def select_all(self, _):
         if self.image is not None:
