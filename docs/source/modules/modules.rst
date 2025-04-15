@@ -1,4 +1,4 @@
-jaxtari
+JAXtari
 =======
 
 .. toctree::
