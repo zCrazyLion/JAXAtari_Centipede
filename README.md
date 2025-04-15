@@ -65,6 +65,7 @@ python jax_kangaroo.py
 | Game      | Supported |
 |-----------|-----------|
 | Seaquest  | ✅        |
+| Pong      | ✅        |
 
 > More games can be added via the uniform wrapper system.
 
