@@ -21,7 +21,6 @@ Quentin Delfosse, Daniel Kirn, Dominik Mandok, Paul Seitz, Lars Teubner, Sebasti
 
 <!-- [**📘 JAXtari Documentation**] -->
 
-
 ## Getting Started
 
 <!-- ### Prerequisites -->
@@ -59,26 +58,13 @@ Running a game:
 python jax_kangaroo.py
 ```
 
-Running the benchmarks:
-```bash
-python benchmarks/jax_singular_test.py
-```
-
-In the `jax_singular_test.py` script, the games can be commented out to only run specific games.
-
 ---
 
 ## Supported Games
 
 | Game      | Supported |
 |-----------|-----------|
-| Pong      | ✅        |
 | Seaquest  | ✅        |
-| Tennis    | ✅        |
-| Skiing    | ✅        |
-| Kangaroo  | ✅        |
-| Freeway   | ✅        |
-| Breakout  | ✅        |
 
 > More games can be added via the uniform wrapper system.
 
@@ -102,6 +88,3 @@ This project is licensed under the MIT License.
 See the [LICENSE](LICENSE) file for details (TODO).
 
 ---
-
-## Contact
-- TODO
