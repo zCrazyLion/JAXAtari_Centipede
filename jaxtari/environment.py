@@ -12,9 +12,9 @@ class JaxEnvironment(Generic[EnvState, EnvObs, EnvInfo]):
     """
     Abstract class for a JAX environment.
     Generics:
-        EnvState: The type of the environment state.
-        EnvObs: The type of the observation.
-        EnvInfo: The type of the additional information.
+    EnvState: The type of the environment state.
+    EnvObs: The type of the observation.
+    EnvInfo: The type of the additional information.
     """
 
     def __init__(self):

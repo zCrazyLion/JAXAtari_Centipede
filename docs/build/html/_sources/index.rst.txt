@@ -9,7 +9,7 @@ Welcome to JAXAtari's Documentation!
    :caption: API:
 
    jaxtari/core.rst
-   modules/modules.rst
+   modules/modules
 
 .. toctree::
    :hidden:

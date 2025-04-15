@@ -50,12 +50,19 @@ Lorem Ipsum (TODO)
 
 ## Usage
 
-Running a game:
-```bash
-# python <game>
-# e.g.:
+Using an environment:
+```python
+from jaxtari import JAXtari
 
-python jax_kangaroo.py
+env = JAXtari("pong")
+state = env.get_init_state()
+state = env.step_state_only(state, action=0)
+```
+
+
+Running a game manually:
+```bash
+python3 -m jaxtari.games.jax_seaquest
 ```
 
 ---

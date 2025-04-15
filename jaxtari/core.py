@@ -1,36 +1,19 @@
 import json
 import jax
 
-from environment import JaxEnvironment
-from jax_pong import Game as JaxPong
-from jax_breakout import Game as JaxBreakout
-from jax_freeway import FreewayGameLogic as JaxFreeway
-from jax_seaquest import JaxSeaquest, Renderer_AtraJaxis
-from jax_skiing import SkiingGameLogic as JaxSkiing
-from jax_tennis import JaxTennis, Renderer_AJ
-from jax_kangaroo import Kangaroo as JaxKangaroo
-
+from .environment import JaxEnvironment
+from .games.jax_pong import JaxPong
+from .games.jax_seaquest import JaxSeaquest, Renderer_AtraJaxis
 
 class JAXtari:
     def __init__(self, game_name):
         renderer = None
         match game_name:
-            case "breakout":
-                env = JaxBreakout()
-            case "freeway":
-                env = JaxFreeway()
             case "pong":
                 env = JaxPong(frameskip=1)
             case "seaquest":
                 env = JaxSeaquest()
                 renderer = Renderer_AtraJaxis()
-            case "skiing":
-                env = JaxSkiing()
-            case "tennis":
-                env = JaxTennis()
-                renderer = Renderer_AJ()
-            case "kangaroo":
-                env = JaxKangaroo()
             case _:
                 raise NotImplementedError(f"The game {game_name} does not exist")
         self.env: JaxEnvironment = env
