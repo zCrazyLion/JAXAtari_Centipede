@@ -1,17 +1,28 @@
-.. JAXAtari documentation master file, created by
-   sphinx-quickstart on Tue Apr 15 07:23:13 2025.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
 
-JAXAtari documentation
-======================
-
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
-
+====================================
+Welcome to JAXAtari's Documentation!
+====================================
 
 .. toctree::
+   :hidden:
    :maxdepth: 2
-   :caption: Contents:
+   :caption: API:
 
+   jaxtari/core.rst
+   modules/modules.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: 2
+   :caption: Scripts:
+   :glob:
+
+   scripts/RAMStateDeltas.rst
+
+.. toctree::
+   :hidden:
+   :maxdepth: 2
+   :caption: Tests and Benchmarks:
+   :glob:
+
+   tests/benchmarks.rst

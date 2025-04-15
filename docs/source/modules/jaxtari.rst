@@ -1,4 +1,4 @@
-jaxtari package
+Jaxtari Package
 ===============
 
 Submodules
