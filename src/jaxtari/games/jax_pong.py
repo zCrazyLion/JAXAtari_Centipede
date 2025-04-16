@@ -582,6 +582,16 @@ class JaxPong(JaxEnvironment[State, PongObservation, PongInfo]):
         )
 
     @partial(jax.jit, static_argnums=(0,))
+    def obs_to_flat_array(self, obs: PongObservation) -> jnp.ndarray:
+        return jnp.concatenate([
+            obs.player.x, obs.player.y, obs.player.width, obs.player.height,
+            obs.enemy.x, obs.enemy.y, obs.enemy.width, obs.enemy.height,
+            obs.ball.x, obs.ball.y, obs.ball.width, obs.ball.height,
+            obs.score_player, obs.score_enemy,
+        ])
+
+
+    @partial(jax.jit, static_argnums=(0,))
     def _get_info(self, state: State) -> PongInfo:
         return PongInfo(time=state.step_counter)
 
