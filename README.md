@@ -1,5 +1,3 @@
-
-
 # 🎮 JAXtari: JAX-Based Object-Centric Atari Environments
 
 Quentin Delfosse, Daniel Kirn, Dominik Mandok, Paul Seitz, Lars Teubner, Sebastian Wette  
@@ -27,26 +25,12 @@ Quentin Delfosse, Daniel Kirn, Dominik Mandok, Paul Seitz, Lars Teubner, Sebasti
 ### Install
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/Scripts/activate
 
-pip install -U pip
-pip install "gymnasium[atari, accept-rom-license]"
-pip install -e .
+python3 -m pip install -U pip
+pip3 install "gymnasium[atari, accept-rom-license]"
+pip3 install -e .
 ```
-
-<!-- ### Installation
-
-**Option 1: Install via pip (once released)**  
-```bash
-Lorem Ipsum (TODO)
-```
-
-**Option 2: Install from source**
-
-```bash
-Lorem Ipsum (TODO)
-``` -->
-
 
 ## Usage
 
