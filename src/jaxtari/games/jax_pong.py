@@ -583,12 +583,23 @@ class JaxPong(JaxEnvironment[State, PongObservation, PongInfo]):
 
     @partial(jax.jit, static_argnums=(0,))
     def obs_to_flat_array(self, obs: PongObservation) -> jnp.ndarray:
-        return jnp.concatenate([
-            obs.player.x, obs.player.y, obs.player.width, obs.player.height,
-            obs.enemy.x, obs.enemy.y, obs.enemy.width, obs.enemy.height,
-            obs.ball.x, obs.ball.y, obs.ball.width, obs.ball.height,
-            obs.score_player, obs.score_enemy,
-        ])
+           return jnp.concatenate([
+               obs.player.x.flatten(),
+               obs.player.y.flatten(),
+               obs.player.height.flatten(),
+               obs.player.width.flatten(),
+               obs.enemy.x.flatten(),
+               obs.enemy.y.flatten(),
+               obs.enemy.height.flatten(),
+               obs.enemy.width.flatten(),
+               obs.ball.x.flatten(),
+               obs.ball.y.flatten(),
+               obs.ball.height.flatten(),
+               obs.ball.width.flatten(),
+               obs.score_player.flatten(),
+               obs.score_enemy.flatten()
+            ]
+           )
 
 
     @partial(jax.jit, static_argnums=(0,))
@@ -787,8 +798,6 @@ if __name__ == "__main__":
             if counter % frameskip == 0:
                 action = get_human_action()
                 curr_state, obs, reward, done, info = jitted_step(curr_state, action)
-
-        #print(curr_state.player_score)
 
         # Render and display
         raster = renderer.render(curr_state)
