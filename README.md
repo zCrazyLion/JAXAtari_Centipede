@@ -25,10 +25,9 @@ Quentin Delfosse, Daniel Kirn, Dominik Mandok, Paul Seitz, Lars Teubner, Sebasti
 ### Install
 ```bash
 python3 -m venv .venv
-source .venv/Scripts/activate
+source .venv/bin/activate
 
 python3 -m pip install -U pip
-pip3 install "gymnasium[atari, accept-rom-license]"
 pip3 install -e .
 ```
 
