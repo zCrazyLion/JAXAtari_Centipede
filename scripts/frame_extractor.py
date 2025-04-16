@@ -42,7 +42,7 @@ class OCAtariPlayer:
                 mode=mode,
                 hud=hud,
                 render_mode="rgb_array",
-                render_oc_overlay=True,
+                #render_oc_overlay=True,
                 obs_mode=obs_mode,
                 frameskip=1,
             )
@@ -57,8 +57,8 @@ class OCAtariPlayer:
             # Initialize pygame
             pygame.init()
             self.env_render_shape = self.current_frame.shape[:2]
-            self.screen_width = self.env_render_shape[0]
-            self.screen_height = self.env_render_shape[1]
+            self.screen_width = int(self.env_render_shape[1] * self.render_scale)  # Note the swap for typical Atari orientation
+            self.screen_height = int(self.env_render_shape[0] * self.render_scale) # Note the swap for typical Atari orientation
             self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
             pygame.display.set_caption(f"OCAtari Player: {game_name}")
             self.clock = pygame.time.Clock()
@@ -240,7 +240,7 @@ class OCAtariPlayer:
                     pass
                 elif event.button == 2:
                     # TODO: here you can put ram manipulations to get the sprites faster (for example increasing the score manually)
-                    self.env.set_ram(14, self.env.get_ram()[14] + 1)
+                    self.env.set_ram(16, 10)
 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_p:  # Pause/resume
@@ -368,9 +368,12 @@ class OCAtariPlayer:
                 try:
                     frame_surface = pygame.Surface(self.env_render_shape)
                     pygame.pixelcopy.array_to_surface(frame_surface, self.current_frame)
-                    self.screen.blit(frame_surface, (0, 0))
+                    scaled_surface = pygame.transform.scale(frame_surface, (self.screen_width, self.screen_height))
+                    self.screen.blit(scaled_surface, (0, 0))
                     pygame.display.flip()
                 except Exception as e:
+                    print(self.env_render_shape)
+
                     print(f"Error rendering to screen: {e}")
                     # Try to recover by re-initializing the surface
                     try:
@@ -401,15 +404,15 @@ def main():
                         help='Name of the Atari game to play (e.g., Boxing, Breakout, Pong)')
     parser.add_argument('--mode', type=str, default='ram', choices=['ram', 'vision', 'both'],
                         help='OCAtari mode for object detection')
-    parser.add_argument('--no-hud', action='store_true',
+    parser.add_argument('--no-hud', action='store_true', default=False,  # Changed default to False for clarity
                         help='Exclude HUD elements in object detection')
     parser.add_argument('--obs-mode', type=str, default='ori', choices=['ori', 'dqn', 'obj'],
                         help='Observation mode')
-    parser.add_argument('--scale', type=int, default=1,
+    parser.add_argument('--scale', type=int, default=4,
                         help='Scale factor for the display window')
     parser.add_argument('--fps', type=int, default=30,
                         help='Target frames per second')
-    parser.add_argument('--screenshot-dir', type=str, default=None,
+    parser.add_argument('--screenshot-dir', type=str, default="new_screenshots",
                         help='Directory to save screenshots (optional)')
 
     args = parser.parse_args()

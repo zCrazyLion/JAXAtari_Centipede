@@ -131,7 +131,7 @@ def render_at(raster, y, x, sprite_frame, flip_horizontal=False, flip_vertical=F
 
     # Rest remains same but with corrected dimensions
     sprite_rgb = sprite[..., :3]
-    alpha = sprite[..., 3:] / 255.0
+    alpha = (sprite[..., 3:] / 255.0).astype(jnp.uint8)
 
     # Use correct dimension ordering in slicing
     raster_region = jax.lax.dynamic_slice(
@@ -141,6 +141,9 @@ def render_at(raster, y, x, sprite_frame, flip_horizontal=False, flip_vertical=F
     )
 
     blended = sprite_rgb * alpha + raster_region * (1.0 - alpha)
+
+    blended = blended.astype(jnp.uint8)  # Ensure blended is uint8
+    raster = raster.astype(jnp.uint8)  # Ensure raster is uint8
 
     new_raster = jax.lax.dynamic_update_slice(
         raster, blended, (x.astype(int), y.astype(int), 0)

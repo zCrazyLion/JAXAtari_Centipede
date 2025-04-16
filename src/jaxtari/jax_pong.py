@@ -783,8 +783,6 @@ if __name__ == "__main__":
                 action = get_human_action()
                 curr_state, obs, reward, done, info = jitted_step(curr_state, action)
 
-        print(curr_state.player_score)
-
         # Render and display
         raster = renderer.render(curr_state)
 

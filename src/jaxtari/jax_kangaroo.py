@@ -1,5 +1,6 @@
+import os
 from functools import partial
-from typing import NamedTuple, Tuple
+from typing import NamedTuple, Tuple, Dict, Any, Optional
 import jax
 import jax.numpy as jnp
 import chex
@@ -108,6 +109,7 @@ class PlayerState(NamedTuple):
     punch_left: chex.Array
     punch_right: chex.Array
     last_stood_on_platform_y: chex.Array
+    walk_animation: chex.Array
 
 
 class LevelState(NamedTuple):
@@ -144,18 +146,19 @@ class LevelState(NamedTuple):
     """2D array: [monkey_index, [x, y]]"""
     monkey_throw_timers: chex.Array
     spawn_protection: chex.Array
-    morris_coco_positions: chex.Array
-    morris_coco_states: chex.Array
+    coco_positions: chex.Array
+    coco_states: chex.Array
     """
     - 0: non existent
     - 1: charging
-    - 2: yallaing
+    - 2: throwing
     """
-    morris_spawn_position: chex.Array
+    spawn_position: chex.Array
     """
     - 0: foot
     - 1: head
     """
+    bell_animation: chex.Array
 
 
 class KangarooState(NamedTuple):
@@ -187,8 +190,8 @@ class KangarooObservation(NamedTuple):
     falling_coco_position: chex.Array
     monkey_states: chex.Array
     monkey_positions: chex.Array
-    morris_coco_positions: chex.Array
-    morris_coco_states: chex.Array
+    coco_positions: chex.Array
+    coco_states: chex.Array
 
 
 class KangarooInfo(NamedTuple):
@@ -1143,27 +1146,27 @@ def lives_controller(state: KangarooState):
     player_collided_with_monkey = jnp.any(monkey_collision)
 
     # coconut touch check
-    def check_morris_collision(p_x, p_y, p_w, p_h, m_x, m_y, m_w, m_h, m_state):
+    def check_collision(p_x, p_y, p_w, p_h, m_x, m_y, m_w, m_h, m_state):
         return jnp.logical_and(
             entities_collide(p_x, p_y, p_w, p_h, m_x, m_y, m_w, m_h - 1), m_state != 0
         )
 
-    morris_collision = jax.vmap(
-        check_morris_collision,
+    collision = jax.vmap(
+        check_collision,
         in_axes=(None, None, None, None, 0, 0, None, None, 0),
     )(
         state.player.x,
         state.player.y,
         PLAYER_WIDTH,
         state.player.height,
-        state.level.morris_coco_positions[:, 0],
-        state.level.morris_coco_positions[:, 1],
+        state.level.coco_positions[:, 0],
+        state.level.coco_positions[:, 1],
         COCONUT_WIDTH,
         COCONUT_HEIGHT,
-        state.level.morris_coco_states,
+        state.level.coco_states,
     )
 
-    player_collided_with_morris = jnp.any(morris_collision)
+    player_collided_with_horizontal_coco = jnp.any(collision)
 
     crashed_falling_coco = entities_collide(
         state.player.x,
@@ -1181,7 +1184,7 @@ def lives_controller(state: KangarooState):
         | player_is_falling
         | crashed_falling_coco
         | player_collided_with_monkey
-        | player_collided_with_morris
+        | player_collided_with_horizontal_coco
     ) & ~state.player.is_crashing
     new_is_crashing = jnp.where(remove_live, True, state.player.is_crashing)
 
@@ -1587,7 +1590,7 @@ def monkey_controller(state: KangarooState, punching: chex.Array):
         state.level.step_counter,
     )
 
-    def update_morris_coco_state(
+    def update_coco_state(
         old_m_state, new_m_state, old_m_timer, new_m_timer, c_state, c_pos_x
     ):
         return jnp.where(
@@ -1600,18 +1603,18 @@ def monkey_controller(state: KangarooState, punching: chex.Array):
             ),
         )
 
-    new_morris_coco_states = jax.vmap(
-        update_morris_coco_state, in_axes=(0, 0, 0, 0, 0, 0)
+    new_coco_states = jax.vmap(
+        update_coco_state, in_axes=(0, 0, 0, 0, 0, 0)
     )(
         state.level.monkey_states,
         new_monkey_states,
         state.level.monkey_throw_timers,
         new_monkey_throw_timers,
-        state.level.morris_coco_states,
-        state.level.morris_coco_positions[:, 0],
+        state.level.coco_states,
+        state.level.coco_positions[:, 0],
     )
 
-    def update_morris_coco_positions(
+    def update_coco_positions(
         new_c_state, old_c_state, stepc, old_c_pos, new_m_pos
     ):
         return jnp.where(
@@ -1627,7 +1630,7 @@ def monkey_controller(state: KangarooState, punching: chex.Array):
                     [
                         new_m_pos[0] - 6,
                         jnp.where(
-                            state.level.morris_spawn_position,
+                            state.level.spawn_position,
                             new_m_pos[1] - 5,
                             new_m_pos[1] + MONKEY_HEIGHT - COCONUT_HEIGHT,
                         ),
@@ -1637,26 +1640,26 @@ def monkey_controller(state: KangarooState, punching: chex.Array):
             ),
         )
 
-    new_morris_coco_positions = jax.vmap(
-        update_morris_coco_positions, in_axes=(0, 0, None, 0, 0)
+    new_coco_positions = jax.vmap(
+        update_coco_positions, in_axes=(0, 0, None, 0, 0)
     )(
-        new_morris_coco_states,
-        state.level.morris_coco_states,
+        new_coco_states,
+        state.level.coco_states,
         state.level.step_counter,
-        state.level.morris_coco_positions,
+        state.level.coco_positions,
         new_monkey_positions,
     )
 
-    morris_flip = jnp.any((state.level.monkey_states != 3) & (new_monkey_states == 3))
+    flip = jnp.any((state.level.monkey_states != 3) & (new_monkey_states == 3))
 
     return (
         new_monkey_states,
         new_monkey_positions,
         new_monkey_throw_timers,
         score_addition,
-        new_morris_coco_positions,
-        new_morris_coco_states,
-        morris_flip,
+        new_coco_positions,
+        new_coco_states,
+        flip,
     )
 
 
@@ -1735,6 +1738,7 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
                 chrash_timer=jnp.array(0),
                 is_crashing=jnp.array(False),
                 last_stood_on_platform_y=jnp.array(1000),
+                walk_animation=jnp.array(0),
             ),
             level=LevelState(
                 bell_position=level_constants.bell_position,
@@ -1759,11 +1763,12 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
                 monkey_positions=jnp.array([[152, 5], [152, 5], [152, 5], [152, 5]]),
                 monkey_throw_timers=jnp.zeros(4, dtype=jnp.int32),
                 spawn_protection=jnp.array(True),
-                morris_coco_positions=jnp.array(
+                coco_positions=jnp.array(
                     [[-10, -10], [-10, -10], [-10, -10], [-10, -10]]
                 ),
-                morris_coco_states=jnp.zeros(4, dtype=jnp.int32),
-                morris_spawn_position=jnp.array(False),
+                coco_states=jnp.zeros(4, dtype=jnp.int32),
+                spawn_position=jnp.array(False),
+                bell_animation=jnp.array(0),
             ),
             score=jnp.array(0),
             current_level=next_level,
@@ -1781,7 +1786,7 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
             return jnp.concatenate([x_expanded] * self.frame_stack_size, axis=0)
 
         # Apply transformation to each leaf in the pytree
-        initial_obs = jax.tree_map(expand_and_copy, initial_obs)
+        initial_obs = jax.tree.map(expand_and_copy, initial_obs)
         new_state = new_state._replace(obs_stack=initial_obs)
         return new_state
 
@@ -1838,9 +1843,9 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
             new_monkey_positions,
             new_monkey_throw_timers,
             score_addition2,
-            new_morris_coco_positions,
-            new_morris_coco_states,
-            morris_flip,
+            new_coco_positions,
+            new_coco_states,
+            flip,
         ) = monkey_controller(state, (punch_left | punch_right))
 
         (
@@ -1864,6 +1869,18 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
             lambda: score_addition,
         )
         new_current_level = jnp.where(new_current_level == 4, 1, new_current_level)
+
+        # set the bell animation counter. if the bell is rung (bell_timer > 0), set the animation to 192 and start counting down
+        new_bell_animation_timer = jnp.where(
+            bell_timer > 0,
+            jnp.where(state.level.bell_animation == 0, 192, state.level.bell_animation),
+            jnp.where(
+                state.level.bell_animation > 0,
+                state.level.bell_animation - 1,
+                state.level.bell_animation,
+            )
+        )
+
 
         new_level_state = jax.lax.cond(
             new_levelup,
@@ -1907,16 +1924,34 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
                         False,
                         state.level.spawn_protection,
                     ),
-                    morris_coco_positions=new_morris_coco_positions,
-                    morris_coco_states=new_morris_coco_states,
-                    morris_spawn_position=jnp.where(
-                        morris_flip,
-                        ~state.level.morris_spawn_position,
-                        state.level.morris_spawn_position,
+                    coco_positions=new_coco_positions,
+                    coco_states=new_coco_states,
+                    spawn_position=jnp.where(
+                        flip,
+                        ~state.level.spawn_position,
+                        state.level.spawn_position,
                     ),
+                    bell_animation=new_bell_animation_timer
                 ),
             ),
         )
+
+        # if one of the walk buttons is pressed, increase the walk animation
+        currently_walking = jnp.logical_or(
+                jnp.logical_or(
+                    jnp.logical_or(action == RIGHT, action == LEFT),
+                    jnp.logical_or(action == UPRIGHT, action == UPLEFT)
+                ),
+                jnp.logical_or(action == DOWNRIGHT, action == DOWNLEFT)
+            )
+        new_walk_counter = jnp.where(
+            currently_walking,
+            state.player.walk_animation + 1,
+            0
+        )
+
+        # if the walk_animation is 16, reset to 0
+        new_walk_counter = jnp.where(new_walk_counter == 16, 0, new_walk_counter)
 
         new_player_state = jax.lax.cond(
             crash_timer_done,
@@ -1942,6 +1977,7 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
                 chrash_timer=crash_timer,
                 is_crashing=new_is_crashing,
                 last_stood_on_platform_y=new_last_stood_on_platform_y,
+                walk_animation=new_walk_counter,
             ),
         )
 
@@ -1988,7 +2024,7 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
         info = self._get_info(new_state, all_rewards)
 
         observation = self._get_observation(new_state)
-        observation = jax.tree_map(lambda stack, obs: jnp.concatenate([stack[1:], jnp.expand_dims(obs, axis=0)], axis=0), new_state.obs_stack, observation)
+        observation = jax.tree.map(lambda stack, obs: jnp.concatenate([stack[1:], jnp.expand_dims(obs, axis=0)], axis=0), new_state.obs_stack, observation)
         new_state = new_state._replace(obs_stack=observation)
 
         new_state = jax.lax.cond(
@@ -2017,8 +2053,8 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
             falling_coco_position=state.level.falling_coco_position,
             monkey_states=state.level.monkey_states,
             monkey_positions=state.level.monkey_positions,
-            morris_coco_positions=state.level.morris_coco_positions,
-            morris_coco_states=state.level.morris_coco_states,
+            coco_positions=state.level.coco_positions,
+            coco_states=state.level.coco_states,
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -2046,246 +2082,354 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
     def _get_done(self, state: KangarooState) -> bool:
         return state.lives <= 0
 
+import jaxtari.atraJaxis as aj
+from jaxtari.renderers import AtraJaxisRenderer
 
-# ----------------------------------------------------------------
-# -------- Ad-Hoc Rendering (to be redone by other group) --------
-# ----------------------------------------------------------------
-from jaxtari.renderers import PyGameRenderer
+class Renderer_AtraJaxis(AtraJaxisRenderer):
+    # Type hint for sprites dictionary
+    sprites: Dict[str, Any]
 
-class Renderer(PyGameRenderer):
-    def __init__(self):
-        self.screen = pygame.display.set_mode(
-            (SCREEN_WIDTH * RENDER_SCALE_FACTOR, SCREEN_HEIGHT * RENDER_SCALE_FACTOR)
+    def __init__(self, sprite_path: str):
+        """
+        Initializes the renderer by loading sprites, including level backgrounds.
+
+        Args:
+            sprite_path: Path to the directory containing sprite .npy files.
+        """
+        self.sprite_path = sprite_path
+        self.sprites = self._load_sprites()
+        # Store background sprites directly for use in render function
+        self.background_0 = self.sprites.get('background_0')
+        self.background_1 = self.sprites.get('background_1')
+        self.background_2 = self.sprites.get('background_2')
+
+
+    def _load_sprites(self) -> dict[str, Any]:
+        """Loads all necessary sprites from .npy files."""
+        sprites: Dict[str, Any] = {}
+
+        # Helper function to load a single sprite frame
+        def _load_sprite_frame(name: str) -> Optional[chex.Array]:
+            path = os.path.join(self.sprite_path, f'{name}.npy')
+            frame = aj.loadFrame(path)
+            if isinstance(frame, jnp.ndarray) and frame.ndim >= 2:
+                return frame.astype(jnp.uint8)
+
+
+        # --- Load Sprites ---
+        # Backgrounds + Dynamic elements + UI elements
+        sprite_names = [
+            'background_0', 'background_1', 'background_2',
+            'ape_climb_left', 'ape_climb_right', 'ape_moving', 'ape_standing',
+            'bell', 'ringing_bell', 'child_jump', 'child', 'coconut', 'kangaroo',
+            'kangaroo_climb', 'kangaroo_dead', 'kangaroo_ducking',
+            'kangaroo_jump_high', 'kangaroo_jump', 'kangaroo_lives',
+            'kangaroo_walk', 'kangaroo_boxing',
+            'strawberry', 'throwing_ape', 'thrown_coconut', 'time_dash',
+        ]
+        for name in sprite_names:
+            loaded_sprite = _load_sprite_frame(name)
+            if loaded_sprite is not None:
+                 sprites[name] = loaded_sprite
+
+        # pad the kangaroo and monkey sprites since they have to be used interchangeably (and jax enforces same sizes)
+        ape_sprites = aj.pad_to_match([sprites['ape_climb_left'], sprites['ape_climb_right'], sprites['ape_moving'], sprites['ape_standing'], sprites['throwing_ape']])
+
+        sprites['ape_climb_left'] = ape_sprites[0]
+        sprites['ape_climb_right'] = ape_sprites[1]
+        sprites['ape_moving'] = ape_sprites[2]
+        sprites['ape_standing'] = ape_sprites[3]
+        sprites['throwing_ape'] = ape_sprites[4]
+
+        # --- pad kangaroo ---
+        kangaroo_sprites = aj.pad_to_match([sprites['kangaroo'], sprites['kangaroo_climb'], sprites['kangaroo_dead'], sprites['kangaroo_ducking'], sprites['kangaroo_jump_high'], sprites['kangaroo_jump'], sprites['kangaroo_walk'], sprites['kangaroo_boxing']])
+
+        sprites['kangaroo'] = kangaroo_sprites[0]
+        sprites['kangaroo_climb'] = kangaroo_sprites[1]
+        sprites['kangaroo_dead'] = kangaroo_sprites[2]
+        sprites['kangaroo_ducking'] = kangaroo_sprites[3]
+        sprites['kangaroo_jump_high'] = kangaroo_sprites[4]
+        sprites['kangaroo_jump'] = kangaroo_sprites[5]
+        sprites['kangaroo_walk'] = kangaroo_sprites[6]
+        sprites['kangaroo_boxing'] = kangaroo_sprites[7]
+
+        # pad bell / ringing bell
+        bell_sprites = aj.pad_to_match([sprites['bell'], sprites['ringing_bell']])
+
+        sprites['bell'] = bell_sprites[0]
+        sprites['ringing_bell'] = bell_sprites[1]
+
+        # --- Load Digit Sprites ---
+        # Score digits
+        score_digit_path = os.path.join(self.sprite_path, 'score_{}.npy')
+        digits = aj.load_and_pad_digits(score_digit_path, num_chars=10)
+        sprites['digits'] = digits
+
+        # Time digits
+        time_digit_path = os.path.join(self.sprite_path, 'time_{}.npy')
+        time_digits = aj.load_and_pad_digits(time_digit_path, num_chars=10)
+        sprites['time_digits'] = time_digits
+
+        # expand all sprites similar to the Pong/Seaquest loading
+        for key in sprites.keys():
+            if isinstance(sprites[key], (list, tuple)):
+                sprites[key] = [jnp.expand_dims(sprite, axis=0) for sprite in sprites[key]]
+            else:
+                sprites[key] = jnp.expand_dims(sprites[key], axis=0)
+
+        return sprites
+
+    # Apply JIT compilation. static_argnums=(0,) means 'self' is static.
+    @partial(jax.jit, static_argnums=(0,))
+    def render(self, state: KangarooState) -> chex.Array:
+        """
+        Renders the current game state to a JAX array (raster image)
+        using pre-rendered backgrounds per level.
+
+        Args:
+            state: The current KangarooState.
+
+        Returns:
+            A JAX array representing the rendered game screen (HEIGHT, WIDTH, 3), dtype=uint8.
+        """
+
+        # --- Select and Render Background ---
+        # Initialize raster (optional, could directly use background if it covers all)
+        # Starting with zeros allows transparency in dynamic sprites if they use it.
+        raster = jnp.zeros((SCREEN_WIDTH, SCREEN_HEIGHT, 3), dtype=jnp.uint8)
+
+        # Get the current level index (ensure it's integer and within bounds 0-2)
+        level_idx = state.current_level.astype(int)
+        # Clamp index to be safe, although state should ideally be valid
+        level_idx = jnp.clip(level_idx, 1, 3)
+
+        selected_background = jax.lax.switch(
+            level_idx,
+            [
+                lambda: jnp.zeros(self.background_0.shape, dtype=self.background_0.dtype),  # Level 0 (empty)
+                lambda: self.background_0,  # Level 1
+                lambda: self.background_1,  # Level 2
+                lambda: self.background_2,  # Level 3
+            ]
         )
-        pygame.display.set_caption("Kangaroo")
+        selected_background = aj.get_sprite_frame(selected_background, 0)
 
-    def render(self, state: KangarooState):
-        self.screen.fill(BACKGROUND_COLOR)
+        raster = aj.render_at(raster, 0, 0, selected_background)
 
-        # Walls
-        pygame.draw.rect(
-            self.screen,
-            PLATFORM_COLOR,
-            (
-                0,
-                0,
-                LEFT_CLIP * RENDER_SCALE_FACTOR,
-                SCREEN_HEIGHT * RENDER_SCALE_FACTOR,
-            ),
+        # --- Removed Wall Rendering ---
+        # --- Removed Platform Rendering Loop ---
+        # --- Removed Ladder Rendering Loop ---
+
+        # --- Draw fruits (Strawberries) ---
+        fruit_sprite = self.sprites.get('strawberry', None)
+        fruit_positions = state.level.fruit_positions
+        fruit_actives = state.level.fruit_actives
+
+        def _draw_fruit(i, current_raster):
+            should_draw = jnp.logical_and(fruit_actives[i], fruit_sprite is not None)
+            pos = fruit_positions[i]
+            def render_fruit_sprite(raster_to_update):
+                return aj.render_at(raster_to_update, pos[1].astype(int), pos[0].astype(int), aj.get_sprite_frame(fruit_sprite, 0))
+            return jax.lax.cond(should_draw, render_fruit_sprite, lambda r: r, current_raster)
+
+        num_fruits_to_draw = fruit_positions.shape[0]
+        raster = jax.lax.fori_loop(0, num_fruits_to_draw, _draw_fruit, raster)
+
+        # --- Draw Bell ---
+        # if the bell_animation is: 192-176, 143-128, 95-80, 47-32 draw the alternate bell sprite
+        bell_in_range_left = jnp.logical_or(
+            jnp.logical_and(state.level.bell_animation <= 192, state.level.bell_animation >= 176),
+            jnp.logical_and(state.level.bell_animation <= 95, state.level.bell_animation >= 80),
         )
-        pygame.draw.rect(
-            self.screen,
-            PLATFORM_COLOR,
-            (
-                RIGHT_CLIP * RENDER_SCALE_FACTOR,
-                0,
-                16 * RENDER_SCALE_FACTOR,
-                SCREEN_HEIGHT * RENDER_SCALE_FACTOR,
-            ),
+
+        bell_in_range_right = jnp.logical_or(
+            jnp.logical_and(state.level.bell_animation <= 143, state.level.bell_animation >= 128),
+            jnp.logical_and(state.level.bell_animation <= 47, state.level.bell_animation >= 32)
         )
 
-        # Get level constants for current level
-        level_constants = get_level_constants(state.current_level)
+        bell_sprite = jax.lax.cond(
+            jnp.logical_or(bell_in_range_left, bell_in_range_right),
+            lambda: self.sprites.get('ringing_bell'),
+            lambda: self.sprites.get('bell')
+        )
 
-        # Draw ladders
-        for i in range(level_constants.ladder_positions.shape[0]):
-            pos = level_constants.ladder_positions[i]
-            size = level_constants.ladder_sizes[i]
-            pygame.draw.rect(
-                self.screen,
-                LADDER_COLOR,
-                (
-                    int(pos[0]) * RENDER_SCALE_FACTOR,
-                    int(pos[1]) * RENDER_SCALE_FACTOR,
-                    int(size[0]) * RENDER_SCALE_FACTOR,
-                    int(size[1]) * RENDER_SCALE_FACTOR,
-                ),
+        bell_pos = state.level.bell_position
+        not_all_fruits_collected = ~jnp.any(state.level.fruit_stages == 3)
+        bell_pos_valid = bell_pos[0] != -1
+        sprite_is_valid = bell_sprite is not None
+        should_draw_bell = jnp.logical_and(jnp.logical_and(not_all_fruits_collected, bell_pos_valid), sprite_is_valid)
+
+        def draw_bell_func(current_raster):
+            return aj.render_at(current_raster, bell_pos[1].astype(int), bell_pos[0].astype(int), aj.get_sprite_frame(bell_sprite, 0), flip_horizontal=bell_in_range_left)
+        raster = jax.lax.cond(should_draw_bell, draw_bell_func, lambda r: r, raster)
+
+        # --- Draw monkeys (Apes) ---
+        monkey_positions = state.level.monkey_positions
+        monkey_states = state.level.monkey_states
+
+        def _draw_monkey(i, current_raster):
+            state_idx = monkey_states[i].astype(int)
+            pos = monkey_positions[i]
+            should_draw = state_idx != 0
+            """
+            - 0: non-existent
+            - 1: moving down
+            - 2: moving left
+            - 3: throwing
+            - 4: moving right
+            - 5: moving up
+            """
+            monkey_sprite = jax.lax.switch(
+                state_idx,
+                [
+                    lambda: self.sprites.get('ape_standing'), # Case 0
+                    lambda: self.sprites.get('ape_climb_left'),    # Case 1
+                    lambda: self.sprites.get('ape_moving'),    # Case 2
+                    lambda: self.sprites.get('throwing_ape'),  # Case 3
+                    lambda: self.sprites.get('ape_moving'),    # Case 4
+                    lambda: self.sprites.get('ape_climb_right'),# Case 5
+                ]
             )
-            # also draw a label
-            font = pygame.font.Font(None, 20)
-            ladder_text = font.render(f"{i}", True, (255, 255, 255))
-            self.screen.blit(
-                ladder_text,
-                (
-                    int(pos[0] + 1) * RENDER_SCALE_FACTOR,
-                    int(pos[1] + 1) * RENDER_SCALE_FACTOR,
+
+            # in case its state_idx 2 or 4 and the counter is % 16, use standing instead of moving
+            monkey_sprite = jax.lax.cond(
+                jnp.logical_and(
+                    (state.level.step_counter % 32) < 16,
+                    jnp.logical_or(state_idx == 2, state_idx == 4)
                 ),
+                lambda: self.sprites.get('ape_standing'),
+                lambda: monkey_sprite
             )
 
-        # Draw platforms
-        for i in range(level_constants.platform_positions.shape[0]):
-            pos = level_constants.platform_positions[i]
-            # Only draw valid platforms
-            if pos[0] != -1:
-                pygame.draw.rect(
-                    self.screen,
-                    PLATFORM_COLOR,
-                    (
-                        int(pos[0]) * RENDER_SCALE_FACTOR,
-                        int(pos[1]) * RENDER_SCALE_FACTOR,
-                        int(level_constants.platform_sizes[i, 0]) * RENDER_SCALE_FACTOR,
-                        int(level_constants.platform_sizes[i, 1]) * RENDER_SCALE_FACTOR,
-                    ),
+            is_moving_left = (state_idx == 4)
+            flip_h = is_moving_left
+            sprite_is_valid = monkey_sprite is not None
+            should_draw = jnp.logical_and(should_draw, sprite_is_valid)
+            def render_monkey_sprite(raster_to_update):
+                return aj.render_at(raster_to_update, pos[1].astype(int), pos[0].astype(int), aj.get_sprite_frame(monkey_sprite, 0), flip_horizontal=flip_h)
+            return jax.lax.cond(should_draw, render_monkey_sprite, lambda r: r, current_raster)
+
+        num_monkeys_to_draw = monkey_positions.shape[0]
+        raster = jax.lax.fori_loop(0, num_monkeys_to_draw, _draw_monkey, raster)
+
+        # --- Draw player (Kangaroo) ---
+        player_pos_x = state.player.x
+        player_pos_y = state.player.y
+        player_orientation = state.player.orientation
+        flip_player = player_orientation < 0
+        sprite_lambda = jax.lax.cond(
+            state.player.is_crashing, lambda: self.sprites.get('kangaroo_dead'),
+            lambda: jax.lax.cond(
+                state.player.is_climbing, lambda: self.sprites.get('kangaroo_climb'),
+                lambda: jax.lax.cond(
+                    state.player.is_crouching, lambda: self.sprites.get('kangaroo_ducking'),
+                    lambda: jax.lax.cond(
+                        state.player.is_jumping, lambda: self.sprites.get('kangaroo_jump'),
+                        lambda: jax.lax.cond(
+                            state.player.punch_left | state.player.punch_right,
+                            lambda: self.sprites.get('kangaroo_boxing'),
+                            lambda: self.sprites.get('kangaroo')
+                        )
+                    )
                 )
-                # label platforms
-                font = pygame.font.Font(None, 20)
-                plat_text = font.render(f"{i}", True, (255, 255, 255))
-                self.screen.blit(
-                    plat_text,
-                    (
-                        int(pos[0] + 1) * RENDER_SCALE_FACTOR,
-                        int(pos[1] + 1) * RENDER_SCALE_FACTOR,
-                    ),
-                )
-
-        # Draw fruits
-        for i in range(state.level.fruit_actives.shape[0]):
-            if state.level.fruit_actives[i]:
-                pygame.draw.rect(
-                    self.screen,
-                    FRUIT_COLOR[state.level.fruit_stages[i]],
-                    (
-                        int(state.level.fruit_positions[i, 0]) * RENDER_SCALE_FACTOR,
-                        int(state.level.fruit_positions[i, 1]) * RENDER_SCALE_FACTOR,
-                        int(FRUIT_WIDTH) * RENDER_SCALE_FACTOR,
-                        int(FRUIT_HEIGHT) * RENDER_SCALE_FACTOR,
-                    ),
-                )
-
-        # Draw Bell
-        if ~jnp.any(state.level.fruit_stages == 3):
-            pygame.draw.rect(
-                self.screen,
-                BELL_COLOR,
-                (
-                    int(state.level.bell_position[0]) * RENDER_SCALE_FACTOR,
-                    int(state.level.bell_position[1]) * RENDER_SCALE_FACTOR,
-                    int(BELL_WIDTH) * RENDER_SCALE_FACTOR,
-                    int(BELL_HEIGHT) * RENDER_SCALE_FACTOR,
-                ),
             )
-
-        # Draw monkeys
-        for i in range(state.level.monkey_positions.shape[0]):
-            if state.level.monkey_states[i] != 0:
-                pos = state.level.monkey_positions[i]
-                pygame.draw.rect(
-                    self.screen,
-                    MONKEY_COLOR,
-                    (
-                        int(pos[0]) * RENDER_SCALE_FACTOR,
-                        int(pos[1]) * RENDER_SCALE_FACTOR,
-                        int(MONKEY_WIDTH) * RENDER_SCALE_FACTOR,
-                        int(MONKEY_HEIGHT) * RENDER_SCALE_FACTOR,
-                    ),
-                )
-
-        # Draw player
-        pygame.draw.rect(
-            self.screen,
-            PLAYER_COLOR,
-            (
-                int(state.player.x) * RENDER_SCALE_FACTOR,
-                int(state.player.y) * RENDER_SCALE_FACTOR,
-                int(PLAYER_WIDTH) * RENDER_SCALE_FACTOR,
-                int(state.player.height) * RENDER_SCALE_FACTOR,
-            ),
         )
 
-        # Draw Child
-        pygame.draw.rect(
-            self.screen,
-            PLAYER_COLOR,
-            (
-                int(state.level.child_position[0]) * RENDER_SCALE_FACTOR,
-                int(state.level.child_position[1]) * RENDER_SCALE_FACTOR,
-                int(CHILD_WIDTH) * RENDER_SCALE_FACTOR,
-                int(CHILD_HEIGHT) * RENDER_SCALE_FACTOR,
-            ),
+        # check if player.walk_animation is between 6 and 16 in which range the kangaroo has a different animation
+        player_walking_animation = jnp.logical_and(state.player.walk_animation > 6, state.player.walk_animation < 16)
+
+        # in case the new_walk_counter is between 6 and 16, decrease player_y by 1 (its hovering slightly) TODO: does this impact hitboxes?
+        player_pos_y = jnp.where(
+            player_walking_animation,
+            player_pos_y - 1,
+            player_pos_y
         )
 
-        # Draw player punch effects
-        if state.player.punch_left:
-            pygame.draw.rect(
-                self.screen,
-                PLAYER_COLOR,
-                (
-                    int(state.player.x - 2) * RENDER_SCALE_FACTOR,
-                    (int(state.player.y) + 8) * RENDER_SCALE_FACTOR,
-                    2 * RENDER_SCALE_FACTOR,
-                    4 * RENDER_SCALE_FACTOR,
-                ),
-            )
-
-        if state.player.punch_right:
-            pygame.draw.rect(
-                self.screen,
-                PLAYER_COLOR,
-                (
-                    int(state.player.x + PLAYER_WIDTH) * RENDER_SCALE_FACTOR,
-                    (int(state.player.y) + 8) * RENDER_SCALE_FACTOR,
-                    2 * RENDER_SCALE_FACTOR,
-                    4 * RENDER_SCALE_FACTOR,
-                ),
-            )
-
-        # Drawing falling coconut
-        if state.level.falling_coco_position[1] != -1:
-            pygame.draw.rect(
-                self.screen,
-                COCONUT_COLOR,
-                (
-                    int(state.level.falling_coco_position[0]) * RENDER_SCALE_FACTOR,
-                    int(state.level.falling_coco_position[1]) * RENDER_SCALE_FACTOR,
-                    int(COCONUT_WIDTH) * RENDER_SCALE_FACTOR,
-                    int(COCONUT_HEIGHT) * RENDER_SCALE_FACTOR,
-                ),
-            )
-
-        # Drawing Morris coconuts
-        for i in range(state.level.morris_coco_positions.shape[0]):
-            if state.level.morris_coco_states[i] != 0:
-                pos = state.level.morris_coco_positions[i]
-                pygame.draw.rect(
-                    self.screen,
-                    COCONUT_COLOR,
-                    (
-                        int(pos[0]) * RENDER_SCALE_FACTOR,
-                        int(pos[1]) * RENDER_SCALE_FACTOR,
-                        int(COCONUT_WIDTH) * RENDER_SCALE_FACTOR,
-                        int(COCONUT_HEIGHT) * RENDER_SCALE_FACTOR,
-                    ),
-                )
-
-        # Draw UI
-        font = pygame.font.Font(None, 36)
-        score_text = font.render(f"Score: {state.score}", True, (255, 255, 255))
-        self.screen.blit(score_text, (10, 10))
-
-        orient_text = font.render(
-            f"Orientation: {'left (-1)' if state.player.orientation < 0 else 'right (1)'}",
-            True,
-            (255, 255, 255),
-        )
-        self.screen.blit(orient_text, (10, 45))
-
-        timer_text = font.render(f"Timer: {state.level.timer}", True, (255, 255, 255))
-        self.screen.blit(
-            timer_text, (60 * RENDER_SCALE_FACTOR, 192 * RENDER_SCALE_FACTOR)
+        sprite_lambda = jax.lax.cond(
+            player_walking_animation,
+            lambda: self.sprites.get('kangaroo_walk'),
+            lambda: sprite_lambda
         )
 
-        lives_text = font.render(f"Lives: {state.lives}", True, (255, 255, 255))
-        self.screen.blit(
-            lives_text, (30 * RENDER_SCALE_FACTOR, 192 * RENDER_SCALE_FACTOR)
+        # in case the player_animation is between 17 and 25, use high jump
+        sprite_lambda = jax.lax.cond(
+            jnp.logical_and(state.player.jump_counter > 16, state.player.jump_counter < 25),
+            lambda: self.sprites.get('kangaroo_jump_high'),
+            lambda: sprite_lambda
         )
 
-        # pygame.display.flip()
+        player_sprite = sprite_lambda
+        sprite_is_valid = player_sprite is not None
+        def render_player_sprite(raster_to_update):
+             return aj.render_at(raster_to_update, player_pos_y.astype(int), player_pos_x.astype(int), aj.get_sprite_frame(player_sprite, 0), flip_horizontal=flip_player)
+        raster = jax.lax.cond(sprite_is_valid, render_player_sprite, lambda r: r, raster)
 
+        # --- Draw Child ---
+        child_pos = state.level.child_position
+        is_jumping = (state.level.step_counter % 32) < 16
+        # if the velocity is negative, flip horizontal
+        child_flip = state.level.child_velocity > 0
+        child_sprite_lambda = jax.lax.cond(
+            is_jumping, lambda: self.sprites.get('child_jump'), lambda: self.sprites.get('child')
+        )
+        child_sprite = child_sprite_lambda
+        should_draw_child = jnp.logical_and(child_pos[0] != -1, child_sprite is not None)
+        def draw_child_func(current_raster):
+            return aj.render_at(current_raster, child_pos[1].astype(int), child_pos[0].astype(int), aj.get_sprite_frame(child_sprite, 0), child_flip)
+        raster = jax.lax.cond(should_draw_child, draw_child_func, lambda r: r, raster)
+
+        # --- Draw falling coconut ---
+        falling_coco_pos = state.level.falling_coco_position
+        coco_sprite = self.sprites.get('thrown_coconut', None)
+        should_draw_falling_coco = jnp.logical_and(falling_coco_pos[1] != -1, coco_sprite is not None)
+        def draw_falling_coco_func(current_raster):
+            return aj.render_at(current_raster, falling_coco_pos[1].astype(int), falling_coco_pos[0].astype(int), aj.get_sprite_frame(coco_sprite, 0))
+        raster = jax.lax.cond(should_draw_falling_coco, draw_falling_coco_func, lambda r: r, raster)
+
+        # --- Draw thrown coconuts ---
+        coco_positions = state.level.coco_positions
+        coco_states = state.level.coco_states
+        coco_sprite = self.sprites.get('coconut', None)
+        def _draw_coco(i, current_raster):
+            should_draw = jnp.logical_and(coco_states[i] != 0, coco_sprite is not None)
+            pos = coco_positions[i]
+            def render_coco_sprite(raster_to_update):
+                return aj.render_at(raster_to_update, pos[1].astype(int), pos[0].astype(int), aj.get_sprite_frame(coco_sprite, 0))
+            return jax.lax.cond(should_draw, render_coco_sprite, lambda r: r, current_raster)
+        num_cocos_to_draw = coco_positions.shape[0]
+        raster = jax.lax.fori_loop(0, num_cocos_to_draw, _draw_coco, raster)
+
+        # --- Draw UI ---
+        # Score
+        digit_sprites = self.sprites.get('digits', None)
+        score_digits_indices = aj.int_to_digits(state.score, max_digits=6)
+        raster = aj.render_label(raster, 182, 105, score_digits_indices, digit_sprites[0], spacing=8)
+
+        # Lives
+        life_sprite = self.sprites.get('kangaroo_lives', None)
+        lives_count = jnp.maximum(state.lives.astype(int) - 1, 0)
+        raster = aj.render_indicator(raster, 182, 15, lives_count, life_sprite[0], spacing=8)
+
+        # Timer
+        time_digit_sprites = self.sprites.get('time_digits', None)
+        timer_val = jnp.maximum(state.level.timer.astype(int), 0)
+        timer_digits_indices = aj.int_to_digits(timer_val, max_digits=4)
+        raster = aj.render_label(raster, 190, 80, timer_digits_indices, time_digit_sprites[0], spacing=4)
+
+        # Ensure the final raster has the correct dtype
+        return raster.astype(jnp.uint8)
 
 if __name__ == "__main__":
     pygame.init()
     game = Kangaroo()
-    renderer = Renderer()
+
+    scaling = 4
+
+    screen = pygame.display.set_mode((SCREEN_WIDTH * scaling, SCREEN_HEIGHT * scaling))
+    pygame.display.set_caption("Kangaroo")
+    clock = pygame.time.Clock()
+
+    renderer = Renderer_AtraJaxis("sprites/kangaroo/")
     jitted_step = jax.jit(game.step)
     jitted_reset = jax.jit(game.reset)
     (curr_state, _) = jitted_reset()
@@ -2314,8 +2458,12 @@ if __name__ == "__main__":
                 action = get_human_action()
                 (curr_state, _, _, _, _) = jitted_step(curr_state, action)
 
-        renderer.render(curr_state)
+        # Render and display
+        raster = renderer.render(curr_state)
+
+        aj.update_pygame(screen, raster, scaling, SCREEN_WIDTH, SCREEN_HEIGHT)
+
         counter += 1
-        pygame.time.Clock().tick(120)
+        pygame.time.Clock().tick(60)
 
     pygame.quit()
