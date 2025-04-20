@@ -1,14 +1,12 @@
 import os
-import sys
 from functools import partial
-from typing import Tuple, NamedTuple, Any
+from typing import Tuple, NamedTuple
 import jax
 import jax.numpy as jnp
 import chex
 import pygame
-import jaxtari.atraJaxis as aj
+import jaxtari.rendering.atraJaxis as aj
 import numpy as np
-from jax import Array
 from gymnax.environments import spaces
 
 from jaxtari.environment import JaxEnvironment
@@ -3126,10 +3124,6 @@ class Renderer_AtraJaxis(AtraJaxisRenderer):
             raster, 170, 49, state.oxygen, 64, 63, 5, OXYGEN_BAR_COLOR, (0, 0, 0, 0)
         )
         return raster
-
-    #     self.hud_oxygen.current_value = state.oxygen.item()
-    #     # finally, update the canvas
-    #     self.canvas.update()
 
 
 def get_human_action() -> chex.Array:
