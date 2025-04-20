@@ -35,11 +35,39 @@ pip3 install -e .
 
 Using an environment:
 ```python
-from jaxtari import JAXtari
+import jax
 
-env = JAXtari("pong")
-state = env.get_init_state()
-state = env.step_state_only(state, action=0)
+from jaxtari.games.jax_seaquest import JaxSeaquest
+from jaxtari.wrappers import FlattenObservationWrapper
+
+rng = jax.random.PRNGKey(0)
+
+env = JaxSeaquest()
+env = FlattenObservationWrapper(env)
+
+vmap_reset = lambda n_envs: lambda rng: jax.vmap(env.reset)(
+    jax.random.split(rng, n_envs)
+)
+vmap_step = lambda n_envs: lambda rng, env_state, action: jax.vmap(
+    env.step
+)(jax.random.split(rng, n_envs), env_state, action)
+
+init_obs, env_state = vmap_reset(128)(rng)
+action = jax.random.randint(rng, (128,), 0, env.action_space().n)
+
+# Take one step
+new_obs, new_env_state, reward, done, info = vmap_step(128)(rng, env_state, action)
+
+# Take 100 steps with scan
+def step_fn(carry, unused):
+    _, env_state = carry
+    new_obs, new_env_state, reward, done, info = vmap_step(128)(rng, env_state, action)
+    return (new_obs, new_env_state), (reward, done, info)
+
+carry = (init_obs, env_state)
+_, (rewards, dones, infos) = jax.lax.scan(
+    step_fn, carry, None, length=100
+)
 ```
 
 
@@ -56,6 +84,7 @@ python3 -m jaxtari.games.jax_seaquest
 |-----------|-----------|
 | Seaquest  | ✅        |
 | Pong      | ✅        |
+| Kangaroo  | ✅        |
 
 > More games can be added via the uniform wrapper system.
 
