@@ -1,5 +1,3 @@
-
-
 # 🎮 JAXtari: JAX-Based Object-Centric Atari Environments
 
 Quentin Delfosse, Daniel Kirn, Dominik Mandok, Paul Seitz, Lars Teubner, Sebastian Wette  
@@ -21,7 +19,6 @@ Quentin Delfosse, Daniel Kirn, Dominik Mandok, Paul Seitz, Lars Teubner, Sebasti
 
 <!-- [**📘 JAXtari Documentation**] -->
 
-
 ## Getting Started
 
 <!-- ### Prerequisites -->
@@ -30,41 +27,54 @@ Quentin Delfosse, Daniel Kirn, Dominik Mandok, Paul Seitz, Lars Teubner, Sebasti
 python3 -m venv .venv
 source .venv/bin/activate
 
-pip install -U pip
-pip install -r requirements.txt
-pip install "gymnasium[atari, accept-rom-license]"
+python3 -m pip install -U pip
+pip3 install -e .
 ```
-
-<!-- ### Installation
-
-**Option 1: Install via pip (once released)**  
-```bash
-Lorem Ipsum (TODO)
-```
-
-**Option 2: Install from source**
-
-```bash
-Lorem Ipsum (TODO)
-``` -->
-
 
 ## Usage
 
-Running a game:
-```bash
-# python <game>
-# e.g.:
+Using an environment:
+```python
+import jax
 
-python jax_kangaroo.py
+from jaxtari.games.jax_seaquest import JaxSeaquest
+from jaxtari.wrappers import FlattenObservationWrapper
+
+rng = jax.random.PRNGKey(0)
+
+env = JaxSeaquest()
+env = FlattenObservationWrapper(env)
+
+vmap_reset = lambda n_envs: lambda rng: jax.vmap(env.reset)(
+    jax.random.split(rng, n_envs)
+)
+vmap_step = lambda n_envs: lambda rng, env_state, action: jax.vmap(
+    env.step
+)(jax.random.split(rng, n_envs), env_state, action)
+
+init_obs, env_state = vmap_reset(128)(rng)
+action = jax.random.randint(rng, (128,), 0, env.action_space().n)
+
+# Take one step
+new_obs, new_env_state, reward, done, info = vmap_step(128)(rng, env_state, action)
+
+# Take 100 steps with scan
+def step_fn(carry, unused):
+    _, env_state = carry
+    new_obs, new_env_state, reward, done, info = vmap_step(128)(rng, env_state, action)
+    return (new_obs, new_env_state), (reward, done, info)
+
+carry = (init_obs, env_state)
+_, (rewards, dones, infos) = jax.lax.scan(
+    step_fn, carry, None, length=100
+)
 ```
 
-Running the benchmarks:
-```bash
-python benchmarks/jax_singular_test.py
-```
 
-In the `jax_singular_test.py` script, the games can be commented out to only run specific games.
+Running a game manually:
+```bash
+python3 -m jaxtari.games.jax_seaquest
+```
 
 ---
 
@@ -72,13 +82,9 @@ In the `jax_singular_test.py` script, the games can be commented out to only run
 
 | Game      | Supported |
 |-----------|-----------|
-| Pong      | ✅        |
 | Seaquest  | ✅        |
-| Tennis    | ✅        |
-| Skiing    | ✅        |
+| Pong      | ✅        |
 | Kangaroo  | ✅        |
-| Freeway   | ✅        |
-| Breakout  | ✅        |
 
 > More games can be added via the uniform wrapper system.
 
@@ -99,9 +105,6 @@ Contributions are welcome!
 ## License
 
 This project is licensed under the MIT License.  
-See the [LICENSE](LICENSE) file for details (TODO).
+See the [LICENSE](LICENSE) file for details.
 
 ---
-
-## Contact
-- TODO

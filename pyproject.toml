@@ -1,7 +1,7 @@
 [project]
 name = "jaxtari"
 version = "0.1.0"
-description = "Add your description here"
+description = "GPU-accelerated, object-centric Atari environments for reinforcement learning with JAX."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -16,6 +16,7 @@ dependencies = [
     "scipy==1.14.1",
     "toolz==1.0.0",
     "typing-extensions==4.12.2",
+    "gymnax==0.0.8",
 ]
 
 [build-system]
