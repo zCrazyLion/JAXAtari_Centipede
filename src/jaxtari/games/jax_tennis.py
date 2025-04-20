@@ -1,13 +1,13 @@
 import os
 from functools import partial
 from typing import NamedTuple, Tuple
-from environment import JaxEnvironment, EnvState, EnvObs, EnvInfo
+from jaxtari.environment import JaxEnvironment, EnvState, EnvObs, EnvInfo
 import jax
 import jax.numpy as jnp
 import chex
 import numpy as np
 import pygame
-import atraJaxis as aj
+import jaxtari.rendering.atraJaxis as aj
 
 def load_sprites():
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1510,7 +1510,7 @@ class JaxTennis(JaxEnvironment[TennisState, TennisObservation, TennisInfo]):
             player_score=jnp.array(0).astype(jnp.int32),
             enemy_score=jnp.array(0).astype(jnp.int32),
             player_round_score=jnp.array(0).astype(jnp.int32),
-            enemy_round_score=jnp.array(40).astype(jnp.int32),
+            enemy_round_score=jnp.array(0).astype(jnp.int32),
             serving=jnp.array(1).astype(jnp.bool),  # boolean for serve state
             just_hit=jnp.array(0).astype(jnp.bool),  # boolean for just hit state
             player_side=player_side,

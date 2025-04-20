@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from dataclasses import dataclass
 from typing import Tuple, NamedTuple, List
 
-from environment import JaxEnvironment
+from jaxtari.environment import JaxEnvironment
 
 # Actions
 NOOP = 0

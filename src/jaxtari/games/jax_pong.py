@@ -7,12 +7,11 @@ import chex
 import matplotlib.pyplot as plt
 import numpy as np
 import pygame
-import jaxtari.atraJaxis as aj
+import jaxtari.rendering.atraJaxis as aj
 from more_itertools.recipes import transpose
 from numpy.ma.core import shape
 
-from environment import JaxEnvironment
-from numbers_impl import digits
+from jaxtari.environment import JaxEnvironment
 
 # Constants for game environment
 MAX_SPEED = 12

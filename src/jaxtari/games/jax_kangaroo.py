@@ -9,7 +9,7 @@ from jax import Array
 from gymnax.environments import spaces
 from jaxtari.environment import JaxEnvironment
 
-from jaxtari.kangaroo_levels import (
+from jaxtari.games.kangaroo_levels import (
     LevelConstants,
     Kangaroo_Level_1,
     Kangaroo_Level_2,
@@ -2082,7 +2082,7 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
     def _get_done(self, state: KangarooState) -> bool:
         return state.lives <= 0
 
-import jaxtari.atraJaxis as aj
+import jaxtari.rendering.atraJaxis as aj
 from jaxtari.renderers import AtraJaxisRenderer
 
 class Renderer_AtraJaxis(AtraJaxisRenderer):
