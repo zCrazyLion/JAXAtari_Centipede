@@ -1,14 +1,12 @@
 import os
-import sys
 from functools import partial
-from typing import Tuple, NamedTuple, Any
+from typing import Tuple, NamedTuple
 import jax
 import jax.numpy as jnp
 import chex
 import pygame
-import jaxtari.atraJaxis as aj
+import jaxtari.rendering.atraJaxis as aj
 import numpy as np
-from jax import Array
 from gymnax.environments import spaces
 
 from jaxtari.environment import JaxEnvironment

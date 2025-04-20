@@ -19,8 +19,10 @@ make html
 # Output will be in: docs/_build/html/index.html
 ```
 
-Great idea! Here's a short and **comprehensive `README.md`** tailored to your project, explaining how to set up Sphinx docs and contribute using reStructuredText (reST):
-
+### Auto-Doc Python Code
+```bash
+sphinx-apidoc -o docs/source/<output_path> jaxtari <module to document>
+```
 
 ## Adding or Editing Docs
 

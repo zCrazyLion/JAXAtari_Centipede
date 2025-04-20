@@ -1,24 +1,24 @@
 
 
 <!DOCTYPE html>
-<html class="writer-html5" lang="python3.10" data-content_root="../../">
+<html class="writer-html5" lang="python3.10" data-content_root="../../../">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>jaxtari.atraJaxis &mdash; JAXAtari  documentation</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=fa44fd50" />
-      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
-      <link rel="stylesheet" type="text/css" href="../../_static/css/custom.css?v=478102dd" />
+  <title>jaxtari.rendering.atraJaxis &mdash; JAXAtari  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=478102dd" />
 
   
-      <script src="../../_static/jquery.js?v=5d32c60e"></script>
-      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=b0426e2b"></script>
-      <script src="../../_static/doctools.js?v=9bcbadda"></script>
-      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
-    <script src="../../_static/js/theme.js"></script>
-    <link rel="index" title="Index" href="../../genindex.html" />
-    <link rel="search" title="Search" href="../../search.html" /> 
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=b0426e2b"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -29,11 +29,11 @@
 
           
           
-          <a href="../../index.html" class="icon icon-home">
+          <a href="../../../index.html" class="icon icon-home">
             JAXAtari
           </a>
 <div role="search">
-  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
     <input type="hidden" name="check_keywords" value="yes" />
     <input type="hidden" name="area" value="default" />
@@ -42,16 +42,16 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">API:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../jaxtari/core.html">JAXAtari Environments</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../modules/modules.html">JAXtari</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../jaxtari/core.html">JAXAtari Environments</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules/modules.html">jaxtari</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Scripts:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../scripts/RAMStateDeltas.html">RAMStateDeltas.py</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../scripts/RAMStateDeltas.html">RAMStateDeltas.py</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Tests and Benchmarks:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../tests/benchmarks.html">Benchmark</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tests/benchmarks.html">Benchmark</a></li>
 </ul>
 
         </div>
@@ -60,16 +60,16 @@
 
     <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="../../index.html">JAXAtari</a>
+          <a href="../../../index.html">JAXAtari</a>
       </nav>
 
       <div class="wy-nav-content">
         <div class="rst-content">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
-          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
-      <li class="breadcrumb-item active">jaxtari.atraJaxis</li>
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">jaxtari.rendering.atraJaxis</li>
       <li class="wy-breadcrumbs-aside">
       </li>
   </ul>
@@ -78,7 +78,7 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <h1>Source code for jaxtari.atraJaxis</h1><div class="highlight"><pre>
+  <h1>Source code for jaxtari.rendering.atraJaxis</h1><div class="highlight"><pre>
 <span></span><span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span><span class="p">,</span> <span class="n">PureWindowsPath</span>
 <span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
@@ -86,11 +86,9 @@
 <span class="kn">import</span> <span class="nn">jax</span>
 <span class="kn">from</span> <span class="nn">functools</span> <span class="kn">import</span> <span class="n">partial</span>
 <span class="kn">import</span> <span class="nn">pygame</span>
-<span class="kn">from</span> <span class="nn">jax</span> <span class="kn">import</span> <span class="n">lax</span>
-
 
 <div class="viewcode-block" id="AgnosticPath">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.atraJaxis.AgnosticPath">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.rendering.html#jaxtari.rendering.atraJaxis.AgnosticPath">[docs]</a>
 <span class="k">class</span> <span class="nc">AgnosticPath</span><span class="p">(</span><span class="n">Path</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;A class that can handle input with Windows (\\) and/or posix (/) separators for paths&quot;&quot;&quot;</span>
 
@@ -115,7 +113,7 @@
 
 
 <div class="viewcode-block" id="loadFrame">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.atraJaxis.loadFrame">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.rendering.html#jaxtari.rendering.atraJaxis.loadFrame">[docs]</a>
 <span class="k">def</span> <span class="nf">loadFrame</span><span class="p">(</span><span class="n">fileName</span><span class="p">,</span> <span class="n">transpose</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
     <span class="c1"># Load frame (np array) from a .npy file and convert to jnp array</span>
     <span class="n">frame</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">fileName</span><span class="p">)</span>
@@ -129,7 +127,7 @@
 
 
 <div class="viewcode-block" id="load_and_pad_digits">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.atraJaxis.load_and_pad_digits">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.rendering.html#jaxtari.rendering.atraJaxis.load_and_pad_digits">[docs]</a>
 <span class="nd">@partial</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">,</span> <span class="n">static_argnames</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;path_pattern&quot;</span><span class="p">,</span> <span class="s2">&quot;num_chars&quot;</span><span class="p">])</span>
 <span class="k">def</span> <span class="nf">load_and_pad_digits</span><span class="p">(</span><span class="n">path_pattern</span><span class="p">,</span> <span class="n">num_chars</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
     <span class="n">digits</span> <span class="o">=</span> <span class="p">[]</span>
@@ -165,7 +163,7 @@
 
 
 <div class="viewcode-block" id="get_sprite_frame">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.atraJaxis.get_sprite_frame">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.rendering.html#jaxtari.rendering.atraJaxis.get_sprite_frame">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">get_sprite_frame</span><span class="p">(</span><span class="n">frames</span><span class="p">,</span> <span class="n">frame_idx</span><span class="p">,</span> <span class="n">loop</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
     <span class="n">num_frames</span> <span class="o">=</span> <span class="n">frames</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
@@ -200,7 +198,7 @@
 
 
 <div class="viewcode-block" id="render_at">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.atraJaxis.render_at">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.rendering.html#jaxtari.rendering.atraJaxis.render_at">[docs]</a>
 <span class="nd">@partial</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">)</span>
 <span class="k">def</span> <span class="nf">render_at</span><span class="p">(</span><span class="n">raster</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">sprite_frame</span><span class="p">,</span> <span class="n">flip_horizontal</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">flip_vertical</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Renders a sprite onto a raster at position (x,y) with optional flipping.</span>
@@ -246,7 +244,7 @@
 
 
 <div class="viewcode-block" id="update_pygame">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.atraJaxis.update_pygame">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.rendering.html#jaxtari.rendering.atraJaxis.update_pygame">[docs]</a>
 <span class="k">def</span> <span class="nf">update_pygame</span><span class="p">(</span><span class="n">pygame_screen</span><span class="p">,</span> <span class="n">raster</span><span class="p">,</span> <span class="n">SCALING_FACTOR</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">WIDTH</span><span class="o">=</span><span class="mi">400</span><span class="p">,</span> <span class="n">HEIGHT</span><span class="o">=</span><span class="mi">300</span><span class="p">):</span>
     <span class="n">pygame_screen</span><span class="o">.</span><span class="n">fill</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
 
@@ -271,7 +269,7 @@
 
 <span class="c1"># TODO: make this function jaxxed</span>
 <div class="viewcode-block" id="render_label">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.atraJaxis.render_label">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.rendering.html#jaxtari.rendering.atraJaxis.render_label">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">render_label</span><span class="p">(</span><span class="n">raster</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">char_sprites</span><span class="p">,</span> <span class="n">spacing</span><span class="o">=</span><span class="mi">15</span><span class="p">):</span>
     <span class="n">sprites</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">char_sprites</span><span class="p">[</span><span class="n">d</span><span class="p">]</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">text</span><span class="p">])</span>  <span class="c1"># JAX-friendly</span>
@@ -283,9 +281,47 @@
     <span class="k">return</span> <span class="n">raster</span></div>
 
 
+<div class="viewcode-block" id="render_label_selective">
+<a class="viewcode-back" href="../../../modules/jaxtari.rendering.html#jaxtari.rendering.atraJaxis.render_label_selective">[docs]</a>
+<span class="nd">@partial</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">,</span> <span class="n">static_argnames</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;spacing&quot;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">render_label_selective</span><span class="p">(</span><span class="n">raster</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span>
+                           <span class="n">all_digits</span><span class="p">,</span>    <span class="c1"># The full array, e.g., [0, 7] or [1, 5]</span>
+                           <span class="n">char_sprites</span><span class="p">,</span>
+                           <span class="n">start_index</span><span class="p">,</span>   <span class="c1"># Index in all_digits to start rendering from (0 or 1)</span>
+                           <span class="n">num_to_render</span><span class="p">,</span> <span class="c1"># Number of digits to render (1 or 2)</span>
+                           <span class="n">spacing</span><span class="o">=</span><span class="mi">15</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Renders a specified number of digits from a digit array at a given position.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        raster: The target raster.</span>
+<span class="sd">        y: Top y-coordinate.</span>
+<span class="sd">        x: Left x-coordinate for the *first rendered digit*.</span>
+<span class="sd">        all_digits: JAX array containing all potential digits (e.g., from int_to_digits).</span>
+<span class="sd">        char_sprites: JAX array of sprite frames for each digit (0-9).</span>
+<span class="sd">        start_index: The index within `all_digits` to start rendering from.</span>
+<span class="sd">        num_to_render: How many digits to render sequentially from `start_index`.</span>
+<span class="sd">        spacing: Horizontal space between digits.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Select the sprites corresponding to the digits we might render</span>
+    <span class="c1"># Note: It&#39;s often efficient to fetch all needed sprites outside the loop if possible,</span>
+    <span class="c1"># but here the selection depends on the dynamic `all_digits` content.</span>
+
+    <span class="k">def</span> <span class="nf">render_char</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">current_raster</span><span class="p">):</span>
+        <span class="c1"># i is the loop index (0 or 1 if num_to_render is 2)</span>
+        <span class="n">digit_index_in_array</span> <span class="o">=</span> <span class="n">start_index</span> <span class="o">+</span> <span class="n">i</span> <span class="c1"># Get the actual index in all_digits</span>
+        <span class="n">digit_value</span> <span class="o">=</span> <span class="n">all_digits</span><span class="p">[</span><span class="n">digit_index_in_array</span><span class="p">]</span>
+        <span class="n">sprite_to_render</span> <span class="o">=</span> <span class="n">char_sprites</span><span class="p">[</span><span class="n">digit_value</span><span class="p">]</span>
+        <span class="n">render_x</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="n">i</span> <span class="o">*</span> <span class="n">spacing</span> <span class="c1"># Calculate x position based on loop index</span>
+        <span class="k">return</span> <span class="n">render_at</span><span class="p">(</span><span class="n">current_raster</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">render_x</span><span class="p">,</span> <span class="n">sprite_to_render</span><span class="p">)</span>
+
+    <span class="c1"># Loop only for the number of digits we actually need to render</span>
+    <span class="n">raster</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">lax</span><span class="o">.</span><span class="n">fori_loop</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">num_to_render</span><span class="p">,</span> <span class="n">render_char</span><span class="p">,</span> <span class="n">raster</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">raster</span></div>
+
 
 <div class="viewcode-block" id="render_indicator">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.atraJaxis.render_indicator">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.rendering.html#jaxtari.rendering.atraJaxis.render_indicator">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">render_indicator</span><span class="p">(</span><span class="n">raster</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">sprite</span><span class="p">,</span> <span class="n">spacing</span><span class="o">=</span><span class="mi">15</span><span class="p">):</span>
     <span class="c1"># render &quot;value&quot; times of &quot;sprite&quot; in a row on raster.</span>
@@ -298,7 +334,7 @@
 
 
 <div class="viewcode-block" id="render_bar">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.atraJaxis.render_bar">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.rendering.html#jaxtari.rendering.atraJaxis.render_bar">[docs]</a>
 <span class="nd">@partial</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">,</span> <span class="n">static_argnames</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;width&quot;</span><span class="p">,</span> <span class="s2">&quot;height&quot;</span><span class="p">])</span>
 <span class="k">def</span> <span class="nf">render_bar</span><span class="p">(</span><span class="n">raster</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="nb">max</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">height</span><span class="p">,</span> <span class="n">color</span><span class="p">,</span> <span class="n">default_color</span><span class="p">):</span>
     <span class="c1"># Create a bar as a (height, width, 4) array to match sprite orientation</span>
@@ -331,7 +367,7 @@
 
 <span class="c1"># Only pad sprites of same type to match each other&#39;s dimensions</span>
 <div class="viewcode-block" id="pad_to_match">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.atraJaxis.pad_to_match">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.rendering.html#jaxtari.rendering.atraJaxis.pad_to_match">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">pad_to_match</span><span class="p">(</span><span class="n">sprites</span><span class="p">):</span>
     <span class="n">max_height</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">sprite</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">sprite</span> <span class="ow">in</span> <span class="n">sprites</span><span class="p">)</span>
@@ -352,7 +388,7 @@
 
 
 <div class="viewcode-block" id="int_to_digits">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.atraJaxis.int_to_digits">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.rendering.html#jaxtari.rendering.atraJaxis.int_to_digits">[docs]</a>
 <span class="nd">@partial</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">,</span> <span class="n">static_argnames</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;max_digits&quot;</span><span class="p">])</span>
 <span class="k">def</span> <span class="nf">int_to_digits</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">max_digits</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert an integer to a fixed-length array of digits in JAX.</span>

@@ -1,0 +1,947 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="python3.10" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>jaxtari.games package &mdash; JAXAtari  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=478102dd" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=b0426e2b"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="jaxtari.rendering package" href="jaxtari.rendering.html" />
+    <link rel="prev" title="jaxtari package" href="jaxtari.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            JAXAtari
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">API:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../jaxtari/core.html">JAXAtari Environments</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">jaxtari</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="jaxtari.html">jaxtari package</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="jaxtari.html#subpackages">Subpackages</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#">jaxtari.games package</a></li>
+<li class="toctree-l4"><a class="reference internal" href="jaxtari.rendering.html">jaxtari.rendering package</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="jaxtari.html#submodules">Submodules</a></li>
+<li class="toctree-l3"><a class="reference internal" href="jaxtari.html#module-jaxtari.core">jaxtari.core module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="jaxtari.html#module-jaxtari.environment">jaxtari.environment module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="jaxtari.html#module-jaxtari.renderers">jaxtari.renderers module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="jaxtari.html#module-jaxtari.wrappers">jaxtari.wrappers module</a></li>
+<li class="toctree-l3"><a class="reference internal" href="jaxtari.html#module-jaxtari">Module contents</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Scripts:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../scripts/RAMStateDeltas.html">RAMStateDeltas.py</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tests and Benchmarks:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../tests/benchmarks.html">Benchmark</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">JAXAtari</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="modules.html">jaxtari</a></li>
+          <li class="breadcrumb-item"><a href="jaxtari.html">jaxtari package</a></li>
+      <li class="breadcrumb-item active">jaxtari.games package</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/modules/jaxtari.games.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="jaxtari-games-package">
+<h1>jaxtari.games package<a class="headerlink" href="#jaxtari-games-package" title="Link to this heading"></a></h1>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
+</section>
+<section id="module-jaxtari.games.jax_pong">
+<span id="jaxtari-games-jax-pong-module"></span><h2>jaxtari.games.jax_pong module<a class="headerlink" href="#module-jaxtari.games.jax_pong" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.EntityPosition">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_pong.</span></span><span class="sig-name descname"><span class="pre">EntityPosition</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_pong.html#EntityPosition"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_pong.EntityPosition" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.EntityPosition.height">
+<span class="sig-name descname"><span class="pre">height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.EntityPosition.height" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.EntityPosition.width">
+<span class="sig-name descname"><span class="pre">width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.EntityPosition.width" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.EntityPosition.x">
+<span class="sig-name descname"><span class="pre">x</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.EntityPosition.x" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.EntityPosition.y">
+<span class="sig-name descname"><span class="pre">y</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.EntityPosition.y" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.JaxPong">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_pong.</span></span><span class="sig-name descname"><span class="pre">JaxPong</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">frameskip</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_pong.html#JaxPong"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_pong.JaxPong" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="jaxtari.html#jaxtari.environment.JaxEnvironment" title="jaxtari.environment.JaxEnvironment"><code class="xref py py-class docutils literal notranslate"><span class="pre">JaxEnvironment</span></code></a>[<a class="reference internal" href="#jaxtari.games.jax_pong.State" title="jaxtari.games.jax_pong.State"><code class="xref py py-class docutils literal notranslate"><span class="pre">State</span></code></a>, <a class="reference internal" href="#jaxtari.games.jax_pong.PongObservation" title="jaxtari.games.jax_pong.PongObservation"><code class="xref py py-class docutils literal notranslate"><span class="pre">PongObservation</span></code></a>, <a class="reference internal" href="#jaxtari.games.jax_pong.PongInfo" title="jaxtari.games.jax_pong.PongInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">PongInfo</span></code></a>]</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.JaxPong.reset">
+<span class="sig-name descname"><span class="pre">reset</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#jaxtari.games.jax_pong.State" title="jaxtari.games.jax_pong.State"><span class="pre">State</span></a></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_pong.html#JaxPong.reset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_pong.JaxPong.reset" title="Link to this definition"></a></dt>
+<dd><p>Resets the game state to the initial state.
+Returns the initial state and the reward (i.e. 0)</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.JaxPong.step">
+<span class="sig-name descname"><span class="pre">step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_pong.State" title="jaxtari.games.jax_pong.State"><span class="pre">State</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">action</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#jaxtari.games.jax_pong.State" title="jaxtari.games.jax_pong.State"><span class="pre">State</span></a></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_pong.html#JaxPong.step"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_pong.JaxPong.step" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.PongInfo">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_pong.</span></span><span class="sig-name descname"><span class="pre">PongInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">time</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_pong.html#PongInfo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_pong.PongInfo" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.PongInfo.time">
+<span class="sig-name descname"><span class="pre">time</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.PongInfo.time" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.PongObservation">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_pong.</span></span><span class="sig-name descname"><span class="pre">PongObservation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">player</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enemy</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ball</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">score_player</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">score_enemy</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_pong.html#PongObservation"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_pong.PongObservation" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.PongObservation.ball">
+<span class="sig-name descname"><span class="pre">ball</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#jaxtari.games.jax_pong.EntityPosition" title="jaxtari.games.jax_pong.EntityPosition"><span class="pre">EntityPosition</span></a></em><a class="headerlink" href="#jaxtari.games.jax_pong.PongObservation.ball" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.PongObservation.enemy">
+<span class="sig-name descname"><span class="pre">enemy</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#jaxtari.games.jax_pong.EntityPosition" title="jaxtari.games.jax_pong.EntityPosition"><span class="pre">EntityPosition</span></a></em><a class="headerlink" href="#jaxtari.games.jax_pong.PongObservation.enemy" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.PongObservation.player">
+<span class="sig-name descname"><span class="pre">player</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#jaxtari.games.jax_pong.EntityPosition" title="jaxtari.games.jax_pong.EntityPosition"><span class="pre">EntityPosition</span></a></em><a class="headerlink" href="#jaxtari.games.jax_pong.PongObservation.player" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.PongObservation.score_enemy">
+<span class="sig-name descname"><span class="pre">score_enemy</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.PongObservation.score_enemy" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 4</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.PongObservation.score_player">
+<span class="sig-name descname"><span class="pre">score_player</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.PongObservation.score_player" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.Renderer_AtraJaxisPong">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_pong.</span></span><span class="sig-name descname"><span class="pre">Renderer_AtraJaxisPong</span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_pong.html#Renderer_AtraJaxisPong"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_pong.Renderer_AtraJaxisPong" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>JAX-based Pong game renderer, optimized with JIT compilation.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.Renderer_AtraJaxisPong.render">
+<span class="sig-name descname"><span class="pre">render</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_pong.html#Renderer_AtraJaxisPong.render"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_pong.Renderer_AtraJaxisPong.render" title="Link to this definition"></a></dt>
+<dd><p>Renders the current game state using JAX operations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>state</strong> -- A State object containing the current game state.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A JAX array representing the rendered frame.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.State">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_pong.</span></span><span class="sig-name descname"><span class="pre">State</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">player_y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">player_speed</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ball_x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ball_y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enemy_y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enemy_speed</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ball_vel_x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ball_vel_y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">player_score</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enemy_score</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_counter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">acceleration_counter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">buffer</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_pong.html#State"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_pong.State" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.State.acceleration_counter">
+<span class="sig-name descname"><span class="pre">acceleration_counter</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.State.acceleration_counter" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 11</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.State.ball_vel_x">
+<span class="sig-name descname"><span class="pre">ball_vel_x</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.State.ball_vel_x" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 6</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.State.ball_vel_y">
+<span class="sig-name descname"><span class="pre">ball_vel_y</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.State.ball_vel_y" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 7</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.State.ball_x">
+<span class="sig-name descname"><span class="pre">ball_x</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.State.ball_x" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.State.ball_y">
+<span class="sig-name descname"><span class="pre">ball_y</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.State.ball_y" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.State.buffer">
+<span class="sig-name descname"><span class="pre">buffer</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.State.buffer" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 12</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.State.enemy_score">
+<span class="sig-name descname"><span class="pre">enemy_score</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.State.enemy_score" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 9</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.State.enemy_speed">
+<span class="sig-name descname"><span class="pre">enemy_speed</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.State.enemy_speed" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 5</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.State.enemy_y">
+<span class="sig-name descname"><span class="pre">enemy_y</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.State.enemy_y" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 4</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.State.player_score">
+<span class="sig-name descname"><span class="pre">player_score</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.State.player_score" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 8</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.State.player_speed">
+<span class="sig-name descname"><span class="pre">player_speed</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.State.player_speed" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.State.player_y">
+<span class="sig-name descname"><span class="pre">player_y</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.State.player_y" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.State.step_counter">
+<span class="sig-name descname"><span class="pre">step_counter</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_pong.State.step_counter" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 10</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.ball_step">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_pong.</span></span><span class="sig-name descname"><span class="pre">ball_step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_pong.State" title="jaxtari.games.jax_pong.State"><span class="pre">State</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">action</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_pong.html#ball_step"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_pong.ball_step" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.enemy_step">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_pong.</span></span><span class="sig-name descname"><span class="pre">enemy_step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_counter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ball_y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ball_speed_y</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_pong.html#enemy_step"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_pong.enemy_step" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.get_human_action">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_pong.</span></span><span class="sig-name descname"><span class="pre">get_human_action</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_pong.html#get_human_action"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_pong.get_human_action" title="Link to this definition"></a></dt>
+<dd><p>Records if UP or DOWN is being pressed and returns the corresponding action.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int, action taken by the player (LEFT, RIGHT, FIRE, LEFTFIRE, RIGHTFIRE, NOOP).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>action</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.load_sprites">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_pong.</span></span><span class="sig-name descname"><span class="pre">load_sprites</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_pong.html#load_sprites"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_pong.load_sprites" title="Link to this definition"></a></dt>
+<dd><p>Load all sprites required for Pong rendering.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_pong.player_step">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_pong.</span></span><span class="sig-name descname"><span class="pre">player_step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_player_y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_player_speed</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">acceleration_counter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">action</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_pong.html#player_step"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_pong.player_step" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+<section id="module-jaxtari.games.jax_seaquest">
+<span id="jaxtari-games-jax-seaquest-module"></span><h2>jaxtari.games.jax_seaquest module<a class="headerlink" href="#module-jaxtari.games.jax_seaquest" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.CarryState">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">CarryState</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">missile_pos</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shark_pos</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub_pos</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">score</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#CarryState"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.CarryState" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.CarryState.missile_pos">
+<span class="sig-name descname"><span class="pre">missile_pos</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.CarryState.missile_pos" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.CarryState.score">
+<span class="sig-name descname"><span class="pre">score</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.CarryState.score" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.CarryState.shark_pos">
+<span class="sig-name descname"><span class="pre">shark_pos</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.CarryState.shark_pos" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.CarryState.sub_pos">
+<span class="sig-name descname"><span class="pre">sub_pos</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.CarryState.sub_pos" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.EntityPosition">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">EntityPosition</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">active</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#EntityPosition"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.EntityPosition" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.EntityPosition.active">
+<span class="sig-name descname"><span class="pre">active</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.EntityPosition.active" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 4</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.EntityPosition.height">
+<span class="sig-name descname"><span class="pre">height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.EntityPosition.height" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.EntityPosition.width">
+<span class="sig-name descname"><span class="pre">width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.EntityPosition.width" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.EntityPosition.x">
+<span class="sig-name descname"><span class="pre">x</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.EntityPosition.x" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.EntityPosition.y">
+<span class="sig-name descname"><span class="pre">y</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.EntityPosition.y" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.JaxSeaquest">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">JaxSeaquest</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">frameskip</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reward_funcs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">callable</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#JaxSeaquest"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.JaxSeaquest" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="jaxtari.html#jaxtari.environment.JaxEnvironment" title="jaxtari.environment.JaxEnvironment"><code class="xref py py-class docutils literal notranslate"><span class="pre">JaxEnvironment</span></code></a>[<a class="reference internal" href="#jaxtari.games.jax_seaquest.SeaquestState" title="jaxtari.games.jax_seaquest.SeaquestState"><code class="xref py py-class docutils literal notranslate"><span class="pre">SeaquestState</span></code></a>, <a class="reference internal" href="#jaxtari.games.jax_seaquest.SeaquestObservation" title="jaxtari.games.jax_seaquest.SeaquestObservation"><code class="xref py py-class docutils literal notranslate"><span class="pre">SeaquestObservation</span></code></a>, <a class="reference internal" href="#jaxtari.games.jax_seaquest.SeaquestInfo" title="jaxtari.games.jax_seaquest.SeaquestInfo"><code class="xref py py-class docutils literal notranslate"><span class="pre">SeaquestInfo</span></code></a>]</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.JaxSeaquest.action_space">
+<span class="sig-name descname"><span class="pre">action_space</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Discrete</span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#JaxSeaquest.action_space"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.JaxSeaquest.action_space" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.JaxSeaquest.flatten_entity_position">
+<span class="sig-name descname"><span class="pre">flatten_entity_position</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">entity</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_seaquest.EntityPosition" title="jaxtari.games.jax_seaquest.EntityPosition"><span class="pre">EntityPosition</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Array</span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#JaxSeaquest.flatten_entity_position"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.JaxSeaquest.flatten_entity_position" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.JaxSeaquest.obs_to_flat_array">
+<span class="sig-name descname"><span class="pre">obs_to_flat_array</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_seaquest.SeaquestObservation" title="jaxtari.games.jax_seaquest.SeaquestObservation"><span class="pre">SeaquestObservation</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Array</span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#JaxSeaquest.obs_to_flat_array"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.JaxSeaquest.obs_to_flat_array" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.JaxSeaquest.observation_space">
+<span class="sig-name descname"><span class="pre">observation_space</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Box</span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#JaxSeaquest.observation_space"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.JaxSeaquest.observation_space" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.JaxSeaquest.reset">
+<span class="sig-name descname"><span class="pre">reset</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#jaxtari.games.jax_seaquest.SeaquestState" title="jaxtari.games.jax_seaquest.SeaquestState"><span class="pre">SeaquestState</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#jaxtari.games.jax_seaquest.SeaquestObservation" title="jaxtari.games.jax_seaquest.SeaquestObservation"><span class="pre">SeaquestObservation</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#JaxSeaquest.reset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.JaxSeaquest.reset" title="Link to this definition"></a></dt>
+<dd><p>Initialize game state</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.JaxSeaquest.step">
+<span class="sig-name descname"><span class="pre">step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_seaquest.SeaquestState" title="jaxtari.games.jax_seaquest.SeaquestState"><span class="pre">SeaquestState</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">action</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#jaxtari.games.jax_seaquest.SeaquestState" title="jaxtari.games.jax_seaquest.SeaquestState"><span class="pre">SeaquestState</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#jaxtari.games.jax_seaquest.SeaquestObservation" title="jaxtari.games.jax_seaquest.SeaquestObservation"><span class="pre">SeaquestObservation</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#jaxtari.games.jax_seaquest.SeaquestInfo" title="jaxtari.games.jax_seaquest.SeaquestInfo"><span class="pre">SeaquestInfo</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#JaxSeaquest.step"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.JaxSeaquest.step" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.Renderer_AtraJaxis">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">Renderer_AtraJaxis</span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#Renderer_AtraJaxis"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.Renderer_AtraJaxis" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="jaxtari.html#jaxtari.renderers.AtraJaxisRenderer" title="jaxtari.renderers.AtraJaxisRenderer"><code class="xref py py-class docutils literal notranslate"><span class="pre">AtraJaxisRenderer</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.Renderer_AtraJaxis.render">
+<span class="sig-name descname"><span class="pre">render</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#Renderer_AtraJaxis.render"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.Renderer_AtraJaxis.render" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestInfo">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">SeaquestInfo</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">difficulty</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">successful_rescues</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_counter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">all_rewards</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#SeaquestInfo"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestInfo" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestInfo.all_rewards">
+<span class="sig-name descname"><span class="pre">all_rewards</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestInfo.all_rewards" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestInfo.difficulty">
+<span class="sig-name descname"><span class="pre">difficulty</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestInfo.difficulty" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestInfo.step_counter">
+<span class="sig-name descname"><span class="pre">step_counter</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestInfo.step_counter" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestInfo.successful_rescues">
+<span class="sig-name descname"><span class="pre">successful_rescues</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestInfo.successful_rescues" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestObservation">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">SeaquestObservation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">player</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sharks</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">submarines</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enemy_missiles</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">surface_submarine</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">player_missile</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">collected_divers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">player_score</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lives</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">oxygen_level</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#SeaquestObservation"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestObservation" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestObservation.collected_divers">
+<span class="sig-name descname"><span class="pre">collected_divers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestObservation.collected_divers" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 7</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestObservation.divers">
+<span class="sig-name descname"><span class="pre">divers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestObservation.divers" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestObservation.enemy_missiles">
+<span class="sig-name descname"><span class="pre">enemy_missiles</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestObservation.enemy_missiles" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 4</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestObservation.lives">
+<span class="sig-name descname"><span class="pre">lives</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestObservation.lives" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 9</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestObservation.oxygen_level">
+<span class="sig-name descname"><span class="pre">oxygen_level</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestObservation.oxygen_level" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 10</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestObservation.player">
+<span class="sig-name descname"><span class="pre">player</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#jaxtari.games.jax_seaquest.EntityPosition" title="jaxtari.games.jax_seaquest.EntityPosition"><span class="pre">EntityPosition</span></a></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestObservation.player" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestObservation.player_missile">
+<span class="sig-name descname"><span class="pre">player_missile</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#jaxtari.games.jax_seaquest.EntityPosition" title="jaxtari.games.jax_seaquest.EntityPosition"><span class="pre">EntityPosition</span></a></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestObservation.player_missile" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 6</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestObservation.player_score">
+<span class="sig-name descname"><span class="pre">player_score</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestObservation.player_score" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 8</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestObservation.sharks">
+<span class="sig-name descname"><span class="pre">sharks</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestObservation.sharks" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestObservation.submarines">
+<span class="sig-name descname"><span class="pre">submarines</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestObservation.submarines" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestObservation.surface_submarine">
+<span class="sig-name descname"><span class="pre">surface_submarine</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#jaxtari.games.jax_seaquest.EntityPosition" title="jaxtari.games.jax_seaquest.EntityPosition"><span class="pre">EntityPosition</span></a></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestObservation.surface_submarine" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 5</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">SeaquestState</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">player_x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">player_y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">player_direction</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">oxygen</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">divers_collected</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">score</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lives</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spawn_state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">diver_positions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shark_positions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub_positions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enemy_missile_positions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">surface_sub_position</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">player_missile_position</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_counter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">just_surfaced</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">successful_rescues</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">death_counter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">obs_stack</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng_key</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#SeaquestState"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.death_counter">
+<span class="sig-name descname"><span class="pre">death_counter</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.death_counter" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 17</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.diver_positions">
+<span class="sig-name descname"><span class="pre">diver_positions</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.diver_positions" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 8</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.divers_collected">
+<span class="sig-name descname"><span class="pre">divers_collected</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.divers_collected" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 4</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.enemy_missile_positions">
+<span class="sig-name descname"><span class="pre">enemy_missile_positions</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.enemy_missile_positions" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 11</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.just_surfaced">
+<span class="sig-name descname"><span class="pre">just_surfaced</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.just_surfaced" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 15</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.lives">
+<span class="sig-name descname"><span class="pre">lives</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.lives" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 6</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.obs_stack">
+<span class="sig-name descname"><span class="pre">obs_stack</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Iterable</span><span class="p"><span class="pre">[</span></span><span class="pre">ArrayTree</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">Any</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ArrayTree</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.obs_stack" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 18</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.oxygen">
+<span class="sig-name descname"><span class="pre">oxygen</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.oxygen" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.player_direction">
+<span class="sig-name descname"><span class="pre">player_direction</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.player_direction" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.player_missile_position">
+<span class="sig-name descname"><span class="pre">player_missile_position</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.player_missile_position" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 13</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.player_x">
+<span class="sig-name descname"><span class="pre">player_x</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.player_x" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.player_y">
+<span class="sig-name descname"><span class="pre">player_y</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.player_y" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.rng_key">
+<span class="sig-name descname"><span class="pre">rng_key</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.rng_key" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 19</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.score">
+<span class="sig-name descname"><span class="pre">score</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.score" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 5</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.shark_positions">
+<span class="sig-name descname"><span class="pre">shark_positions</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.shark_positions" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 9</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.spawn_state">
+<span class="sig-name descname"><span class="pre">spawn_state</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.spawn_state" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 7</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.step_counter">
+<span class="sig-name descname"><span class="pre">step_counter</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.step_counter" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 14</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.sub_positions">
+<span class="sig-name descname"><span class="pre">sub_positions</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.sub_positions" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 10</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.successful_rescues">
+<span class="sig-name descname"><span class="pre">successful_rescues</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.successful_rescues" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 16</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SeaquestState.surface_sub_position">
+<span class="sig-name descname"><span class="pre">surface_sub_position</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SeaquestState.surface_sub_position" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 12</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SpawnState">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">SpawnState</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">difficulty</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lane_dependent_pattern</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">to_be_spawned</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">survived</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prev_sub</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spawn_timers</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">diver_array</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lane_directions</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#SpawnState"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.SpawnState" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NamedTuple</span></code></p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SpawnState.difficulty">
+<span class="sig-name descname"><span class="pre">difficulty</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SpawnState.difficulty" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SpawnState.diver_array">
+<span class="sig-name descname"><span class="pre">diver_array</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SpawnState.diver_array" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 6</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SpawnState.lane_dependent_pattern">
+<span class="sig-name descname"><span class="pre">lane_dependent_pattern</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SpawnState.lane_dependent_pattern" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SpawnState.lane_directions">
+<span class="sig-name descname"><span class="pre">lane_directions</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SpawnState.lane_directions" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 7</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SpawnState.prev_sub">
+<span class="sig-name descname"><span class="pre">prev_sub</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SpawnState.prev_sub" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 4</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SpawnState.spawn_timers">
+<span class="sig-name descname"><span class="pre">spawn_timers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SpawnState.spawn_timers" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 5</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SpawnState.survived">
+<span class="sig-name descname"><span class="pre">survived</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SpawnState.survived" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.SpawnState.to_be_spawned">
+<span class="sig-name descname"><span class="pre">to_be_spawned</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></em><a class="headerlink" href="#jaxtari.games.jax_seaquest.SpawnState.to_be_spawned" title="Link to this definition"></a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.calculate_kill_points">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">calculate_kill_points</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">successful_rescues</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#calculate_kill_points"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.calculate_kill_points" title="Link to this definition"></a></dt>
+<dd><p>Calculate the points awarded for killing a shark or submarine. Sharks and submarines are worth 20 points.
+The points are increased by 10 for each successful rescue with a maximum of 90.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.check_collision_batch">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">check_collision_batch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pos1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pos2_array</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#check_collision_batch"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.check_collision_batch" title="Link to this definition"></a></dt>
+<dd><p>Check collision between one entity and an array of entities</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.check_collision_single">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">check_collision_single</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pos1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pos2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#check_collision_single"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.check_collision_single" title="Link to this definition"></a></dt>
+<dd><p>Check collision between two single entities</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.check_missile_collisions">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">check_missile_collisions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">missile_pos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shark_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">score</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">successful_rescues</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spawn_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#check_missile_collisions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.check_missile_collisions" title="Link to this definition"></a></dt>
+<dd><p>Check for collisions between player missile and enemies</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.check_player_collision">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">check_player_collision</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">player_x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">player_y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">submarine_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shark_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">surface_sub_pos</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enemy_projectile_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">score</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">successful_rescues</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#check_player_collision"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.check_player_collision" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.enemy_missiles_step">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">enemy_missiles_step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">curr_sub_positions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">curr_enemy_missile_positions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_counter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">difficulty</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#enemy_missiles_step"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.enemy_missiles_step" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.get_front_entity">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">get_front_entity</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">i</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lane_positions</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#get_front_entity"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.get_front_entity" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.get_human_action">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">get_human_action</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#get_human_action"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.get_human_action" title="Link to this definition"></a></dt>
+<dd><p>Get human action from keyboard with support for diagonal movement and combined fire</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.get_pattern_for_difficulty">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">get_pattern_for_difficulty</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">current_pattern</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">moving_left</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#get_pattern_for_difficulty"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.get_pattern_for_difficulty" title="Link to this definition"></a></dt>
+<dd><p>Returns spawn pattern based on the lane's current wave/pattern number</p>
+<p>Pattern meanings:
+0: Single enemy (initial pattern)
+1: Two adjacent enemies
+2: Two enemies with gap
+3: Three enemies in a row</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.get_spawn_position">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">get_spawn_position</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">moving_left</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">slot</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#get_spawn_position"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.get_spawn_position" title="Link to this definition"></a></dt>
+<dd><p>Get spawn position based on movement direction and slot number</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.initialize_spawn_state">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">initialize_spawn_state</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#initialize_spawn_state"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.initialize_spawn_state" title="Link to this definition"></a></dt>
+<dd><p>Initialize spawn state with first wave matching original game.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.is_slot_empty">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">is_slot_empty</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pos</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#is_slot_empty"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.is_slot_empty" title="Link to this definition"></a></dt>
+<dd><p>Check if a position slot is empty (0,0,ß)</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.load_sprites">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">load_sprites</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#load_sprites"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.load_sprites" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.player_missile_step">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">player_missile_step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_seaquest.SeaquestState" title="jaxtari.games.jax_seaquest.SeaquestState"><span class="pre">SeaquestState</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">curr_player_x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">curr_player_y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">action</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#player_missile_step"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.player_missile_step" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.player_step">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">player_step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_seaquest.SeaquestState" title="jaxtari.games.jax_seaquest.SeaquestState"><span class="pre">SeaquestState</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">action</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#player_step"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.player_step" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.soft_reset_spawn_state">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">soft_reset_spawn_state</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spawn_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#soft_reset_spawn_state"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.soft_reset_spawn_state" title="Link to this definition"></a></dt>
+<dd><p>Reset spawn_times</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.spawn_divers">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">spawn_divers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spawn_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">diver_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shark_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_counter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#spawn_divers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.spawn_divers" title="Link to this definition"></a></dt>
+<dd><p>Spawn divers according to pattern that depends on collection state.</p>
+<p>Follows these rules:
+1. Divers can only spawn in lanes marked as 'spawnable' in diver_array (value 1)
+2. Divers only spawn in empty lanes (no enemies present)
+3. Divers don't spawn in lanes where submarines will spawn next</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>spawn_state</strong> -- Current spawn state containing diver_array</p></li>
+<li><p><strong>diver_positions</strong> -- Current diver positions</p></li>
+<li><p><strong>shark_positions</strong> -- Current shark positions</p></li>
+<li><p><strong>sub_positions</strong> -- Current sub positions</p></li>
+<li><p><strong>step_counter</strong> -- Current step counter</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Updated diver positions and updated spawn state</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.spawn_step">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">spawn_step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spawn_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">shark_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">diver_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng_key</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#spawn_step"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.spawn_step" title="Link to this definition"></a></dt>
+<dd><p>Main spawn handling function to be called in game step</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.step_diver_movement">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">step_diver_movement</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">diver_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shark_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_player_x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_player_y</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state_divers_collected</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spawn_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_counter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#step_diver_movement"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.step_diver_movement" title="Link to this definition"></a></dt>
+<dd><p>Move divers according to their pattern and handle collisions.
+Returns updated diver positions, number of collected divers, updated spawn state, and updated RNG key.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.step_enemy_movement">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">step_enemy_movement</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spawn_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">shark_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_counter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#step_enemy_movement"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.step_enemy_movement" title="Link to this definition"></a></dt>
+<dd><p>Update enemy positions based on their patterns</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.surface_sub_step">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">surface_sub_step</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_seaquest.SeaquestState" title="jaxtari.games.jax_seaquest.SeaquestState"><span class="pre">SeaquestState</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#surface_sub_step"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.surface_sub_step" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.update_enemy_spawns">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">update_enemy_spawns</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spawn_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">shark_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sub_positions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_counter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rng</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Array</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#jaxtari.games.jax_seaquest.SpawnState" title="jaxtari.games.jax_seaquest.SpawnState"><span class="pre">SpawnState</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ndarray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">number</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Array</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#update_enemy_spawns"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.update_enemy_spawns" title="Link to this definition"></a></dt>
+<dd><p>Update enemy spawns using pattern-based system matching original game.
+:param spawn_state: Current spawn state
+:param shark_positions: Current shark positions
+:param sub_positions: Current submarine positions
+:param step_counter: Current step counter
+:param rng: Optional random key for direction randomization</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple of updated spawn state, shark positions, sub positions, and updated RNG key</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jaxtari.games.jax_seaquest.update_oxygen">
+<span class="sig-prename descclassname"><span class="pre">jaxtari.games.jax_seaquest.</span></span><span class="sig-name descname"><span class="pre">update_oxygen</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">player_x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">player_y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">player_missile_position</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/jaxtari/games/jax_seaquest.html#update_oxygen"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#jaxtari.games.jax_seaquest.update_oxygen" title="Link to this definition"></a></dt>
+<dd><p>Update oxygen levels and handle surfacing mechanics with proper surfacing detection</p>
+</dd></dl>
+
+</section>
+<section id="module-jaxtari.games">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-jaxtari.games" title="Link to this heading"></a></h2>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="jaxtari.html" class="btn btn-neutral float-left" title="jaxtari package" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="jaxtari.rendering.html" class="btn btn-neutral float-right" title="jaxtari.rendering package" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Quentin Delfosse, Jannis Blüml.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

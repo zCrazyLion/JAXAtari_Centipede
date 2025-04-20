@@ -1,13 +1,22 @@
-Jaxtari Package
+jaxtari package
 ===============
+
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   jaxtari.games
+   jaxtari.rendering
 
 Submodules
 ----------
 
-jaxtari.atraJaxis module
-------------------------
+jaxtari.core module
+-------------------
 
-.. automodule:: jaxtari.atraJaxis
+.. automodule:: jaxtari.core
    :members:
    :show-inheritance:
    :undoc-members:
@@ -16,30 +25,6 @@ jaxtari.environment module
 --------------------------
 
 .. automodule:: jaxtari.environment
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-jaxtari.jax\_game module
-------------------------
-
-.. automodule:: jaxtari.jax_game
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-jaxtari.jax\_seaquest module
-----------------------------
-
-.. automodule:: jaxtari.jax_seaquest
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-jaxtari.numbers\_impl module
-----------------------------
-
-.. automodule:: jaxtari.numbers_impl
    :members:
    :show-inheritance:
    :undoc-members:

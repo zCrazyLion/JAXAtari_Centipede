@@ -1,24 +1,24 @@
 
 
 <!DOCTYPE html>
-<html class="writer-html5" lang="python3.10" data-content_root="../../">
+<html class="writer-html5" lang="python3.10" data-content_root="../../../">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>jaxtari.jax_seaquest &mdash; JAXAtari  documentation</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=fa44fd50" />
-      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
-      <link rel="stylesheet" type="text/css" href="../../_static/css/custom.css?v=478102dd" />
+  <title>jaxtari.games.jax_seaquest &mdash; JAXAtari  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=fa44fd50" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=478102dd" />
 
   
-      <script src="../../_static/jquery.js?v=5d32c60e"></script>
-      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-      <script src="../../_static/documentation_options.js?v=b0426e2b"></script>
-      <script src="../../_static/doctools.js?v=9bcbadda"></script>
-      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
-    <script src="../../_static/js/theme.js"></script>
-    <link rel="index" title="Index" href="../../genindex.html" />
-    <link rel="search" title="Search" href="../../search.html" /> 
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=b0426e2b"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -29,11 +29,11 @@
 
           
           
-          <a href="../../index.html" class="icon icon-home">
+          <a href="../../../index.html" class="icon icon-home">
             JAXAtari
           </a>
 <div role="search">
-  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
     <input type="hidden" name="check_keywords" value="yes" />
     <input type="hidden" name="area" value="default" />
@@ -42,16 +42,16 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">API:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../jaxtari/core.html">JAXAtari Environments</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../modules/modules.html">JAXtari</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../jaxtari/core.html">JAXAtari Environments</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules/modules.html">jaxtari</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Scripts:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../scripts/RAMStateDeltas.html">RAMStateDeltas.py</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../scripts/RAMStateDeltas.html">RAMStateDeltas.py</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Tests and Benchmarks:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../tests/benchmarks.html">Benchmark</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tests/benchmarks.html">Benchmark</a></li>
 </ul>
 
         </div>
@@ -60,16 +60,16 @@
 
     <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="../../index.html">JAXAtari</a>
+          <a href="../../../index.html">JAXAtari</a>
       </nav>
 
       <div class="wy-nav-content">
         <div class="rst-content">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
-          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
-      <li class="breadcrumb-item active">jaxtari.jax_seaquest</li>
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">jaxtari.games.jax_seaquest</li>
       <li class="wy-breadcrumbs-aside">
       </li>
   </ul>
@@ -78,18 +78,16 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <h1>Source code for jaxtari.jax_seaquest</h1><div class="highlight"><pre>
+  <h1>Source code for jaxtari.games.jax_seaquest</h1><div class="highlight"><pre>
 <span></span><span class="kn">import</span> <span class="nn">os</span>
-<span class="kn">import</span> <span class="nn">sys</span>
 <span class="kn">from</span> <span class="nn">functools</span> <span class="kn">import</span> <span class="n">partial</span>
-<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">NamedTuple</span><span class="p">,</span> <span class="n">Any</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">NamedTuple</span>
 <span class="kn">import</span> <span class="nn">jax</span>
 <span class="kn">import</span> <span class="nn">jax.numpy</span> <span class="k">as</span> <span class="nn">jnp</span>
 <span class="kn">import</span> <span class="nn">chex</span>
 <span class="kn">import</span> <span class="nn">pygame</span>
-<span class="kn">import</span> <span class="nn">jaxtari.atraJaxis</span> <span class="k">as</span> <span class="nn">aj</span>
+<span class="kn">import</span> <span class="nn">jaxtari.rendering.atraJaxis</span> <span class="k">as</span> <span class="nn">aj</span>
 <span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
-<span class="kn">from</span> <span class="nn">jax</span> <span class="kn">import</span> <span class="n">Array</span>
 <span class="kn">from</span> <span class="nn">gymnax.environments</span> <span class="kn">import</span> <span class="n">spaces</span>
 
 <span class="kn">from</span> <span class="nn">jaxtari.environment</span> <span class="kn">import</span> <span class="n">JaxEnvironment</span>
@@ -182,7 +180,7 @@
 <span class="n">FIRST_WAVE_DIRS</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">True</span><span class="p">])</span>
 
 <div class="viewcode-block" id="SpawnState">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.SpawnState">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.SpawnState">[docs]</a>
 <span class="k">class</span> <span class="nc">SpawnState</span><span class="p">(</span><span class="n">NamedTuple</span><span class="p">):</span>
     <span class="n">difficulty</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span>  <span class="c1"># Current difficulty level (0-7)</span>
     <span class="n">lane_dependent_pattern</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span>  <span class="c1"># Track waves independently per lane [4 lanes]</span>
@@ -204,7 +202,7 @@
 
 
 <div class="viewcode-block" id="initialize_spawn_state">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.initialize_spawn_state">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.initialize_spawn_state">[docs]</a>
 <span class="k">def</span> <span class="nf">initialize_spawn_state</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">SpawnState</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Initialize spawn state with first wave matching original game.&quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="n">SpawnState</span><span class="p">(</span>
@@ -229,7 +227,7 @@
 
 
 <div class="viewcode-block" id="soft_reset_spawn_state">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.soft_reset_spawn_state">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.soft_reset_spawn_state">[docs]</a>
 <span class="k">def</span> <span class="nf">soft_reset_spawn_state</span><span class="p">(</span><span class="n">spawn_state</span><span class="p">:</span> <span class="n">SpawnState</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SpawnState</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Reset spawn_times&quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="n">spawn_state</span><span class="o">.</span><span class="n">_replace</span><span class="p">(</span>
@@ -239,7 +237,7 @@
 
 <span class="c1"># Game state container</span>
 <div class="viewcode-block" id="SeaquestState">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.SeaquestState">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.SeaquestState">[docs]</a>
 <span class="k">class</span> <span class="nc">SeaquestState</span><span class="p">(</span><span class="n">NamedTuple</span><span class="p">):</span>
     <span class="n">player_x</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span>
     <span class="n">player_y</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span>
@@ -275,7 +273,7 @@
 
 
 <div class="viewcode-block" id="EntityPosition">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.EntityPosition">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.EntityPosition">[docs]</a>
 <span class="k">class</span> <span class="nc">EntityPosition</span><span class="p">(</span><span class="n">NamedTuple</span><span class="p">):</span>
     <span class="n">x</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span>
     <span class="n">y</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span>
@@ -286,7 +284,7 @@
 
 
 <div class="viewcode-block" id="SeaquestObservation">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.SeaquestObservation">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.SeaquestObservation">[docs]</a>
 <span class="k">class</span> <span class="nc">SeaquestObservation</span><span class="p">(</span><span class="n">NamedTuple</span><span class="p">):</span>
     <span class="n">player</span><span class="p">:</span> <span class="n">EntityPosition</span>
     <span class="n">sharks</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span>  <span class="c1"># Shape (12, 5) - 12 sharks, each with x,y,w,h,active</span>
@@ -302,7 +300,7 @@
 
 
 <div class="viewcode-block" id="SeaquestInfo">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.SeaquestInfo">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.SeaquestInfo">[docs]</a>
 <span class="k">class</span> <span class="nc">SeaquestInfo</span><span class="p">(</span><span class="n">NamedTuple</span><span class="p">):</span>
     <span class="n">difficulty</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span>  <span class="c1"># Current difficulty level</span>
     <span class="n">successful_rescues</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span>  <span class="c1"># Number of successful rescues</span>
@@ -312,7 +310,7 @@
 
 
 <div class="viewcode-block" id="CarryState">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.CarryState">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.CarryState">[docs]</a>
 <span class="k">class</span> <span class="nc">CarryState</span><span class="p">(</span><span class="n">NamedTuple</span><span class="p">):</span>
     <span class="n">missile_pos</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span>
     <span class="n">shark_pos</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span>
@@ -323,7 +321,7 @@
 
 <span class="c1"># RENDER CONSTANTS</span>
 <div class="viewcode-block" id="load_sprites">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.load_sprites">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.load_sprites">[docs]</a>
 <span class="k">def</span> <span class="nf">load_sprites</span><span class="p">():</span>
     <span class="n">MODULE_DIR</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="vm">__file__</span><span class="p">))</span>
     <span class="c1"># Load sprites - no padding needed for background since it&#39;s already full size</span>
@@ -436,7 +434,7 @@
 <span class="p">)</span> <span class="o">=</span> <span class="n">load_sprites</span><span class="p">()</span>
 
 <div class="viewcode-block" id="check_collision_single">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.check_collision_single">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.check_collision_single">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">check_collision_single</span><span class="p">(</span><span class="n">pos1</span><span class="p">,</span> <span class="n">size1</span><span class="p">,</span> <span class="n">pos2</span><span class="p">,</span> <span class="n">size2</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Check collision between two single entities&quot;&quot;&quot;</span>
@@ -467,7 +465,7 @@
 
 
 <div class="viewcode-block" id="check_collision_batch">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.check_collision_batch">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.check_collision_batch">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">check_collision_batch</span><span class="p">(</span><span class="n">pos1</span><span class="p">,</span> <span class="n">size1</span><span class="p">,</span> <span class="n">pos2_array</span><span class="p">,</span> <span class="n">size2</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Check collision between one entity and an array of entities&quot;&quot;&quot;</span>
@@ -502,7 +500,7 @@
 
 
 <div class="viewcode-block" id="check_missile_collisions">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.check_missile_collisions">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.check_missile_collisions">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">check_missile_collisions</span><span class="p">(</span>
     <span class="n">missile_pos</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
@@ -637,7 +635,7 @@
 
 
 <div class="viewcode-block" id="check_player_collision">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.check_player_collision">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.check_player_collision">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">check_player_collision</span><span class="p">(</span>
     <span class="n">player_x</span><span class="p">,</span>
@@ -716,7 +714,7 @@
 
 
 <div class="viewcode-block" id="get_spawn_position">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.get_spawn_position">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.get_spawn_position">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">get_spawn_position</span><span class="p">(</span><span class="n">moving_left</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">slot</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Get spawn position based on movement direction and slot number&quot;&quot;&quot;</span>
@@ -731,7 +729,7 @@
 
 
 <div class="viewcode-block" id="is_slot_empty">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.is_slot_empty">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.is_slot_empty">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">is_slot_empty</span><span class="p">(</span><span class="n">pos</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Check if a position slot is empty (0,0,ß)&quot;&quot;&quot;</span>
@@ -739,7 +737,7 @@
 
 
 <div class="viewcode-block" id="get_front_entity">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.get_front_entity">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.get_front_entity">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">get_front_entity</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">lane_positions</span><span class="p">):</span>
     <span class="c1"># check on the first submarine in the lane which direction they are going</span>
@@ -781,7 +779,7 @@
 
 
 <div class="viewcode-block" id="get_pattern_for_difficulty">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.get_pattern_for_difficulty">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.get_pattern_for_difficulty">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">get_pattern_for_difficulty</span><span class="p">(</span>
     <span class="n">current_pattern</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">moving_left</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span>
@@ -811,7 +809,7 @@
 
 
 <div class="viewcode-block" id="update_enemy_spawns">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.update_enemy_spawns">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.update_enemy_spawns">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">update_enemy_spawns</span><span class="p">(</span>
     <span class="n">spawn_state</span><span class="p">:</span> <span class="n">SpawnState</span><span class="p">,</span>
@@ -1160,7 +1158,7 @@
 
 
 <div class="viewcode-block" id="step_enemy_movement">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.step_enemy_movement">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.step_enemy_movement">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">step_enemy_movement</span><span class="p">(</span>
     <span class="n">spawn_state</span><span class="p">:</span> <span class="n">SpawnState</span><span class="p">,</span>
@@ -1548,7 +1546,7 @@
 
 
 <div class="viewcode-block" id="spawn_divers">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.spawn_divers">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.spawn_divers">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">spawn_divers</span><span class="p">(</span>
     <span class="n">spawn_state</span><span class="p">:</span> <span class="n">SpawnState</span><span class="p">,</span>
@@ -1688,7 +1686,7 @@
 
 
 <div class="viewcode-block" id="step_diver_movement">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.step_diver_movement">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.step_diver_movement">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">step_diver_movement</span><span class="p">(</span>
     <span class="n">diver_positions</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
@@ -2051,7 +2049,7 @@
 
 
 <div class="viewcode-block" id="spawn_step">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.spawn_step">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.spawn_step">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">spawn_step</span><span class="p">(</span>
     <span class="n">state</span><span class="p">,</span>
@@ -2100,7 +2098,7 @@
 
 
 <div class="viewcode-block" id="surface_sub_step">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.surface_sub_step">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.surface_sub_step">[docs]</a>
 <span class="k">def</span> <span class="nf">surface_sub_step</span><span class="p">(</span><span class="n">state</span><span class="p">:</span> <span class="n">SeaquestState</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
     <span class="c1"># Check direction value specifically to get scalar boolean</span>
     <span class="n">sub_exists</span> <span class="o">=</span> <span class="n">state</span><span class="o">.</span><span class="n">surface_sub_position</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span>
@@ -2143,7 +2141,7 @@
 
 
 <div class="viewcode-block" id="enemy_missiles_step">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.enemy_missiles_step">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.enemy_missiles_step">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">enemy_missiles_step</span><span class="p">(</span>
     <span class="n">curr_sub_positions</span><span class="p">,</span> <span class="n">curr_enemy_missile_positions</span><span class="p">,</span> <span class="n">step_counter</span><span class="p">,</span> <span class="n">difficulty</span>
@@ -2286,7 +2284,7 @@
 
 
 <div class="viewcode-block" id="player_missile_step">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.player_missile_step">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.player_missile_step">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">player_missile_step</span><span class="p">(</span>
     <span class="n">state</span><span class="p">:</span> <span class="n">SeaquestState</span><span class="p">,</span> <span class="n">curr_player_x</span><span class="p">,</span> <span class="n">curr_player_y</span><span class="p">,</span> <span class="n">action</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span>
@@ -2345,7 +2343,7 @@
 
 
 <div class="viewcode-block" id="update_oxygen">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.update_oxygen">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.update_oxygen">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">update_oxygen</span><span class="p">(</span><span class="n">state</span><span class="p">,</span> <span class="n">player_x</span><span class="p">,</span> <span class="n">player_y</span><span class="p">,</span> <span class="n">player_missile_position</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Update oxygen levels and handle surfacing mechanics with proper surfacing detection&quot;&quot;&quot;</span>
@@ -2473,7 +2471,7 @@
 
 
 <div class="viewcode-block" id="player_step">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.player_step">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.player_step">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">player_step</span><span class="p">(</span>
     <span class="n">state</span><span class="p">:</span> <span class="n">SeaquestState</span><span class="p">,</span> <span class="n">action</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span>
@@ -2564,7 +2562,7 @@
 
 
 <div class="viewcode-block" id="calculate_kill_points">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.calculate_kill_points">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.calculate_kill_points">[docs]</a>
 <span class="nd">@jax</span><span class="o">.</span><span class="n">jit</span>
 <span class="k">def</span> <span class="nf">calculate_kill_points</span><span class="p">(</span><span class="n">successful_rescues</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Calculate the points awarded for killing a shark or submarine. Sharks and submarines are worth 20 points.</span>
@@ -2577,7 +2575,7 @@
 
 
 <div class="viewcode-block" id="JaxSeaquest">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.JaxSeaquest">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.JaxSeaquest">[docs]</a>
 <span class="k">class</span> <span class="nc">JaxSeaquest</span><span class="p">(</span><span class="n">JaxEnvironment</span><span class="p">[</span><span class="n">SeaquestState</span><span class="p">,</span> <span class="n">SeaquestObservation</span><span class="p">,</span> <span class="n">SeaquestInfo</span><span class="p">]):</span>
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">frameskip</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="n">reward_funcs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">callable</span><span class="p">]</span> <span class="o">=</span><span class="kc">None</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
@@ -2597,13 +2595,13 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">obs_size</span> <span class="o">=</span> <span class="mi">5</span> <span class="o">+</span> <span class="mi">12</span> <span class="o">*</span> <span class="mi">5</span> <span class="o">+</span> <span class="mi">12</span> <span class="o">*</span> <span class="mi">5</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="mi">5</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">*</span> <span class="mi">5</span> <span class="o">+</span> <span class="mi">5</span> <span class="o">+</span> <span class="mi">5</span> <span class="o">+</span> <span class="mi">4</span>
 
 <div class="viewcode-block" id="JaxSeaquest.flatten_entity_position">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.JaxSeaquest.flatten_entity_position">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.JaxSeaquest.flatten_entity_position">[docs]</a>
     <span class="k">def</span> <span class="nf">flatten_entity_position</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entity</span><span class="p">:</span> <span class="n">EntityPosition</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">entity</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">entity</span><span class="o">.</span><span class="n">y</span><span class="p">,</span> <span class="n">entity</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="n">entity</span><span class="o">.</span><span class="n">height</span><span class="p">,</span> <span class="n">entity</span><span class="o">.</span><span class="n">active</span><span class="p">])</span></div>
 
 
 <div class="viewcode-block" id="JaxSeaquest.obs_to_flat_array">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.JaxSeaquest.obs_to_flat_array">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.JaxSeaquest.obs_to_flat_array">[docs]</a>
     <span class="nd">@partial</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">,</span> <span class="n">static_argnums</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,))</span>
     <span class="k">def</span> <span class="nf">obs_to_flat_array</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obs</span><span class="p">:</span> <span class="n">SeaquestObservation</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span>
@@ -2623,13 +2621,13 @@
 
 
 <div class="viewcode-block" id="JaxSeaquest.action_space">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.JaxSeaquest.action_space">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.JaxSeaquest.action_space">[docs]</a>
     <span class="k">def</span> <span class="nf">action_space</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">spaces</span><span class="o">.</span><span class="n">Discrete</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">spaces</span><span class="o">.</span><span class="n">Discrete</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">action_set</span><span class="p">))</span></div>
 
 
 <div class="viewcode-block" id="JaxSeaquest.observation_space">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.JaxSeaquest.observation_space">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.JaxSeaquest.observation_space">[docs]</a>
     <span class="k">def</span> <span class="nf">observation_space</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">spaces</span><span class="o">.</span><span class="n">Box</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">spaces</span><span class="o">.</span><span class="n">Box</span><span class="p">(</span>
             <span class="n">low</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
@@ -2742,7 +2740,7 @@
         <span class="k">return</span> <span class="n">state</span><span class="o">.</span><span class="n">lives</span> <span class="o">&lt;</span> <span class="mi">0</span>
 
 <div class="viewcode-block" id="JaxSeaquest.reset">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.JaxSeaquest.reset">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.JaxSeaquest.reset">[docs]</a>
     <span class="nd">@partial</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">,</span> <span class="n">static_argnums</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,))</span>
     <span class="k">def</span> <span class="nf">reset</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">SeaquestState</span><span class="p">,</span> <span class="n">SeaquestObservation</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize game state&quot;&quot;&quot;</span>
@@ -2782,7 +2780,7 @@
 
 
 <div class="viewcode-block" id="JaxSeaquest.step">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.JaxSeaquest.step">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.JaxSeaquest.step">[docs]</a>
     <span class="nd">@partial</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">,</span> <span class="n">static_argnums</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="p">))</span>
     <span class="k">def</span> <span class="nf">step</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">:</span> <span class="n">SeaquestState</span><span class="p">,</span> <span class="n">action</span><span class="p">:</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span>
@@ -3163,10 +3161,10 @@
 <span class="kn">from</span> <span class="nn">jaxtari.renderers</span> <span class="kn">import</span> <span class="n">AtraJaxisRenderer</span>
 
 <div class="viewcode-block" id="Renderer_AtraJaxis">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.Renderer_AtraJaxis">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.Renderer_AtraJaxis">[docs]</a>
 <span class="k">class</span> <span class="nc">Renderer_AtraJaxis</span><span class="p">(</span><span class="n">AtraJaxisRenderer</span><span class="p">):</span>
 <div class="viewcode-block" id="Renderer_AtraJaxis.render">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.Renderer_AtraJaxis.render">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.Renderer_AtraJaxis.render">[docs]</a>
     <span class="nd">@partial</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">,</span> <span class="n">static_argnums</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,))</span>
     <span class="k">def</span> <span class="nf">render</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">state</span><span class="p">):</span>
         <span class="n">raster</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">WIDTH</span><span class="p">,</span> <span class="n">HEIGHT</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
@@ -3321,7 +3319,7 @@
 
 
 <div class="viewcode-block" id="get_human_action">
-<a class="viewcode-back" href="../../modules/jaxtari.html#jaxtari.jax_seaquest.get_human_action">[docs]</a>
+<a class="viewcode-back" href="../../../modules/jaxtari.games.html#jaxtari.games.jax_seaquest.get_human_action">[docs]</a>
 <span class="k">def</span> <span class="nf">get_human_action</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">chex</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Get human action from keyboard with support for diagonal movement and combined fire&quot;&quot;&quot;</span>
     <span class="n">keys</span> <span class="o">=</span> <span class="n">pygame</span><span class="o">.</span><span class="n">key</span><span class="o">.</span><span class="n">get_pressed</span><span class="p">()</span>
