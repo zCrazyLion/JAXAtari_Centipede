@@ -15,6 +15,9 @@ class NPYImageEditor:
         self.root = master
         self.root.title("NPY Image Editor")
 
+        self.current_mouse_position = tk.StringVar()
+        self.current_mouse_position.set("x=--, y=--")
+
         self.image = None
         self.zoom_level = 1
         self.current_color = [0, 0, 0, 255]  # Default color: black with full opacity
@@ -29,6 +32,7 @@ class NPYImageEditor:
         self.state_queue = []
         self.current_state_index = -1
         self.default_canvas_size = (600, 400)  # Default canvas size (width, height)
+        self.cmd_pressed = False  # For multi-select with magic wand
 
         # Bind keyboard shortcuts
         self.root.bind("<Control-z>", self.undo)
@@ -40,6 +44,10 @@ class NPYImageEditor:
         self.root.bind("<Control-MouseWheel>", self.on_mouse_scroll)
         # delete key to delete selected pixels
         self.root.bind("<Delete>", self.delete_selected)
+
+        # circumvents a CTRL error I encountered
+        self.root.bind("<Key>", self.on_key_press)
+        self.root.bind("<KeyRelease>", self.on_key_release)
 
         # State Queue UI with Scrollbar
         self.state_queue_frame = tk.Frame(self.root)
@@ -72,6 +80,14 @@ class NPYImageEditor:
         self.current_state_index = -1
         self.selection_preset = None
 
+    def on_key_press(self, event):
+        if event.keysym in ('Control_L', 'Control_R', 'Control'):
+            self.cmd_pressed = True
+
+    def on_key_release(self, event):
+        if event.keysym in ('Control_L', 'Control_R', 'Control'):
+            self.cmd_pressed = False
+
     def create_widgets(self):
         # Menu
         menu = tk.Menu(self.root)
@@ -82,6 +98,9 @@ class NPYImageEditor:
         file_menu.add_command(label="Open", command=self.open_file)
         file_menu.add_command(
             label="Save Selection", command=lambda: self.save_selection(None)
+        )
+        file_menu.add_command(
+            label="Save full image", command=lambda: self.save_full_image(None)
         )
         file_menu.add_command(label="Exit", command=self.root.quit)
 
@@ -189,8 +208,19 @@ class NPYImageEditor:
             command=lambda: self.load_selection_preset(),
         ).pack(side=tk.LEFT)
 
+        status_bar = tk.Label(self.root, textvariable=self.current_mouse_position, bd=1, relief=tk.SUNKEN, anchor=tk.W)
+        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+
     def set_selection_mode(self, mode):
         self.selection_mode = mode
+
+    def on_cmd_press(self, event):
+        print(f"Control pressed: {event.keysym}")
+        self.cmd_pressed = True
+
+    def on_cmd_release(self, event):
+        print(f"Control released: {event.keysym}")
+        self.cmd_pressed = False
 
     def fill_selected(self):
         if self.selected is not None and self.image is not None:
@@ -363,6 +393,18 @@ class NPYImageEditor:
         else:
             messagebox.showwarning("Warning", "Invalid Path.")
 
+
+    def save_full_image(self, _):
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".npy", filetypes=[("NumPy files", "*.npy")]
+        )
+        if file_path:
+            np.save(file_path, self.image)
+            messagebox.showinfo("Saved", f"Image saved to {file_path}")
+        else:
+            messagebox.showwarning("Warning", "Invalid Path.")
+
+
     def select_all(self, _):
         if self.image is not None:
             self.selected = np.ones(
@@ -485,7 +527,19 @@ class NPYImageEditor:
                     int(event.xdata),
                     self.image[int(event.ydata), int(event.xdata)],
                 )
-                self.submit_selection(new_selection)
+
+                # If CMD/CTRL is pressed, add to current selection instead of replacing it
+                if self.cmd_pressed:
+                    # Add new selection to current selection by logical or on the whole array
+                    for i in range(len(self.selected)):
+                        for j in range(len(self.selected[0])):
+                            if new_selection[i, j]:
+                                self.selected[i, j] = True
+
+                else:
+                    # Normal behavior - replace selection
+                    self.selected = new_selection
+
                 self.update_state("magic_wand")
 
             if self.tool == "select_all_with_color":
@@ -516,23 +570,46 @@ class NPYImageEditor:
     def magic_wand(self, y, x, target_color):
         stack = [(y, x)]
         new_selection = np.zeros(self.image.shape[:2], dtype=bool)
+
+        # Ensure the initial pixel is valid
+        if not (0 <= y < self.image.shape[0] and 0 <= x < self.image.shape[1]):
+            return new_selection
+
+        # Mark the clicked pixel as selected
+        new_selection[y, x] = True
+
+        # Then find all connected pixels of the same color
+        processed = {(y, x)}  # Track processed pixels to avoid duplicates
+
         while stack:
-            y, x = stack.pop()
-            if not (0 <= y < self.image.shape[0] and 0 <= x < self.image.shape[1]):
-                continue
-            if not new_selection[y, x] and np.all(self.image[y, x] == target_color):
-                new_selection[y, x] = True
-                stack.extend([(y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)])
+            cur_y, cur_x = stack.pop()
+
+            # Check the four adjacent pixels
+            for ny, nx in [(cur_y - 1, cur_x), (cur_y + 1, cur_x), (cur_y, cur_x - 1), (cur_y, cur_x + 1)]:
+                if (not (0 <= ny < self.image.shape[0] and 0 <= nx < self.image.shape[1])
+                        or (ny, nx) in processed):
+                    continue
+
+                processed.add((ny, nx))
+
+                # If the color matches, mark as selected and continue DFS
+                if np.all(self.image[ny, nx] == target_color):
+                    new_selection[ny, nx] = True
+                    stack.append((ny, nx))
+
         return new_selection
 
     def on_mouse_motion(self, event):
-        if event.xdata and event.ydata:
+        if event.xdata is not None and event.ydata is not None:
+            x, y = int(event.xdata), int(event.ydata)
+            self.current_mouse_position.set(f"x={x}, y={y}")
             if self.tool == "pencil" and self.mouse_pressed:
-                x, y = int(event.xdata), int(event.ydata)
                 self.image[y, x] = self.current_color
 
             if self.tool == "rectangular_selection" and self.mouse_pressed:
                 self.selection_end = (int(event.ydata), int(event.xdata))
+        else:
+            self.current_mouse_position.set("x=--, y=--")
 
         self.update_display()
 
