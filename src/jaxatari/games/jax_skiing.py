@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Tuple, NamedTuple
 import random
 
-from jaxtari.environment import JaxEnvironment
+from jaxatari.environment import JaxEnvironment
 
 NOOP = 0
 LEFT = 1

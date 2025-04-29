@@ -1,13 +1,13 @@
 import os
 from functools import partial
 from typing import NamedTuple, Tuple
-from jaxtari.environment import JaxEnvironment, EnvState, EnvObs, EnvInfo
+from jaxatari.environment import JaxEnvironment, EnvState, EnvObs, EnvInfo
 import jax
 import jax.numpy as jnp
 import chex
 import numpy as np
 import pygame
-import jaxtari.rendering.atraJaxis as aj
+import jaxatari.rendering.atraJaxis as aj
 
 def load_sprites():
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))

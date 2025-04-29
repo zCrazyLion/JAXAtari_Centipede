@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import chex
 import pygame
 
-from jaxtari.environment import JaxEnvironment
+from jaxatari.environment import JaxEnvironment
 
 # Constants for game environment
 WINDOW_WIDTH = 160 * 3
