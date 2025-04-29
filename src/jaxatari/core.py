@@ -5,7 +5,7 @@ from jaxatari.environment import JaxEnvironment
 from jaxatari.games.jax_pong import JaxPong
 from jaxatari.games.jax_seaquest import JaxSeaquest, Renderer_AtraJaxis
 
-class JAXtari:
+class JAXAtari:
     def __init__(self, game_name):
         renderer = None
         match game_name:
