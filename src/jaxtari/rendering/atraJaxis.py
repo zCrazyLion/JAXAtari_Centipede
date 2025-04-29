@@ -5,6 +5,8 @@ import jax.numpy as jnp
 import jax
 from functools import partial
 import pygame
+from jax import lax
+
 
 class AgnosticPath(Path):
     """A class that can handle input with Windows (\\) and/or posix (/) separators for paths"""

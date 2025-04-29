@@ -2089,14 +2089,14 @@ class Renderer_AtraJaxis(AtraJaxisRenderer):
     # Type hint for sprites dictionary
     sprites: Dict[str, Any]
 
-    def __init__(self, sprite_path: str):
+    def __init__(self):
         """
         Initializes the renderer by loading sprites, including level backgrounds.
 
         Args:
             sprite_path: Path to the directory containing sprite .npy files.
         """
-        self.sprite_path = sprite_path
+        self.sprite_path = f"{os.path.dirname(os.path.abspath(__file__))}/sprites/kangaroo"
         self.sprites = self._load_sprites()
         # Store background sprites directly for use in render function
         self.background_0 = self.sprites.get('background_0')
@@ -2429,7 +2429,7 @@ if __name__ == "__main__":
     pygame.display.set_caption("Kangaroo")
     clock = pygame.time.Clock()
 
-    renderer = Renderer_AtraJaxis("sprites/kangaroo/")
+    renderer = Renderer_AtraJaxis()
     jitted_step = jax.jit(game.step)
     jitted_reset = jax.jit(game.reset)
     (curr_state, _) = jitted_reset()

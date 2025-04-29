@@ -8,7 +8,7 @@ To build or extend the docs:
 
 ```bash
 # 1. Install dependencies (e.g. inside a virtual environment)
-pip install -r docs/requirements.txt
+pip install -r docs/source/requirements.txt
 
 # 2. Navigate to the docs directory
 cd docs/
