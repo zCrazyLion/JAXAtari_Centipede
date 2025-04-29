@@ -8,7 +8,7 @@ Welcome to JAXAtari's Documentation!
    :maxdepth: 2
    :caption: API:
 
-   jaxtari/core.rst
+   jaxatari/core.rst
    modules/modules
 
 .. toctree::

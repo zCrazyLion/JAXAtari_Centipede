@@ -1,7 +1,7 @@
-jaxtari
-=======
+jaxatari
+========
 
 .. toctree::
    :maxdepth: 4
 
-   jaxtari
+   jaxatari

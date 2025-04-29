@@ -1,1 +1,0 @@
-from jaxtari.core import JAXtari
