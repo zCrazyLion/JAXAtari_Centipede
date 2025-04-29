@@ -17,6 +17,10 @@ Quentin Delfosse, Daniel Kirn, Dominik Mandok, Paul Seitz, Lars Teubner, Sebasti
 - Compatible API with ALE to ease integration.
 - Benchmarking tools.
 
+
+📘 [Read the Documentation](https://jaxatari.readthedocs.io/en/latest/) 
+
+
 <!-- [**📘 JAXAtari Documentation**] -->
 
 ## Getting Started
