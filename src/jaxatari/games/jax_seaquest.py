@@ -5,11 +5,11 @@ import jax
 import jax.numpy as jnp
 import chex
 import pygame
-import jaxtari.rendering.atraJaxis as aj
+import jaxatari.rendering.atraJaxis as aj
 import numpy as np
 from gymnax.environments import spaces
 
-from jaxtari.environment import JaxEnvironment
+from jaxatari.environment import JaxEnvironment
 
 # TODO: surface submarine at 6 divers collected + difficulty 1
 # Game Constants
@@ -2972,7 +2972,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
         # Choose between death animation and normal game step
         return return_state, observation, env_reward, done, info
 
-from jaxtari.renderers import AtraJaxisRenderer
+from jaxatari.renderers import AtraJaxisRenderer
 
 class Renderer_AtraJaxis(AtraJaxisRenderer):
     @partial(jax.jit, static_argnums=(0,))

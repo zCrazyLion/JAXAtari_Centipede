@@ -7,9 +7,9 @@ import chex
 import pygame
 from jax import Array
 from gymnax.environments import spaces
-from jaxtari.environment import JaxEnvironment
+from jaxatari.environment import JaxEnvironment
 
-from jaxtari.games.kangaroo_levels import (
+from jaxatari.games.kangaroo_levels import (
     LevelConstants,
     Kangaroo_Level_1,
     Kangaroo_Level_2,
@@ -2082,8 +2082,8 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
     def _get_done(self, state: KangarooState) -> bool:
         return state.lives <= 0
 
-import jaxtari.rendering.atraJaxis as aj
-from jaxtari.renderers import AtraJaxisRenderer
+import jaxatari.rendering.atraJaxis as aj
+from jaxatari.renderers import AtraJaxisRenderer
 
 class Renderer_AtraJaxis(AtraJaxisRenderer):
     # Type hint for sprites dictionary

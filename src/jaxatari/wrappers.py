@@ -8,7 +8,7 @@ import chex
 from flax import struct
 import jax
 import jax.numpy as jnp
-from jaxtari.environment import EnvState
+from jaxatari.environment import EnvState
 from gymnax.environments import spaces
 
 

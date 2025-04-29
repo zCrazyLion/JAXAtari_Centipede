@@ -4,14 +4,10 @@ from typing import NamedTuple, Tuple
 import jax.lax
 import jax.numpy as jnp
 import chex
-import matplotlib.pyplot as plt
-import numpy as np
 import pygame
-import jaxtari.rendering.atraJaxis as aj
-from more_itertools.recipes import transpose
-from numpy.ma.core import shape
 
-from jaxtari.environment import JaxEnvironment
+from jaxatari.rendering import atraJaxis as aj
+from jaxatari.environment import JaxEnvironment
 
 # Constants for game environment
 MAX_SPEED = 12
@@ -584,6 +580,27 @@ class JaxPong(JaxEnvironment[State, PongObservation, PongInfo]):
             score_player=state.player_score,
             score_enemy=state.enemy_score,
         )
+
+    @partial(jax.jit, static_argnums=(0,))
+    def obs_to_flat_array(self, obs: PongObservation) -> jnp.ndarray:
+           return jnp.concatenate([
+               obs.player.x.flatten(),
+               obs.player.y.flatten(),
+               obs.player.height.flatten(),
+               obs.player.width.flatten(),
+               obs.enemy.x.flatten(),
+               obs.enemy.y.flatten(),
+               obs.enemy.height.flatten(),
+               obs.enemy.width.flatten(),
+               obs.ball.x.flatten(),
+               obs.ball.y.flatten(),
+               obs.ball.height.flatten(),
+               obs.ball.width.flatten(),
+               obs.score_player.flatten(),
+               obs.score_enemy.flatten()
+            ]
+           )
+
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_info(self, state: State) -> PongInfo:

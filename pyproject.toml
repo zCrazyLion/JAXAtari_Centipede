@@ -1,5 +1,5 @@
 [project]
-name = "jaxtari"
+name = "jaxatari"
 version = "0.1.0"
 description = "GPU-accelerated, object-centric Atari environments for reinforcement learning with JAX."
 readme = "README.md"

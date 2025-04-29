@@ -1,1 +1,1 @@
-from jaxtari.core import JAXtari
+from jaxatari.core import JAXtari

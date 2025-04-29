@@ -1,9 +1,9 @@
 import json
 import jax
 
-from jaxtari.environment import JaxEnvironment
-from jaxtari.games.jax_pong import JaxPong
-from jaxtari.games.jax_seaquest import JaxSeaquest, Renderer_AtraJaxis
+from jaxatari.environment import JaxEnvironment
+from jaxatari.games.jax_pong import JaxPong
+from jaxatari.games.jax_seaquest import JaxSeaquest, Renderer_AtraJaxis
 
 class JAXtari:
     def __init__(self, game_name):
