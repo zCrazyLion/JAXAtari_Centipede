@@ -109,14 +109,37 @@ class NPYImageEditor:
         edit_menu.add_command(label="Undo", command=self.undo_menu)
         edit_menu.add_command(label="Redo", command=self.redo_menu)
 
-        # Canvas
+        # Scrollable Canvas
+        self.canvas_frame = tk.Frame(self.root)
+        self.canvas_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.scroll_canvas = tk.Canvas(self.canvas_frame)
+        self.scroll_canvas.grid(row=0, column=0, sticky="nsew")  # Use grid layout for proper alignment
+
+        self.h_scrollbar = tk.Scrollbar(self.canvas_frame, orient=tk.HORIZONTAL, command=self.scroll_canvas.xview)
+        self.h_scrollbar.grid(row=1, column=0, sticky="ew")  # Place the horizontal scrollbar at the bottom
+
+        self.v_scrollbar = tk.Scrollbar(self.canvas_frame, orient=tk.VERTICAL, command=self.scroll_canvas.yview)
+        self.v_scrollbar.grid(row=0, column=1, sticky="ns")  # Place the vertical scrollbar on the right
+
+        self.canvas_frame.grid_rowconfigure(0, weight=1)  # Allow the canvas to expand vertically
+        self.canvas_frame.grid_columnconfigure(0, weight=1)  # Allow the canvas to expand horizontally
+
+        self.scroll_canvas.configure(xscrollcommand=self.h_scrollbar.set, yscrollcommand=self.v_scrollbar.set)
+
+        # Embed Matplotlib Figure in Scrollable Canvas
         self.figure, self.ax = plt.subplots()
-        self.canvas = FigureCanvasTkAgg(self.figure, self.root)
+        self.canvas = FigureCanvasTkAgg(self.figure, self.scroll_canvas)
         self.canvas_widget = self.canvas.get_tk_widget()
-        self.canvas_widget.pack(fill=tk.BOTH, expand=True)
+        self.canvas_window = self.scroll_canvas.create_window(0, 0, anchor=tk.NW, window=self.canvas_widget)
+
         self.canvas.mpl_connect("button_press_event", self.on_mouse_press)
         self.canvas.mpl_connect("button_release_event", self.on_mouse_release)
         self.canvas.mpl_connect("motion_notify_event", self.on_mouse_motion)
+
+        # Update scroll region when the canvas size changes
+        self.scroll_canvas.bind("<Configure>", self.update_scroll_region)
+
 
         # Tool Buttons
         tools_frame = tk.Frame(self.root)
@@ -126,6 +149,8 @@ class NPYImageEditor:
         tk.Button(tools_frame, text="Zoom Out", command=self.zoom_out).pack(
             side=tk.LEFT
         )
+        tk.Button(tools_frame, text="Reset Zoom", command=self.reset_zoom).pack(side=tk.LEFT)
+    
         tk.Button(tools_frame, text="Pencil", command=self.activate_pencil).pack(
             side=tk.LEFT
         )
@@ -427,6 +452,10 @@ class NPYImageEditor:
         self.zoom_level /= 1.5
         self.update_display()
 
+    def reset_zoom(self):
+        self.zoom_level = 1.0  # Reset zoom level to default
+        self.update_display()  # Update the display to reflect the reset
+
     def activate_pencil(self):
         self.tool = "pencil"
         self.selection_mode_frame.pack_forget()  # Hide selection mode buttons
@@ -623,6 +652,13 @@ class NPYImageEditor:
 
             # Update canvas widget size
             self.canvas_widget.config(width=new_width, height=new_height)
+
+            # Update scroll region
+            self.scroll_canvas.itemconfig(self.canvas_window, width=new_width, height=new_height)
+            self.scroll_canvas.config(scrollregion=(0, 0, new_width, new_height))
+
+    def update_scroll_region(self, event=None):
+        self.scroll_canvas.config(scrollregion=self.scroll_canvas.bbox("all"))
 
     def update_display(self):
         if self.image is None:
