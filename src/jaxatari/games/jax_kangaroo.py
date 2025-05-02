@@ -1664,7 +1664,7 @@ def monkey_controller(state: KangarooState, punching: chex.Array):
 
 
 # -------- Game Interface for Reset and Step --------
-class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo]):
+class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo]):
     def __init__(self, frameskip: int = 1, reward_funcs: list[callable]=None):
         self.frameskip = frameskip
         self.frame_stack_size = 4
@@ -2026,12 +2026,6 @@ class Kangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo])
         observation = self._get_observation(new_state)
         observation = jax.tree.map(lambda stack, obs: jnp.concatenate([stack[1:], jnp.expand_dims(obs, axis=0)], axis=0), new_state.obs_stack, observation)
         new_state = new_state._replace(obs_stack=observation)
-
-        new_state = jax.lax.cond(
-            done,
-            lambda: self.reset_level(1),
-            lambda: new_state,
-        )
 
         return new_state, new_state.obs_stack, env_reward, done, info
 
@@ -2421,7 +2415,7 @@ class Renderer_AtraJaxis(AtraJaxisRenderer):
 
 if __name__ == "__main__":
     pygame.init()
-    game = Kangaroo()
+    game = JaxKangaroo()
 
     scaling = 4
 
