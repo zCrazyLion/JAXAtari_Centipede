@@ -68,12 +68,13 @@ class AtariState:
     obs_stack: chex.Array
     
 class AtariWrapper(GymnaxWrapper):
-    def __init__(self, env, sticky_actions: bool = True, frame_stack_size: int = 4, frame_skip: int = 4, max_episode_length: int = 10_000):
+    def __init__(self, env, sticky_actions: bool = True, frame_stack_size: int = 4, frame_skip: int = 4, max_episode_length: int = 10_000, episodic_life: bool = True):
         super().__init__(env)
         self.sticky_actions = sticky_actions
         self.frame_stack_size = frame_stack_size
         self.frame_skip = frame_skip
         self.max_episode_length = max_episode_length
+        self.episodic_life = episodic_life
 
     @functools.partial(jax.jit, static_argnums=(0,))
     def reset(self, key: chex.PRNGKey) -> Tuple[chex.Array, EnvState]:
@@ -120,6 +121,12 @@ class AtariWrapper(GymnaxWrapper):
         reward = jnp.sum(rewards)
 
         done = jnp.logical_or(dones.any(), state.step >= self.max_episode_length)
+        if self.episodic_life:
+            # If the player has lost a life, we consider the episode done
+            # If there is an error here, chances are that lives is not in the env_state
+            # -> Only use with environments that have lives
+            done = jnp.logical_or(done, state.env_state.lives > new_env_state.lives)
+
 
         def reduce_info(k, v):
             if k == "all_rewards":
