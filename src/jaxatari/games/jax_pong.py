@@ -124,9 +124,6 @@ class PongObservation(NamedTuple):
     player: EntityPosition
     enemy: EntityPosition
     ball: EntityPosition
-    score_player: jnp.ndarray
-    score_enemy: jnp.ndarray
-
 
 class PongInfo(NamedTuple):
     time: jnp.ndarray
@@ -416,7 +413,7 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
             Action.RIGHTFIRE,
             Action.LEFTFIRE,
         ]
-        self.obs_size = 3*4+1+1
+        self.obs_size = 3*2
 
 
     def reset(self, key=None) -> Tuple[PongObservation, PongState]:
@@ -588,8 +585,6 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
             player=player,
             enemy=enemy,
             ball=ball,
-            score_player=state.player_score,
-            score_enemy=state.enemy_score,
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -597,18 +592,10 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
            return jnp.concatenate([
                obs.player.x.flatten(),
                obs.player.y.flatten(),
-               obs.player.height.flatten(),
-               obs.player.width.flatten(),
                obs.enemy.x.flatten(),
                obs.enemy.y.flatten(),
-               obs.enemy.height.flatten(),
-               obs.enemy.width.flatten(),
                obs.ball.x.flatten(),
                obs.ball.y.flatten(),
-               obs.ball.height.flatten(),
-               obs.ball.width.flatten(),
-               obs.score_player.flatten(),
-               obs.score_enemy.flatten()
             ]
            )
 
