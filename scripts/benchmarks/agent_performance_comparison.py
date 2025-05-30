@@ -7,7 +7,7 @@ import numpy as np
 from ocatari.core import OCAtari
 
 try:
-    from scripts.benchmarks.train_ocatari_agent import (
+    from train_ocatari_agent import (
         train_ppo_with_ocatari, 
         normalize_observation_ocatari 
     )
@@ -18,7 +18,7 @@ try:
         TrainState
     )
 
-    from scripts.benchmarks.train_jaxatari_agent import (
+    from train_jaxatari_agent import (
         train_ppo_with_jaxatari,
         normalize_observation_jaxatari
     )
