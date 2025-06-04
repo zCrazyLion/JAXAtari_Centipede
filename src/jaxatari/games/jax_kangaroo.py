@@ -168,19 +168,13 @@ class KangarooObservation(NamedTuple):
     player_y: chex.Array
     player_o: chex.Array
     platform_positions: chex.Array
-    platform_sizes: chex.Array
     ladder_positions: chex.Array
-    ladder_sizes: chex.Array
     fruit_positions: chex.Array
-    fruit_actives: chex.Array
-    fruit_stages: chex.Array
     bell_position: chex.Array
     child_position: chex.Array
     falling_coco_position: chex.Array
-    monkey_states: chex.Array
     monkey_positions: chex.Array
     coco_positions: chex.Array
-    coco_states: chex.Array
 
 
 class KangarooInfo(NamedTuple):
@@ -1695,15 +1689,25 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
             Action.DOWNRIGHTFIRE,
             Action.DOWNLEFTFIRE
         ]
-        self.obs_size = 205
+        self.obs_size = 111
         # self.obs_size = 3+2*2*MAX_PLATFORMS+2*2*MAX_LADDERS+2*MAX_FRUITS+MAX_FRUITS+MAX_FRUITS+2*MAX_BELLS+2*MAX_CHILD+2+4+2*4+2*4+4
 
     @partial(jax.jit, static_argnums=(0,))
     def obs_to_flat_array(self, obs: KangarooObservation) -> chex.Array:
         """Converts the observation to a flat array."""
-        obs_leaves = jax.tree.flatten(obs)[0]
-        obs_flat= jnp.concatenate([jnp.ravel(leaf) for leaf in obs_leaves])
-        return obs_flat
+        return jnp.concatenate([
+            obs.player_x.flatten(),
+            obs.player_y.flatten(),
+            obs.player_o.flatten(),
+            obs.platform_positions.flatten(),
+            obs.ladder_positions.flatten(),
+            obs.fruit_positions.flatten(),
+            obs.bell_position.flatten(),
+            obs.child_position.flatten(),
+            obs.falling_coco_position.flatten(),
+            obs.coco_positions.flatten(),
+            obs.monkey_positions.flatten(),
+        ])
 
     def action_space(self) -> spaces.Discrete:
         return spaces.Discrete(len(self.action_set))
@@ -1891,7 +1895,6 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
             )
         )
 
-
         new_level_state = jax.lax.cond(
             new_levelup,
             lambda: self.reset_level(new_current_level).level,
@@ -2019,24 +2022,40 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_observation(self, state: KangarooState) -> KangarooObservation:
+        fruit_mask = state.level.fruit_actives[:, jnp.newaxis]
+        fruit_positions = jnp.where(fruit_mask, state.level.fruit_positions, jnp.array([-1, -1]))
+
+        bell_mask = state.level.bell_position[jnp.newaxis, :]
+        bell_position = jnp.where(bell_mask, state.level.bell_position, jnp.array([-1, -1]))
+
+        falling_coco_mask = state.level.falling_coco_dropping[None]
+        falling_coco_position = jnp.where(
+            falling_coco_mask, state.level.falling_coco_position, jnp.array([-1, -1])
+        )
+
+        monkey_mask = state.level.monkey_states[:, jnp.newaxis]
+        monkey_positions = jnp.where(
+            monkey_mask, state.level.monkey_positions, jnp.array([-1, -1])
+        )
+
+        coco_mask = state.level.coco_states[:, jnp.newaxis]
+        coco_positions = jnp.where(
+            coco_mask, state.level.coco_positions, jnp.array([-1, -1])
+        )
+
+
         return KangarooObservation(
             player_x=state.player.x,
             player_y=state.player.y,
             player_o=state.player.orientation,
             platform_positions=state.level.platform_positions,
-            platform_sizes=state.level.platform_sizes,
             ladder_positions=state.level.ladder_positions,
-            ladder_sizes=state.level.ladder_sizes,
-            fruit_positions=state.level.fruit_positions,
-            fruit_actives=state.level.fruit_actives,
-            fruit_stages=state.level.fruit_stages,
-            bell_position=state.level.bell_position,
+            fruit_positions=fruit_positions,
+            bell_position=bell_position,
             child_position=state.level.child_position,
-            falling_coco_position=state.level.falling_coco_position,
-            monkey_states=state.level.monkey_states,
-            monkey_positions=state.level.monkey_positions,
-            coco_positions=state.level.coco_positions,
-            coco_states=state.level.coco_states,
+            falling_coco_position=falling_coco_position,
+            monkey_positions=monkey_positions,
+            coco_positions=coco_positions,
         )
 
     @partial(jax.jit, static_argnums=(0,))
