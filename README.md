@@ -34,6 +34,13 @@ source .venv/bin/activate
 python3 -m pip install -U pip
 pip3 install -e .
 ```
+Note: this will install JAX without GPU acceleration.
+
+CUDA Users should run the following to add GPU support:
+```bash
+pip install -U "jax[cuda12]"
+```
+For other accelerator types, please follow the instructions [here](https://docs.jax.dev/en/latest/installation.html).
 
 ## Usage
 
