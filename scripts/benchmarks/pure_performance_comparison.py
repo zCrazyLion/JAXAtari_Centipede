@@ -21,8 +21,55 @@ import numpy as np
 import psutil
 import gc
 
-# TODO: this is a hack, change this by pulling out the function into a util.py or something
-from play import load_game_environment
+from jaxatari.environment import JaxEnvironment
+from jaxatari.renderers import AtraJaxisRenderer
+
+def load_game_environment(game_file_path: str) -> Tuple[JaxEnvironment, AtraJaxisRenderer]:
+    """
+    Dynamically loads a game environment and the renderer from a .py file.
+    It looks for a class that inherits from JaxEnvironment.
+    """
+    if not os.path.exists(game_file_path):
+        raise FileNotFoundError(f"Game file not found: {game_file_path}")
+
+    module_name = os.path.splitext(os.path.basename(game_file_path))[0]
+
+    # Add the directory of the game file to sys.path to handle relative imports within the game file
+    game_dir = os.path.dirname(os.path.abspath(game_file_path))
+    if game_dir not in sys.path:
+        sys.path.insert(0, game_dir)
+
+    spec = importlib.util.spec_from_file_location(module_name, game_file_path)
+    if spec is None:
+        raise ImportError(f"Could not load spec for module {module_name} from {game_file_path}")
+
+    game_module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(game_module)
+    except Exception as e:
+        if game_dir in sys.path and sys.path[0] == game_dir:  # Clean up sys.path if we added to it
+            sys.path.pop(0)
+        raise ImportError(f"Could not execute module {module_name}: {e}")
+
+    if game_dir in sys.path and sys.path[0] == game_dir:  # Clean up sys.path if we added to it
+        sys.path.pop(0)
+
+    game = None
+    renderer = None
+    # Find the class that inherits from JaxEnvironment
+    for name, obj in inspect.getmembers(game_module):
+        if inspect.isclass(obj) and issubclass(obj, JaxEnvironment) and obj is not JaxEnvironment:
+            print(f"Found game environment: {name}")
+            game = obj()  # Instantiate and return
+
+        if inspect.isclass(obj) and issubclass(obj, AtraJaxisRenderer) and obj is not AtraJaxisRenderer:
+            print(f"Found renderer: {name}")
+            renderer = obj()
+
+    if game is None:
+        raise ImportError(f"No class found in {game_file_path} that inherits from JaxEnvironment")
+
+    return game, renderer
 
 # It's assumed that jaxatari is installed or accessible in the PYTHONPATH
 # If JaxEnvironment or AtraJaxisRenderer are part of your local project structure,
