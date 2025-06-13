@@ -9,11 +9,10 @@ from flax import struct
 import jax
 import jax.numpy as jnp
 from jaxatari.environment import EnvState
-from gymnax.environments import spaces
+import jaxatari.spaces as spaces
 
-
-class GymnaxWrapper(object):
-    """Base class for Gymnax wrappers."""
+class JaxatariWrapper(object):
+    """Base class for JAXAtark wrappers."""
 
     def __init__(self, env):
         self._env = env
@@ -22,52 +21,24 @@ class GymnaxWrapper(object):
     def __getattr__(self, name):
         return getattr(self._env, name)
 
-
-class FlattenObservationWrapper(GymnaxWrapper):
-    """Transform the observations of the environment into jnp arrays and flatten.
-    Apply this wrapper after the AtariWrapper.
-    """
-
-    def observation_space(self) -> spaces.Box:
-        assert isinstance(
-            self._env.observation_space(), spaces.Box
-        ), "Only Box spaces are supported for now."
-        new_shape = (self._env.frame_stack_size * self._env.obs_size,)
-        return spaces.Box(
-            low=self._env.observation_space().low,
-            high=self._env.observation_space().high,
-            shape=new_shape,
-            dtype=self._env.observation_space().dtype,
-        )
-
-    @functools.partial(jax.jit, static_argnums=(0,))
-    def reset(
-        self, key: chex.PRNGKey
-    ) -> Tuple[chex.Array, EnvState]:
-        obs, state = self._env.reset(key)
-        obs = self._env.obs_to_flat_array(obs)
-        chex.assert_shape(obs, (self._env.obs_size * self._env.frame_stack_size,))
-        return obs, state
-
-    @functools.partial(jax.jit, static_argnums=(0,))
-    def step(
-        self,
-        key: chex.PRNGKey,
-        state: EnvState,
-        action: Union[int, float],
-    ) -> Tuple[chex.Array, EnvState, float, bool, Any]:  # dict]:
-        obs, state, reward, done, info = self._env.step(key, state, action)
-        obs = self._env.obs_to_flat_array(obs)
-        return obs, state, reward, done, info
-
 @struct.dataclass 
 class AtariState:
     env_state: EnvState 
+    key: chex.PRNGKey
     step: int
     prev_action: int
     obs_stack: chex.Array
     
-class AtariWrapper(GymnaxWrapper):
+class AtariWrapper(JaxatariWrapper):
+    """
+    Wrapper for Atari environments that returns the rendered image and object-centric observations unflattened.
+    Both are stacked by frame_stack_size.
+    Args:
+        env: The environment to wrap.
+        sticky_actions: Whether to use sticky actions.
+        frame_stack_size: The number of frames to stack.
+        frame_skip: The number of frames to skip.
+    """
     def __init__(self, env, sticky_actions: bool = True, frame_stack_size: int = 4, frame_skip: int = 4, max_episode_length: int = 10_000, episodic_life: bool = True):
         super().__init__(env)
         self.sticky_actions = sticky_actions
@@ -76,32 +47,35 @@ class AtariWrapper(GymnaxWrapper):
         self.max_episode_length = max_episode_length
         self.episodic_life = episodic_life
 
+        # if the env does not have 'lives' in the env_state, we set episodic_life to False
+        if not hasattr(env, "lives"):
+            self.episodic_life = False
+
+
+    def observation_space(self) -> spaces.Space:
+        return self._env.observation_space()
+
     @functools.partial(jax.jit, static_argnums=(0,))
     def reset(self, key: chex.PRNGKey) -> Tuple[chex.Array, EnvState]:
         obs, env_state = self._env.reset(key)
         step = jnp.array(0)
         prev_action = jnp.array(0)
 
-        def expand_and_copy(x):
-            x_expanded = jnp.expand_dims(x, axis=0)
-            return jnp.concatenate([x_expanded] * self.frame_stack_size, axis=0)
+        # Create multiple observations directly
+        obs = jax.tree.map(lambda x: jnp.stack([x] * self.frame_stack_size), obs)
 
-        # Apply transformation to each leaf in the pytree
-        obs = jax.tree.map(expand_and_copy, obs)
-
-        return obs, AtariState(env_state, step, prev_action, obs)
+        return obs, AtariState(env_state, key, step, prev_action, obs)
 
     @functools.partial(jax.jit, static_argnums=(0,))
-    def step(self, key: chex.PRNGKey, state: AtariState, action: Union[int, float]) -> Tuple[chex.Array, EnvState, float, bool, Dict[Any, Any]]:
+    def step(self, state: AtariState, action: Union[int, float]) -> Tuple[Tuple[chex.Array, chex.Array], AtariState, float, bool, Dict[Any, Any]]:
         new_action = action
         if self.sticky_actions:
             # With probability 0.25, we repeat the previous action
-            key, repeat_key = jax.random.split(key)
+            key, repeat_key = jax.random.split(state.key)
             repeat_prev_action_mask = jax.random.uniform(repeat_key, shape=action.shape) < 0.25
             new_action = jnp.where(repeat_prev_action_mask, state.prev_action, action)
 
         # use scan to step the env for frame_skip times
-
         def body_fn(carry, _):
             env_state, action = carry
             obs, new_env_state, reward, done, info = self._env.step(env_state, action) 
@@ -113,6 +87,7 @@ class AtariWrapper(GymnaxWrapper):
             None,
             length=self.frame_skip,
         )
+
         # all results are now shaped: (env_num, frame_skip, obs_size)
         latest_obs = jax.tree.map(lambda x: x[-1], obs)
         # push latest obs into the stack 
@@ -123,10 +98,7 @@ class AtariWrapper(GymnaxWrapper):
         done = jnp.logical_or(dones.any(), state.step >= self.max_episode_length)
         if self.episodic_life:
             # If the player has lost a life, we consider the episode done
-            # If there is an error here, chances are that lives is not in the env_state
-            # -> Only use with environments that have lives
             done = jnp.logical_or(done, state.env_state.lives > new_env_state.lives)
-
 
         def reduce_info(k, v):
             if k == "all_rewards":
@@ -134,69 +106,201 @@ class AtariWrapper(GymnaxWrapper):
             else:
                 return v[-1]
 
-        info = {
+        # Convert info to dict and reduce values
+        info_dict = {
             k: reduce_info(k, v) for k, v in infos._asdict().items()
         }
 
-        new_state = AtariState(new_env_state, state.step + 1, new_action, new_obs)
+        new_state = AtariState(new_env_state, state.key, state.step + 1, new_action, new_obs)
 
         # Reset the environment if done
         new_obs, new_state = jax.lax.cond(
             done,
-            lambda _: self.reset(key),
+            lambda _: self.reset(state.key),
             lambda _: (new_obs, new_state),
             operand=None
         )
 
-        return new_obs, new_state, reward, done, info
+        return new_obs, new_state, reward, done, info_dict
         
 
+
+class ObjectCentricWrapper(JaxatariWrapper):
+    """
+    Wrapper for Atari environments that returns the flattened object-centric observations.
+    Apply this wrapper after the AtariWrapper!
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+        # make sure that env is an AtariWrapper
+        assert isinstance(env, AtariWrapper), "ObjectCentricWrapper must be applied after AtariWrapper"
+
+    def observation_space(self) -> spaces.Box:
+        return self._env.observation_space()
+
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def reset(
+        self, key: chex.PRNGKey
+    ) -> Tuple[chex.Array, EnvState]:
+        obs, state = self._env.reset(key)
+        # Flatten each frame in the stack
+        flat_obs = jax.vmap(self._env.obs_to_flat_array)(obs)
+        # Reshape to a single array
+        flat_obs = flat_obs.reshape(-1)
+        return flat_obs, state
+
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def step(
+        self,
+        state: AtariState,
+        action: Union[int, float],
+    ) -> Tuple[chex.Array, EnvState, float, bool, Any]:  # dict]:
+        obs, state, reward, done, info = self._env.step(state, action)
+        # Flatten each frame in the stack
+        flat_obs = jax.vmap(self._env.obs_to_flat_array)(obs)
+        # Reshape to a single array
+        flat_obs = flat_obs.reshape(-1)
+        return flat_obs, state, reward, done, info
+    
+
+@struct.dataclass 
+class PixelState:
+    atari_state: AtariState 
+    key: chex.PRNGKey
+    step: int
+    prev_action: int
+    image_stack: chex.Array
+
+class PixelObsWrapper(JaxatariWrapper):
+    """
+    Wrapper for Atari environments that returns the flattened pixel observations.
+    Apply this wrapper after the AtariWrapper!
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+        # make sure that env is an AtariWrapper
+        assert isinstance(env, AtariWrapper), "ObjectCentricWrapper must be applied after AtariWrapper"
+
+    def observation_space(self) -> spaces.Space:
+        return self._env.get_image_space()
+    
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def reset(
+        self, key: chex.PRNGKey
+    ) -> Tuple[chex.Array, EnvState]:
+        obs, atari_state = self._env.reset(key)
+        image = self._env.render(atari_state.env_state)
+        # Create a stack of identical images for the initial state
+        image_stack = jnp.stack([image] * self._env.frame_stack_size)
+        return image_stack, PixelState(atari_state, key, 0, 0, image_stack)
+    
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def step(
+        self,
+        state: PixelState,
+        action: Union[int, float],
+    ) -> Tuple[chex.Array, EnvState, float, bool, Any]:
+        # Pass the AtariState to the AtariWrapper
+        obs, atari_state, reward, done, info = self._env.step(state.atari_state, action)
+        image = self._env.render(atari_state.env_state)
+        # Update the image stack by shifting and adding the new image
+        image_stack = jnp.concatenate([state.image_stack[1:], jnp.expand_dims(image, axis=0)], axis=0)
+        new_state = PixelState(atari_state, state.key, state.step + 1, action, image_stack)
+        return image_stack, new_state, reward, done, info
+    
+
+@struct.dataclass 
+class PixelAndObjectCentricState:
+    atari_state: AtariState 
+    key: chex.PRNGKey
+    step: int
+    prev_action: int
+    image_stack: chex.Array
+    obs_stack: chex.Array
+
+class PixelAndObjectCentricWrapper(JaxatariWrapper):
+    """
+    Wrapper for Atari environments that returns the flattened pixel observations and object-centric observations.
+    Apply this wrapper after the AtariWrapper!
+    """
+    
+    def __init__(self, env):
+        super().__init__(env)
+        # make sure that env is an AtariWrapper
+        assert isinstance(env, AtariWrapper), "ObjectCentricWrapper must be applied after AtariWrapper"
+        
+        
+    def observation_space(self) -> spaces.Space:
+        return spaces.Tuple((self._env.get_image_space(), self._env.get_observation_space()))
+    
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def reset(
+        self, key: chex.PRNGKey
+    ) -> Tuple[chex.Array, EnvState]:
+        obs, atari_state = self._env.reset(key)
+
+        # Flatten each frame in the stack
+        flat_obs = jax.vmap(self._env.obs_to_flat_array)(obs)
+        # Reshape to a single array
+        flat_obs = flat_obs.reshape(-1)
+
+        image = self._env.render(atari_state.env_state)
+        # Create a stack of identical images for the initial state
+        image_stack = jnp.stack([image] * self._env.frame_stack_size)
+        return (image_stack, flat_obs), PixelAndObjectCentricState(atari_state, key, 0, 0, image_stack, flat_obs)
+    
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def step(
+        self,
+        state: PixelAndObjectCentricState,
+        action: Union[int, float],
+    ) -> Tuple[chex.Array, EnvState, float, bool, Any]:
+        # Pass the AtariState to the AtariWrapper
+        obs, atari_state, reward, done, info = self._env.step(state.atari_state, action)
+
+        # Flatten each observation in the stack
+        flat_obs = jax.vmap(self._env.obs_to_flat_array)(obs)
+        # Reshape to a single array
+        flat_obs = flat_obs.reshape(-1)
+
+        image = self._env.render(atari_state.env_state)
+        # Update the image stack by shifting and adding the new image
+        image_stack = jnp.concatenate([state.image_stack[1:], jnp.expand_dims(image, axis=0)], axis=0)
+        new_state = PixelAndObjectCentricState(atari_state, state.key, state.step + 1, action, image_stack, flat_obs)
+        return (image_stack, flat_obs), new_state, reward, done, info
+
 @struct.dataclass
-class LogEnvState:
-    env_state: EnvState
+class LogState:
+    atari_state: AtariState
     episode_returns: float
     episode_lengths: int
     returned_episode_returns: float
     returned_episode_lengths: int
 
-class LogWrapper(GymnaxWrapper):
+class LogWrapper(JaxatariWrapper):
     """Log the episode returns and lengths."""
 
     @functools.partial(jax.jit, static_argnums=(0,))
     def reset(
         self, key: chex.PRNGKey
-    ) -> Tuple[chex.Array, LogEnvState]:
-        obs, env_state = self._env.reset(key)
-        state = LogEnvState(env_state, 0, 0, 0, 0)
+    ) -> Tuple[chex.Array, LogState]:
+        obs, atari_state = self._env.reset(key)
+        state = LogState(atari_state, 0.0, 0, 0.0, 0)
         return obs, state
 
     @functools.partial(jax.jit, static_argnums=(0,))
     def step(
         self,
-        key: chex.PRNGKey,
-        state: LogEnvState,
+        state: LogState,
         action: Union[int, float],
-        
-    ) -> Tuple[chex.Array, LogEnvState, jnp.ndarray, bool, Dict[Any, Any]]:
-        """Step the env.
-
-
-        Args:
-          key: PRNG key.
-          state: The current state of the env.
-          action: The action to take.
-
-
-        Returns:
-          A tuple of (observation, state, reward, done, info).
-        """
-        obs, env_state, reward, done, info = self._env.step(
-            key, state.env_state, action
-        )
+    ) -> Tuple[chex.Array, LogState, float, bool, Dict[Any, Any]]:
+        obs, atari_state, reward, done, info = self._env.step(state.atari_state, action)
         new_episode_return = state.episode_returns + reward
         new_episode_length = state.episode_lengths + 1
-        state = LogEnvState(
-            env_state=env_state,
+        state = LogState(
+            atari_state=atari_state,
             episode_returns=new_episode_return * (1 - done),
             episode_lengths=new_episode_length * (1 - done),
             returned_episode_returns=state.returned_episode_returns * (1 - done)
@@ -210,53 +314,40 @@ class LogWrapper(GymnaxWrapper):
         return obs, state, reward, done, info
 
 @struct.dataclass
-class MultiRewardLogEnvState:
-    env_state: EnvState
+class MultiRewardLogState:
+    atari_state: AtariState
     episode_returns_env: float
-    episode_returns: chex.Array#[float]
+    episode_returns: chex.Array
     episode_lengths: int
     returned_episode_returns_env: float
-    returned_episode_returns: chex.Array#[float]
+    returned_episode_returns: chex.Array
     returned_episode_lengths: int
 
-class MultiRewardLogWrapper(GymnaxWrapper):
-    """Log the episode returns and lengths."""
+class MultiRewardLogWrapper(JaxatariWrapper):
+    """Log the episode returns and lengths for multiple rewards."""
 
     @functools.partial(jax.jit, static_argnums=(0,))
     def reset(
         self, key: chex.PRNGKey, 
-    ) -> Tuple[chex.Array, MultiRewardLogEnvState]:
-        obs, env_state = self._env.reset(key)
-        dummy_info = self._env.step(key, env_state, 0)[4]
+    ) -> Tuple[chex.Array, MultiRewardLogState]:
+        obs, atari_state = self._env.reset(key)
+        dummy_info = self._env.step(atari_state, 0)[4]
         episode_returns_init = jnp.zeros_like(dummy_info["all_rewards"])
-        state = MultiRewardLogEnvState(env_state, 0, episode_returns_init, 0, 0, episode_returns_init, 0)
+        state = MultiRewardLogState(atari_state, 0.0, episode_returns_init, 0, 0.0, episode_returns_init, 0)
         return obs, state
 
     @functools.partial(jax.jit, static_argnums=(0,))
     def step(
         self,
-        key: chex.PRNGKey,
-        state: MultiRewardLogEnvState,
+        state: MultiRewardLogState,
         action: Union[int, float],
-        
-    ) -> Tuple[chex.Array, MultiRewardLogEnvState, jnp.ndarray, bool, Dict[Any, Any]]:
-        """Step the env.
-        Args:
-          key: PRNG key.
-          state: The current state of the env.
-          action: The action to take.
-
-        Returns:
-          A tuple of (observation, state, reward, done, info).
-        """
-        obs, env_state, reward, done, info = self._env.step(
-            key, state.env_state, action
-        )
+    ) -> Tuple[chex.Array, MultiRewardLogState, float, bool, Dict[Any, Any]]:
+        obs, atari_state, reward, done, info = self._env.step(state.atari_state, action)
         new_episode_return_env = state.episode_returns_env + reward 
         new_episode_return = state.episode_returns + info["all_rewards"]
         new_episode_length = state.episode_lengths + 1
-        state = MultiRewardLogEnvState(
-            env_state=env_state,
+        state = MultiRewardLogState(
+            atari_state=atari_state,
             episode_returns_env=new_episode_return_env * (1 - done),
             episode_returns=new_episode_return * (1 - done),
             episode_lengths=new_episode_length * (1 - done),
