@@ -146,8 +146,6 @@ class ObjectCentricWrapper(JaxatariWrapper):
         obs, state = self._env.reset(key)
         # Flatten each frame in the stack
         flat_obs = jax.vmap(self._env.obs_to_flat_array)(obs)
-        # Reshape to a single array
-        flat_obs = flat_obs.reshape(-1)
         return flat_obs, state
 
     @functools.partial(jax.jit, static_argnums=(0,))
@@ -159,8 +157,6 @@ class ObjectCentricWrapper(JaxatariWrapper):
         obs, state, reward, done, info = self._env.step(state, action)
         # Flatten each frame in the stack
         flat_obs = jax.vmap(self._env.obs_to_flat_array)(obs)
-        # Reshape to a single array
-        flat_obs = flat_obs.reshape(-1)
         return flat_obs, state, reward, done, info
     
 
@@ -243,8 +239,6 @@ class PixelAndObjectCentricWrapper(JaxatariWrapper):
 
         # Flatten each frame in the stack
         flat_obs = jax.vmap(self._env.obs_to_flat_array)(obs)
-        # Reshape to a single array
-        flat_obs = flat_obs.reshape(-1)
 
         image = self._env.render(atari_state.env_state)
         # Create a stack of identical images for the initial state
@@ -262,14 +256,58 @@ class PixelAndObjectCentricWrapper(JaxatariWrapper):
 
         # Flatten each observation in the stack
         flat_obs = jax.vmap(self._env.obs_to_flat_array)(obs)
-        # Reshape to a single array
-        flat_obs = flat_obs.reshape(-1)
 
         image = self._env.render(atari_state.env_state)
         # Update the image stack by shifting and adding the new image
         image_stack = jnp.concatenate([state.image_stack[1:], jnp.expand_dims(image, axis=0)], axis=0)
         new_state = PixelAndObjectCentricState(atari_state, state.key, state.step + 1, action, image_stack, flat_obs)
         return (image_stack, flat_obs), new_state, reward, done, info
+
+
+class FlattenObservationWrapper(JaxatariWrapper):
+    """
+    A wrapper that flattens each leaf array in an observation Pytree.
+
+    Compatible with all the other wrappers, flattens the observations whilst preserving the overarching structure (i.e. if the observation is a tuple of multiple observations, the flattened observation will be a tuple of flattened observations).
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+
+    def observation_space(self) -> spaces.Space:
+        """Computes the new observation space, preserving the pytree structure."""
+        original_space = self._env.observation_space()
+
+        def flatten_space(space: spaces.Box) -> spaces.Box:
+            flat_size = jnp.prod(jnp.array(space.shape))
+            return spaces.Box(
+                low=-jnp.inf,
+                high=jnp.inf,
+                shape=(int(flat_size),),
+                dtype=space.dtype
+            )
+        
+        return jax.tree.map(flatten_space, original_space)
+
+    def _process_obs(self, obs_tree: chex.ArrayTree) -> chex.ArrayTree:
+        """Applies .flatten() to each leaf array in the pytree."""
+        return jax.tree.map(lambda leaf: leaf.flatten(), obs_tree)
+
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def reset(self, key: chex.PRNGKey) -> Tuple[chex.ArrayTree, Any]:
+        obs, state = self._env.reset(key)
+        processed_obs = self._process_obs(obs)
+        return processed_obs, state # State can be passed through directly
+
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def step(
+        self,
+        state: Any,
+        action: Union[int, float],
+    ) -> Tuple[chex.ArrayTree, Any, float, bool, Dict[str, Any]]:
+        obs, next_state, reward, done, info = self._env.step(state, action)
+        processed_obs = self._process_obs(obs)
+        return processed_obs, next_state, reward, done, info
 
 @struct.dataclass
 class LogState:
