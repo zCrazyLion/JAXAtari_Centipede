@@ -10,6 +10,7 @@ import jax
 import jax.numpy as jnp
 from jaxatari.environment import EnvState
 import jaxatari.spaces as spaces
+import numpy as np
 
 class JaxatariWrapper(object):
     """Base class for JAXAtark wrappers."""
@@ -41,19 +42,20 @@ class AtariWrapper(JaxatariWrapper):
     """
     def __init__(self, env, sticky_actions: bool = True, frame_stack_size: int = 4, frame_skip: int = 4, max_episode_length: int = 10_000, episodic_life: bool = True):
         super().__init__(env)
+        self._env = env
         self.sticky_actions = sticky_actions
         self.frame_stack_size = frame_stack_size
         self.frame_skip = frame_skip
         self.max_episode_length = max_episode_length
         self.episodic_life = episodic_life
 
-        # if the env does not have 'lives' in the env_state, we set episodic_life to False
         if not hasattr(env, "lives"):
             self.episodic_life = False
-
+        self._observation_space = spaces.stack_space(self._env.observation_space(), self.frame_stack_size)
 
     def observation_space(self) -> spaces.Space:
-        return self._env.observation_space()
+        """Returns the stacked observation space."""
+        return self._observation_space
 
     @functools.partial(jax.jit, static_argnums=(0,))
     def reset(self, key: chex.PRNGKey) -> Tuple[chex.Array, EnvState]:
@@ -127,17 +129,43 @@ class AtariWrapper(JaxatariWrapper):
 
 class ObjectCentricWrapper(JaxatariWrapper):
     """
-    Wrapper for Atari environments that returns the flattened object-centric observations.
+    Wrapper for Atari environments that returns stacked object-centric observations.
+    The output observation is a 2D array of shape (frame_stack_size, num_features).
     Apply this wrapper after the AtariWrapper!
     """
 
     def __init__(self, env):
         super().__init__(env)
-        # make sure that env is an AtariWrapper
         assert isinstance(env, AtariWrapper), "ObjectCentricWrapper must be applied after AtariWrapper"
 
+        # First, get the space for a SINGLE, UNSTACKED frame from the base env.
+        single_frame_space = self._env._env.observation_space()
+
+        # Calculate the bounds and size for a single flattened frame.
+        lows, highs = [], []
+        single_frame_flat_size = 0
+        for leaf_space in jax.tree.leaves(single_frame_space):
+            if isinstance(leaf_space, spaces.Box):
+                low_arr = np.broadcast_to(leaf_space.low, leaf_space.shape)
+                high_arr = np.broadcast_to(leaf_space.high, leaf_space.shape)
+                lows.append(low_arr.flatten())
+                highs.append(high_arr.flatten())
+                single_frame_flat_size += np.prod(leaf_space.shape)
+
+        single_frame_lows = np.concatenate(lows)
+        single_frame_highs = np.concatenate(highs)
+
+        # create the 2D Box space
+        self._observation_space = spaces.Box(
+            low=single_frame_lows,
+            high=single_frame_highs,
+            shape=(self._env.frame_stack_size, int(single_frame_flat_size)),
+            dtype=single_frame_lows.dtype
+        )
+    
     def observation_space(self) -> spaces.Box:
-        return self._env.observation_space()
+        """Returns a Box space for the flattened observation."""
+        return self._observation_space
 
     @functools.partial(jax.jit, static_argnums=(0,))
     def reset(
@@ -177,10 +205,15 @@ class PixelObsWrapper(JaxatariWrapper):
     def __init__(self, env):
         super().__init__(env)
         # make sure that env is an AtariWrapper
-        assert isinstance(env, AtariWrapper), "ObjectCentricWrapper must be applied after AtariWrapper"
+        assert isinstance(env, AtariWrapper), "PixelObsWrapper has to be applied after AtariWrapper"
 
-    def observation_space(self) -> spaces.Space:
-        return self._env.get_image_space()
+        # Calculate observation space once
+        image_space = self._env.image_space()
+        self._observation_space = spaces.stack_space(image_space, self._env.frame_stack_size)
+
+    def observation_space(self) -> spaces.Box:
+        """Returns the stacked image space."""
+        return self._observation_space
     
     @functools.partial(jax.jit, static_argnums=(0,))
     def reset(
@@ -224,12 +257,45 @@ class PixelAndObjectCentricWrapper(JaxatariWrapper):
     
     def __init__(self, env):
         super().__init__(env)
-        # make sure that env is an AtariWrapper
-        assert isinstance(env, AtariWrapper), "ObjectCentricWrapper must be applied after AtariWrapper"
+        assert isinstance(env, AtariWrapper), "PixelAndObjectCentricWrapper must be applied after AtariWrapper"
         
+        # Part 1: Define the stacked image space. (Correct)
+        stacked_image_space = spaces.stack_space(self._env.image_space(), self._env.frame_stack_size)
         
-    def observation_space(self) -> spaces.Space:
-        return spaces.Tuple((self._env.get_image_space(), self._env.get_observation_space()))
+        # Part 2: Define the FLATTENED object space. (This is the FIX)
+        # We borrow the exact same logic from ObjectCentricWrapper to ensure consistency.
+        single_frame_space = self._env._env.observation_space()
+        lows, highs = [], []
+        single_frame_flat_size = 0
+        for leaf_space in jax.tree.leaves(single_frame_space):
+            if isinstance(leaf_space, spaces.Box):
+                low_arr = np.broadcast_to(leaf_space.low, leaf_space.shape)
+                high_arr = np.broadcast_to(leaf_space.high, leaf_space.shape)
+                lows.append(low_arr.flatten())
+                highs.append(high_arr.flatten())
+                single_frame_flat_size += np.prod(leaf_space.shape)
+
+        single_frame_lows = np.concatenate(lows)
+        single_frame_highs = np.concatenate(highs)
+
+        # Create the 2D Box space for the flattened object data.
+        stacked_object_space_flat = spaces.Box(
+            low=single_frame_lows,
+            high=single_frame_highs,
+            shape=(self._env.frame_stack_size, int(single_frame_flat_size)),
+            dtype=single_frame_lows.dtype
+        )
+
+        # Part 3: Combine them into the final Tuple space.
+        self._observation_space = spaces.Tuple((
+            stacked_image_space,
+            stacked_object_space_flat
+        ))
+    
+    
+    def observation_space(self) -> spaces.Tuple:
+        """Returns a Tuple space containing stacked image and object spaces."""
+        return self._observation_space
     
     @functools.partial(jax.jit, static_argnums=(0,))
     def reset(
@@ -274,20 +340,31 @@ class FlattenObservationWrapper(JaxatariWrapper):
     def __init__(self, env):
         super().__init__(env)
 
-    def observation_space(self) -> spaces.Space:
-        """Computes the new observation space, preserving the pytree structure."""
+        # build the new (flattened) observation space
         original_space = self._env.observation_space()
 
         def flatten_space(space: spaces.Box) -> spaces.Box:
-            flat_size = jnp.prod(jnp.array(space.shape))
+            # Create flattened low/high arrays by broadcasting the original bounds
+            # and then reshaping. This preserves the bounds for each element.
+            flat_low = np.broadcast_to(space.low, space.shape).flatten()
+            flat_high = np.broadcast_to(space.high, space.shape).flatten()
+            
             return spaces.Box(
-                low=-jnp.inf,
-                high=jnp.inf,
-                shape=(int(flat_size),),
+                low=jnp.array(flat_low),
+                high=jnp.array(flat_high),
                 dtype=space.dtype
             )
         
-        return jax.tree.map(flatten_space, original_space)
+        self._observation_space = jax.tree.map(
+            flatten_space, 
+            original_space,
+            is_leaf=lambda x: isinstance(x, spaces.Box)
+        )
+
+
+    def observation_space(self) -> spaces.Space:
+        """Returns a space where each leaf array is flattened."""
+        return self._observation_space
 
     def _process_obs(self, obs_tree: chex.ArrayTree) -> chex.ArrayTree:
         """Applies .flatten() to each leaf array in the pytree."""

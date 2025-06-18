@@ -53,6 +53,8 @@ class JaxEnvironment(Generic[EnvState, EnvObs, EnvInfo]):
     """
 
     def __init__(self):
+        self.mode = 0
+        self.difficulty = 0
         pass
 
     def reset(self, key: jrandom.PRNGKey=None) -> Tuple[EnvObs, EnvState]:

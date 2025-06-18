@@ -598,90 +598,59 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
            )
 
     def action_space(self) -> spaces.Discrete:
-        return spaces.Discrete(len(self.action_set))
+        """Returns the action space for Pong.
+        Actions are:
+        0: NOOP
+        1: FIRE
+        2: RIGHT
+        3: LEFT
+        4: RIGHTFIRE
+        5: LEFTFIRE
+        """
+        return spaces.Discrete(6)
 
-
-    '''
-
-class PongObservation(NamedTuple):
-    player: EntityPosition
-    enemy: EntityPosition
-    ball: EntityPosition
-    score_player: jnp.ndarray
-    score_enemy: jnp.ndarray
-    '''
-
-    def _get_entity_space(self) -> spaces.Box:
+    def observation_space(self) -> spaces:
+        """Returns the observation space for Pong.
+        The observation contains:
+        - player: EntityPosition (x, y, width, height)
+        - enemy: EntityPosition (x, y, width, height)
+        - ball: EntityPosition (x, y, width, height)
+        - score_player: int (0-20)
+        - score_enemy: int (0-20)
+        """
         return spaces.Dict({
-            "x": spaces.Box(
-                low=0,
-                high=160,
-                shape=(),
-                dtype=jnp.int32,
-            ),
-            "y": spaces.Box(
-                low=0,
-                high=210,
-                shape=(),
-                dtype=jnp.int32,
-            ),
-            "width": spaces.Box(
-                low=0,
-                high=160,
-                shape=(),
-                dtype=jnp.int32,
-            ),
-            "height": spaces.Box(
-                low=0,
-                high=210,
-                shape=(),
-                dtype=jnp.int32,
-            ),
-        })
-
-    # detailed observation space with information about each observation attribute with min and max values
-    # for coordinate based observations, the min and max values are the min and max values of the coordinate (x = 160, y = 210)
-    def observation_space(self) -> spaces.Box:
-        return spaces.Dict({
-            "player": self._get_entity_space(),
-            "enemy": self._get_entity_space(),
-            "ball": self._get_entity_space(),
-            "score_player": spaces.Box(
-                low=0,
-                high=20,
-                shape=(),
-                dtype=jnp.int32,
-            ),
-            "score_enemy": spaces.Box(
-                low=0,
-                high=20,
-                shape=(),
-                dtype=jnp.int32,
-            ),
+            "player": spaces.Dict({
+                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+            }),
+            "enemy": spaces.Dict({
+                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+            }),
+            "ball": spaces.Dict({
+                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+            }),
+            "score_player": spaces.Box(low=0, high=20, shape=(), dtype=jnp.int32),
+            "score_enemy": spaces.Box(low=0, high=20, shape=(), dtype=jnp.int32),
         })
 
     def image_space(self) -> spaces.Box:
-        return spaces.Dict({
-            "width": spaces.Box(
-                low=0,
-                high=160,
-                shape=(),
-                dtype=jnp.int32,
-            ),
-            "height": spaces.Box(
-                low=0,
-                high=210,
-                shape=(),
-                dtype=jnp.int32,
-            ),
-            "channels": spaces.Box(
-                low=0,
-                high=3,
-                shape=(),
-                dtype=jnp.int32,
-            ),
-        })
-
+        """Returns the image space for Pong.
+        The image is a RGB image with shape (160, 210, 3).
+        """
+        return spaces.Box(
+            low=0,
+            high=255,
+            shape=(160, 210, 3),
+            dtype=jnp.uint8
+        )
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_info(self, state: PongState, all_rewards: chex.Array) -> PongInfo:

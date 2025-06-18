@@ -1,3 +1,7 @@
+"""
+This implementation is deprecated and will be removed in the future! Therefore it is NOT up to date with the latest version of Jaxatari's framework.
+"""
+
 import os
 from functools import partial
 from typing import NamedTuple, Tuple

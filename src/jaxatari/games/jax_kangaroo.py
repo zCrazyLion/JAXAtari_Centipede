@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import chex
 import pygame
 from jax import Array
-from gymnax.environments import spaces
+import jaxatari.spaces as spaces
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 
 from jaxatari.games.kangaroo_levels import (
@@ -25,6 +25,7 @@ PLAYER_WIDTH, PLAYER_HEIGHT = 8, 24
 ENEMY_WIDTH, ENEMY_HEIGHT = 8, 24
 FRUIT_WIDTH = 8
 FRUIT_HEIGHT = 12
+MAX_PLATFORMS = 10
 
 BELL_WIDTH = 6
 BELL_HEIGHT = 11
@@ -1691,6 +1692,7 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
         ]
         self.obs_size = 111
         # self.obs_size = 3+2*2*MAX_PLATFORMS+2*2*MAX_LADDERS+2*MAX_FRUITS+MAX_FRUITS+MAX_FRUITS+2*MAX_BELLS+2*MAX_CHILD+2+4+2*4+2*4+4
+        self.renderer = KangarooRenderer()
 
     @partial(jax.jit, static_argnums=(0,))
     def obs_to_flat_array(self, obs: KangarooObservation) -> chex.Array:
@@ -1708,19 +1710,52 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
             obs.coco_positions.flatten(),
             obs.monkey_positions.flatten(),
         ])
+    
+    def render(self, state: KangarooState) -> jnp.ndarray:
+        """Render the game state to a raster image."""
+        return self.renderer.render(state)
 
     def action_space(self) -> spaces.Discrete:
         return spaces.Discrete(len(self.action_set))
 
-    def get_action_space(self) -> jnp.ndarray:
-        return jnp.array(self.action_set)
-
-    def observation_space(self) -> spaces.Box:
+    def observation_space(self) -> spaces.Dict:
+        """Returns the observation space for Kangaroo.
+        The observation contains:
+        - player_x: int (0-160)
+        - player_y: int (0-210) 
+        - player_o: int (-1 or 1 for orientation)
+        - platform_positions: array of shape (20, 2) with x,y coordinates (0-160, 0-210)
+        - ladder_positions: array of shape (20, 2) with x,y coordinates (0-160, 0-210)
+        - fruit_positions: array of shape (3, 2) with x,y coordinates (0-160, 0-210)
+        - bell_position: array of shape (2,) with x,y coordinates (0-160, 0-210)
+        - child_position: array of shape (2,) with x,y coordinates (0-160, 0-210)
+        - falling_coco_position: array of shape (2,) with x,y coordinates (0-160, 0-210)
+        - monkey_positions: array of shape (4, 2) with x,y coordinates (0-160, 0-210)
+        - coco_positions: array of shape (4, 2) with x,y coordinates (0-160, 0-210)
+        """
+        return spaces.Dict({
+            "player_x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+            "player_y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+            "player_o": spaces.Box(low=-1, high=1, shape=(), dtype=jnp.int32),
+            "platform_positions": spaces.Box(low=0, high=160, shape=(20, 2), dtype=jnp.int32),
+            "ladder_positions": spaces.Box(low=0, high=160, shape=(20, 2), dtype=jnp.int32),
+            "fruit_positions": spaces.Box(low=0, high=160, shape=(3, 2), dtype=jnp.int32),
+            "bell_position": spaces.Box(low=0, high=160, shape=(2,), dtype=jnp.int32),
+            "child_position": spaces.Box(low=0, high=160, shape=(2,), dtype=jnp.int32),
+            "falling_coco_position": spaces.Box(low=0, high=160, shape=(2,), dtype=jnp.int32),
+            "monkey_positions": spaces.Box(low=0, high=160, shape=(4, 2), dtype=jnp.int32),
+            "coco_positions": spaces.Box(low=0, high=160, shape=(4, 2), dtype=jnp.int32),
+        })
+    
+    def image_space(self) -> spaces.Box:
+        """Returns the image space for Kangaroo.
+        The image is a RGB image with shape (160, 210, 3).
+        """
         return spaces.Box(
             low=0,
             high=255,
-            shape=None,
-            dtype=jnp.uint8,
+            shape=(160, 210, 3),
+            dtype=jnp.uint8
         )
 
 

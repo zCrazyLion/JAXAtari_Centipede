@@ -6,6 +6,7 @@ import chex
 import pygame
 
 from jaxatari.environment import JaxEnvironment
+import jaxatari.spaces as spaces
 
 # Constants for game environment
 WINDOW_WIDTH = 160 * 3
@@ -729,6 +730,54 @@ class JaxBreakout(JaxEnvironment[State, BreakoutObservation, BreakoutInfo]):
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: State) -> chex.Array:
         return state.lives <= 0
+
+    def action_space(self) -> spaces.Discrete:
+        """Returns the action space for Breakout.
+        Actions are:
+        0: NOOP
+        1: FIRE
+        2: RIGHT
+        3: LEFT
+        """
+        return spaces.Discrete(4)
+
+    def observation_space(self) -> spaces.Dict:
+        """Returns the observation space for Breakout.
+        The observation contains:
+        - player: EntityPosition (x, y, width, height)
+        - ball: EntityPosition (x, y, width, height)
+        - blocks: array of shape (6, 18) with 0/1 values for each block
+        - score: int (0-999999)
+        - lives: int (0-5)
+        """
+        return spaces.Dict({
+            "player": spaces.Dict({
+                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+            }),
+            "ball": spaces.Dict({
+                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+            }),
+            "blocks": spaces.Box(low=0, high=1, shape=(6, 18), dtype=jnp.int32),
+            "score": spaces.Box(low=0, high=999999, shape=(), dtype=jnp.int32),
+            "lives": spaces.Box(low=0, high=5, shape=(), dtype=jnp.int32),
+        })
+
+    def image_space(self) -> spaces.Box:
+        """Returns the image space for Breakout.
+        The image is a RGB image with shape (160, 210, 3).
+        """
+        return spaces.Box(
+            low=0,
+            high=255,
+            shape=(160, 210, 3),
+            dtype=jnp.uint8
+        )
 
 
 class Renderer:
