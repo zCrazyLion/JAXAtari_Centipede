@@ -33,11 +33,23 @@ ACCELERATION_X = 0.2 # Default: 0.2 | How fast player accelerates
 FRICTION_X = 1 # Default: 1 | 1 = 100% -> player stops immediately, 0 = 0% -> player does not stop, 0.5 = 50 % -> player loses 50% of its velocity every frame
 MAX_VELOCITY_Y = 2.5 # Default: 2.5 | Maximum speed in y direction (pixels per frame)
 
+# -------- Player missile constants --------
+PLAYER_MISSILE_SPEED = 10
+
+PLAYER_MISSILE_SIZE = (1, 5) # TODO: Sprite may be (1, 6), right now it is (1, 5)
+
+
 # -------- States --------
+class PlayerMissileState(NamedTuple):
+    x: jnp.ndarray
+    y: jnp.ndarray
+    is_alive: jnp.ndarray
+
 class CentipedeState(NamedTuple):
     player_x: chex.Array
     player_y: chex.Array
     player_velocity_x: chex.Array
+    player_missile: PlayerMissileState
     # mushroom_positions: chex.Array # (128, 2) array for mushroom positions
     # centipede_position: chex.Array # (9, ?) must contain position, direction, speed and if head
     # spider_position: chex.Array # (1, 3) array for spider (x, y, direction)
@@ -76,10 +88,12 @@ def load_sprites():
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 
     player = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/player/player.npy"))
+    player_missile = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/player_missile/player_missile.npy"))
     flea = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/enemies/flea.npy"))
     spider = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/enemies/spider.npy"))
 
     SPRITE_PLAYER = jnp.expand_dims(player, 0)
+    SPRITE_PLAYER_MISSILE = jnp.expand_dims(player_missile, 0)
     SPRITE_FLEA = jnp.expand_dims(flea, 0)
     SPRITE_SPIDER = jnp.expand_dims(spider, 0)
 
@@ -89,12 +103,14 @@ def load_sprites():
 
     return (
         SPRITE_PLAYER,
+        SPRITE_PLAYER_MISSILE,
         SPRITE_FLEA,
         SPRITE_SPIDER,
     )
 
 (
     SPRITE_PLAYER,
+    SPRITE_PLAYER_MISSILE,
     SPRITE_FLEA,
     SPRITE_SPIDER,
 ) = load_sprites()
@@ -164,6 +180,46 @@ def player_step(
     player_y = jnp.clip(state.player_y + delta_y, PLAYER_BOUNDS[1][0], PLAYER_BOUNDS[1][1])
 
     return player_x, player_y, velocity_x
+
+
+def player_missile_step(
+        state: CentipedeState, action: chex.Array
+) -> PlayerMissileState:
+
+    fire = jnp.isin(action, jnp.array([
+        Action.FIRE,
+        Action.UPFIRE,
+        Action.RIGHTFIRE,
+        Action.LEFTFIRE,
+        Action.DOWNFIRE,
+        Action.UPRIGHTFIRE,
+        Action.UPLEFTFIRE,
+        Action.DOWNRIGHTFIRE,
+        Action.DOWNLEFTFIRE
+    ]))
+
+    collision_with_mushrooms = True # TODO: Implement
+    kill_missile = jnp.logical_and(state.player_missile.y < 0, collision_with_mushrooms)
+    spawn = jnp.logical_and(jnp.logical_not(state.player_missile.is_alive), fire)
+
+    # New is_alive-status
+    new_is_alive = jnp.where(
+        spawn,  # on spawn
+        True,
+        jnp.where(kill_missile, False, state.player_missile.is_alive)  # on kill or keep
+    )
+
+    # Base x
+    base_x = jnp.where(spawn, state.player_x + 1, state.player_missile.x) # player x on spawn or keep x
+    # Base y
+    base_y = jnp.where(spawn, state.player_y, state.player_missile.y) # player y on spawn or keey y
+
+    # move only when alive
+    new_y = jnp.where(new_is_alive, base_y - PLAYER_MISSILE_SPEED, 0.0)
+    new_x = jnp.where(new_is_alive, base_x, 0.0)
+
+    return PlayerMissileState(x=new_x, y=new_y, is_alive=new_is_alive)
+
 
 class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, CentipedeInfo]):
     def __init__(self, reward_funcs: list[callable] =None):
@@ -253,6 +309,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             player_x=jnp.array(PLAYER_START_X),
             player_y=jnp.array(PLAYER_START_Y),
             player_velocity_x=jnp.array(0),
+            player_missile=PlayerMissileState(x=jnp.array(0), y=jnp.array(0), is_alive=jnp.array(False)),
             score=jnp.array(0),
             lives=jnp.array(3),
             step_counter=jnp.array(0),
@@ -271,10 +328,13 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         new_player_x, new_player_y, new_velocity_x = player_step(state, action)
 
+        new_player_missile_state = player_missile_step(state, action)
+
         return_state = state._replace(
             player_x=new_player_x,
             player_y=new_player_y,
             player_velocity_x=new_velocity_x,
+            player_missile=new_player_missile_state,
             step_counter=state.step_counter + 1
         )
 
@@ -305,6 +365,7 @@ class CentipedeRenderer(AtraJaxisRenderer):
             # Where visible, use the new color; otherwise keep black (zeros)
             return jnp.where(visible_mask, color_broadcasted, 0)
 
+        # -------- Render player --------
         frame_player = aj.get_sprite_frame(SPRITE_PLAYER, 0)
         frame_player = recolor_sprite(frame_player, jnp.array([92, 186, 92, 255]))
         raster = aj.render_at(
@@ -312,6 +373,20 @@ class CentipedeRenderer(AtraJaxisRenderer):
             state.player_x,
             state.player_y,
             frame_player,
+        )
+
+        # -------- Render player missile --------
+        frame_player_missile = aj.get_sprite_frame(SPRITE_PLAYER_MISSILE, 0)
+        frame_player_missile = recolor_sprite(frame_player_missile, jnp.array([92, 186, 92, 255]))
+        raster = jnp.where(
+            state.player_missile.is_alive,
+            aj.render_at(
+                raster,
+                state.player_missile.x,
+                state.player_missile.y,
+                frame_player_missile,
+            ),
+        raster
         )
 
         return raster
