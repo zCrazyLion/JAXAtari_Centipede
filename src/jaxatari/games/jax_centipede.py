@@ -91,6 +91,9 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
     # TODO: add other funtions if needed
 
+    def get_action_space(self) -> jnp.ndarray:
+        return jnp.array(self.action_set)
+
     @partial(jax.jit, static_argnums=(0, ))
     def _get_observation(self, state: CentipedeState) -> CentipedeObservation:
         # TODO: fill
@@ -130,7 +133,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return state.lives < 0
 
     @partial(jax.jit, static_argnums=(0, ))
-    def reset(self) -> Tuple[CentipedeObservation, CentipedeState]:
+    def reset(self, key: jax.random.PRNGKey = jax.random.PRNGKey(42)) -> Tuple[CentipedeObservation, CentipedeState]:
         """Initialize game state"""
         reset_state = CentipedeState( # TODO: fill
             player_x=jnp.array(PLAYER_START_X),
