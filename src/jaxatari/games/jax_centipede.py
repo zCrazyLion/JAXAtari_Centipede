@@ -1,3 +1,9 @@
+"""
+
+Lukas Bergholz, Linus Orlob, Vincent Jahn
+
+"""
+
 import os
 import jax
 import jax.numpy as jnp
@@ -7,27 +13,31 @@ import jaxatari.rendering.atraJaxis as aj
 import time
 from functools import partial
 from typing import NamedTuple
-from gymnax.environments import spaces
-
-
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action, EnvState, EnvObs
 from jaxatari.renderers import AtraJaxisRenderer
 
 # -------- Game constants --------
 WIDTH = 160
 HEIGHT = 210
-SCALING_FACTOR = 5
+SCALING_FACTOR = 4
 
+# -------- Player constants --------
 PLAYER_START_X = 78
 PLAYER_START_Y = 190
-PLAYER_BOUNDS = (10, 146), (150, 180)
+PLAYER_BOUNDS = (10, 146), (150, 180) # TODO: Check if correct
 
 PLAYER_SIZE = (4, 9)
+
+MAX_VELOCITY_X = 6 # Default: 6 | Maximum speed in x direction (pixels per frame)
+ACCELERATION_X = 0.2 # Default: 0.2 | How fast player accelerates
+FRICTION_X = 1 # Default: 1 | 1 = 100% -> player stops immediately, 0 = 0% -> player does not stop, 0.5 = 50 % -> player loses 50% of its velocity every frame
+MAX_VELOCITY_Y = 2.5 # Default: 2.5 | Maximum speed in y direction (pixels per frame)
 
 # -------- States --------
 class CentipedeState(NamedTuple):
     player_x: chex.Array
     player_y: chex.Array
+    player_velocity_x: chex.Array
     # mushroom_positions: chex.Array # (128, 2) array for mushroom positions
     # centipede_position: chex.Array # (9, ?) must contain position, direction, speed and if head
     # spider_position: chex.Array # (1, 3) array for spider (x, y, direction)
@@ -75,7 +85,7 @@ def load_sprites():
 
     # Debug
     frame_player = aj.get_sprite_frame(SPRITE_PLAYER, 0)
-    jax.debug.print("{x}, {y}", x=frame_player, y=(frame_player.shape[0], frame_player.shape[1], frame_player.shape[2]))
+    #jax.debug.print("{x}, {y}", x=frame_player, y=(frame_player.shape[0], frame_player.shape[1], frame_player.shape[2]))
 
     return (
         SPRITE_PLAYER,
@@ -95,7 +105,7 @@ def load_sprites():
 @jax.jit
 def player_step(
         state: CentipedeState, action: chex.Array
-) -> tuple[chex.Array, chex.Array]:
+) -> tuple[chex.Array, chex.Array, chex.Array]:
     up = jnp.isin(action, jnp.array([
         Action.UP,
         Action.UPRIGHT,
@@ -129,15 +139,31 @@ def player_step(
         Action.DOWNRIGHTFIRE
     ]))
 
-    # TODO: add x-dimension accelleration
+    # x acceleration
+    accel_x = jnp.where(right, ACCELERATION_X, jnp.where(left, -ACCELERATION_X, 0.0))  # Compute acceleration based on input
 
-    delta_x = jnp.where(left, -1, jnp.where(right, 1, 0))
-    player_x = jnp.clip(state.player_x + delta_x, PLAYER_BOUNDS[0][0], PLAYER_BOUNDS[0][1])
+    # x velocity
+    velocity_x = state.player_velocity_x  # Get current x velocity
 
-    delta_y = jnp.where(up, -1, jnp.where(down, 1, 0))
+    moving_left_right_input = jnp.logical_and(right, (velocity_x < 0)) # If currently moving to the left and right input is detected
+    moving_right_left_input = jnp.logical_and(left, (velocity_x > 0)) # If currently moving to the right and left input is detected
+
+    direction_change = jnp.where(jnp.logical_or(moving_left_right_input, moving_right_left_input),True,False) # Detect direction change and reset velocity if needed
+    velocity_x = jnp.where(direction_change, 0.0, velocity_x)  # Reset velocity on direction change
+    velocity_x = velocity_x + accel_x  # Update velocity with acceleration
+    velocity_x = jnp.where(jnp.logical_not(jnp.logical_or(left, right)), velocity_x * (1.0 - FRICTION_X), velocity_x)  # Slow down if no input
+    velocity_x = jnp.clip(velocity_x, -MAX_VELOCITY_X, MAX_VELOCITY_X)  # Clamp velocity within limits
+
+    # Global x position
+    new_player_x = state.player_x + velocity_x  # Compute next x position
+    velocity_x = jnp.where(new_player_x <= PLAYER_BOUNDS[0][0], 0.0, velocity_x)  # Stop at left bound
+    player_x = jnp.clip(state.player_x + velocity_x, PLAYER_BOUNDS[0][0], PLAYER_BOUNDS[0][1])  # Final x position
+
+    # Calculate new y position
+    delta_y = jnp.where(up, -MAX_VELOCITY_Y, jnp.where(down, MAX_VELOCITY_Y, 0))
     player_y = jnp.clip(state.player_y + delta_y, PLAYER_BOUNDS[1][0], PLAYER_BOUNDS[1][1])
 
-    return player_x, player_y
+    return player_x, player_y, velocity_x
 
 class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, CentipedeInfo]):
     def __init__(self, reward_funcs: list[callable] =None):
@@ -226,6 +252,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         reset_state = CentipedeState( # TODO: fill
             player_x=jnp.array(PLAYER_START_X),
             player_y=jnp.array(PLAYER_START_Y),
+            player_velocity_x=jnp.array(0),
             score=jnp.array(0),
             lives=jnp.array(3),
             step_counter=jnp.array(0),
@@ -242,11 +269,12 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     ) -> tuple[CentipedeObservation, CentipedeState, float, bool, CentipedeInfo]:
         # TODO: fill
 
-        player_x, player_y = player_step(state, action)
+        new_player_x, new_player_y, new_velocity_x = player_step(state, action)
 
         return_state = state._replace(
-            player_x=player_x,
-            player_y=player_y,
+            player_x=new_player_x,
+            player_y=new_player_y,
+            player_velocity_x=new_velocity_x,
             step_counter=state.step_counter + 1
         )
 
