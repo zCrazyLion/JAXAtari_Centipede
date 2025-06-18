@@ -73,6 +73,10 @@ def load_sprites():
     SPRITE_FLEA = jnp.expand_dims(flea, 0)
     SPRITE_SPIDER = jnp.expand_dims(spider, 0)
 
+    # Debug
+    frame_player = aj.get_sprite_frame(SPRITE_PLAYER, 0)
+    jax.debug.print("{x}, {y}", x=frame_player, y=(frame_player.shape[0], frame_player.shape[1], frame_player.shape[2]))
+
     return (
         SPRITE_PLAYER,
         SPRITE_FLEA,
@@ -257,7 +261,24 @@ class CentipedeRenderer(AtraJaxisRenderer):
     def render(self, state):
         raster = jnp.zeros((WIDTH, HEIGHT, 3))
 
+        def recolor_sprite(sprite: jnp.ndarray, color: jnp.ndarray) -> jnp.ndarray:
+            # if color.shape[0] == 3:
+            #     jnp.append(color, jnp.array(255))
+            assert sprite.ndim == 3 and sprite.shape[2] in (3, 4), "Sprite must be HxWx3 or HxWx4"
+            assert color.shape[0] == sprite.shape[2], "Color channels must match sprite channels"
+
+            # Define a visibility mask: pixel is visible if any of its channels > 0
+            visible_mask = jnp.any(sprite != 0, axis=-1)  # (H, W)
+            visible_mask = visible_mask[:, :, None]  # (H, W, 1) for broadcasting
+
+            # Broadcast color to the same shape as sprite
+            color_broadcasted = jnp.broadcast_to(color, sprite.shape)
+
+            # Where visible, use the new color; otherwise keep black (zeros)
+            return jnp.where(visible_mask, color_broadcasted, 0)
+
         frame_player = aj.get_sprite_frame(SPRITE_PLAYER, 0)
+        frame_player = recolor_sprite(frame_player, jnp.array([92, 186, 92, 255]))
         raster = aj.render_at(
             raster,
             state.player_x,
