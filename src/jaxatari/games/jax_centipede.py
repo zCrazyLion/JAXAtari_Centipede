@@ -1,11 +1,12 @@
-
+import os
 import jax
 import jax.numpy as jnp
 import chex
 import pygame
 import jaxatari.rendering.atraJaxis as aj
+import time
 from functools import partial
-from typing import Tuple, NamedTuple
+from typing import NamedTuple
 from gymnax.environments import spaces
 
 
@@ -15,20 +16,28 @@ from jaxatari.renderers import AtraJaxisRenderer
 # -------- Game constants --------
 WIDTH = 160
 HEIGHT = 210
-SCALING_FACTOR = 3
+SCALING_FACTOR = 5
 
-PLAYER_START_X = 80
-PLAYER_START_Y = 105
+PLAYER_START_X = 78
+PLAYER_START_Y = 190
+PLAYER_BOUNDS = (10, 146), (150, 180)
 
-PLAYER_SIZE = (4, 10)
+PLAYER_SIZE = (4, 9)
 
 # -------- States --------
 class CentipedeState(NamedTuple):
     player_x: chex.Array
     player_y: chex.Array
+    # mushroom_positions: chex.Array # (128, 2) array for mushroom positions
+    # centipede_position: chex.Array # (9, ?) must contain position, direction, speed and if head
+    # spider_position: chex.Array # (1, 3) array for spider (x, y, direction)
+    # flea_position: chex.Array # (1, 3) array for flea, 2 lives, speed doubles after 1 hit
+    # scorpion_position: chex.Array # (1, ?) array for scorpion, only moves from right to left?: (x, y)
     score: chex.Array
     lives: chex.Array
+    wave: chex.Array
     step_counter: chex.Array
+    rng_key: jax.random.PRNGKey
     # TODO: fill
 
 class EntityPosition(NamedTuple):
@@ -40,10 +49,11 @@ class EntityPosition(NamedTuple):
 
 class CentipedeObservation(NamedTuple):
     player: EntityPosition
-    # centipede
-    # spider: EntityPosition
-    # flea: EntityPosition
-    # scorpion: EntityPosition
+    # mushrooms: jnp.ndarray
+    # centipede: jnp.ndarray
+    # spider: jnp.ndarray
+    # flea: jnp.ndarray
+    # scorpion: jnp.ndarray
     # TODO: fill
 
 class CentipedeInfo(NamedTuple):
@@ -53,12 +63,77 @@ class CentipedeInfo(NamedTuple):
 
 # -------- Render Constants --------
 def load_sprites():
-    return ()
+    MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-() = load_sprites()
+    player = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/player/player.npy"))
+    flea = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/enemies/flea.npy"))
+    spider = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/enemies/spider.npy"))
+
+    SPRITE_PLAYER = jnp.expand_dims(player, 0)
+    SPRITE_FLEA = jnp.expand_dims(flea, 0)
+    SPRITE_SPIDER = jnp.expand_dims(spider, 0)
+
+    return (
+        SPRITE_PLAYER,
+        SPRITE_FLEA,
+        SPRITE_SPIDER,
+    )
+
+(
+    SPRITE_PLAYER,
+    SPRITE_FLEA,
+    SPRITE_SPIDER,
+) = load_sprites()
 
 # -------- Game Logic --------
 
+
+@jax.jit
+def player_step(
+        state: CentipedeState, action: chex.Array
+) -> tuple[chex.Array, chex.Array]:
+    up = jnp.isin(action, jnp.array([
+        Action.UP,
+        Action.UPRIGHT,
+        Action.UPLEFT,
+        Action.UPFIRE,
+        Action.UPRIGHTFIRE,
+        Action.UPLEFTFIRE
+    ]))
+    down = jnp.isin(action, jnp.array([
+        Action.DOWN,
+        Action.DOWNRIGHT,
+        Action.DOWNLEFT,
+        Action.DOWNFIRE,
+        Action.DOWNRIGHTFIRE,
+        Action.DOWNLEFTFIRE
+    ]))
+    left = jnp.isin(action, jnp.array([
+        Action.LEFT,
+        Action.UPLEFT,
+        Action.DOWNLEFT,
+        Action.LEFTFIRE,
+        Action.UPLEFTFIRE,
+        Action.DOWNLEFTFIRE
+    ]))
+    right = jnp.isin(action, jnp.array([
+        Action.RIGHT,
+        Action.UPRIGHT,
+        Action.DOWNRIGHT,
+        Action.RIGHTFIRE,
+        Action.UPRIGHTFIRE,
+        Action.DOWNRIGHTFIRE
+    ]))
+
+    # TODO: add x-dimension accelleration
+
+    delta_x = jnp.where(left, -1, jnp.where(right, 1, 0))
+    player_x = jnp.clip(state.player_x + delta_x, PLAYER_BOUNDS[0][0], PLAYER_BOUNDS[0][1])
+
+    delta_y = jnp.where(up, -1, jnp.where(down, 1, 0))
+    player_y = jnp.clip(state.player_y + delta_y, PLAYER_BOUNDS[1][0], PLAYER_BOUNDS[1][1])
+
+    return player_x, player_y
 
 class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, CentipedeInfo]):
     def __init__(self, reward_funcs: list[callable] =None):
@@ -105,6 +180,15 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             active=jnp.array(1),
         )
 
+        def convert_to_entity(pos, size):
+            return jnp.array([
+                pos[0],  # x position
+                pos[1],  # y position
+                size[0],  # width
+                size[1],  # height
+                pos[2] != 0,  # active flag
+            ])
+
         return CentipedeObservation(
             player=player,
         )
@@ -133,7 +217,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return state.lives < 0
 
     @partial(jax.jit, static_argnums=(0, ))
-    def reset(self, key: jax.random.PRNGKey = jax.random.PRNGKey(42)) -> Tuple[CentipedeObservation, CentipedeState]:
+    def reset(self, key: jax.random.PRNGKey = jax.random.PRNGKey(time.time_ns() % (2**32))) -> tuple[CentipedeObservation, CentipedeState]:
         """Initialize game state"""
         reset_state = CentipedeState( # TODO: fill
             player_x=jnp.array(PLAYER_START_X),
@@ -141,6 +225,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             score=jnp.array(0),
             lives=jnp.array(3),
             step_counter=jnp.array(0),
+            wave=jnp.array(1),
+            rng_key=key,
         )
 
         initial_obs = self._get_observation(reset_state)
@@ -149,10 +235,16 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     @partial(jax.jit, static_argnums=(0, ))
     def step(
             self, state: CentipedeState, action: Action
-    ) -> Tuple[CentipedeObservation, CentipedeState, float, bool, CentipedeInfo]:
+    ) -> tuple[CentipedeObservation, CentipedeState, float, bool, CentipedeInfo]:
         # TODO: fill
 
-        return_state = state._replace(step_counter=state.step_counter + 1)
+        player_x, player_y = player_step(state, action)
+
+        return_state = state._replace(
+            player_x=player_x,
+            player_y=player_y,
+            step_counter=state.step_counter + 1
+        )
 
         obs = self._get_observation(return_state)
         all_rewards = self._get_all_rewards(state, return_state)
@@ -164,6 +256,14 @@ class CentipedeRenderer(AtraJaxisRenderer):
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state):
         raster = jnp.zeros((WIDTH, HEIGHT, 3))
+
+        frame_player = aj.get_sprite_frame(SPRITE_PLAYER, 0)
+        raster = aj.render_at(
+            raster,
+            state.player_x,
+            state.player_y,
+            frame_player,
+        )
 
         return raster
 
