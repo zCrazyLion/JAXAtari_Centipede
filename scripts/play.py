@@ -218,8 +218,7 @@ def main():
         window = pygame.display.set_mode((env_render_shape[0] * UPSCALE_FACTOR, env_render_shape[1] * UPSCALE_FACTOR))
         clock = pygame.time.Clock()
 
-    # get the action space of the current game (i.e. which actions are available)
-    action_space = env.get_action_space()
+    action_space = env.action_space()
 
     save_keys = {}
     playing = True
@@ -270,7 +269,7 @@ def main():
             action = get_human_action()
 
             # Check if the action is valid (otherwise send NOOP)
-            if action not in action_space:
+            if not action_space.contains(action):
                 action = Action.NOOP
 
             # Save the action to the save_keys dictionary
@@ -280,7 +279,7 @@ def main():
 
         elif args.random:
             # sample an action from the action space array
-            action = jax.random.choice(key, action_space)
+            action = action_space.sample(key)
             key, subkey = jax.random.split(key)
 
         else:
