@@ -205,7 +205,7 @@ def main():
     key = jrandom.PRNGKey(args.seed)
     jitted_reset = jax.jit(env.reset)
     jitted_step = jax.jit(env.step)
-    # TODO: for now, we do not test jitted rendering
+    jitted_render = jax.jit(renderer.render)
 
     # initialize the environment
     obs, state = jitted_reset(key)
@@ -214,7 +214,7 @@ def main():
     if not execute_without_rendering:
         pygame.init()
         pygame.display.set_caption("JAXAtari Game")
-        env_render_shape = renderer.render(state).shape[:2]
+        env_render_shape = jitted_render(state).shape[:2]
         window = pygame.display.set_mode((env_render_shape[0] * UPSCALE_FACTOR, env_render_shape[1] * UPSCALE_FACTOR))
         clock = pygame.time.Clock()
 
@@ -244,7 +244,7 @@ def main():
             # Convert numpy action to JAX array
             action = jax.numpy.array(action, dtype=jax.numpy.int32)
             obs, state, reward, done, info = jitted_step(state, action)
-            image = renderer.render(state)
+            image = jitted_render(state)
             aj.update_pygame(window, image, UPSCALE_FACTOR, 160, 210)
             clock.tick(frame_rate)
             
@@ -291,7 +291,7 @@ def main():
 
         # Render the environment
         if not execute_without_rendering:
-            image = renderer.render(state)
+            image = jitted_render(state)
 
             aj.update_pygame(window, image, UPSCALE_FACTOR, 160, 210)
 
