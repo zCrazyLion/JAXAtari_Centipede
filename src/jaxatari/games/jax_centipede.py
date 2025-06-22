@@ -21,10 +21,33 @@ WIDTH = 160
 HEIGHT = 210
 SCALING_FACTOR = 4
 
+# -------- Starting Pattern (X -> placed, O -> not placed) --------
+CENTIPEDE_STARTING_PATTERN = [
+        "OOOOOOOOOOOOOOOO",
+        "OOOOOOOOXOOOOXOO",
+        "OOOOOOOOOXOOOOXO",
+        "OOOOOOOOOOXXOOOO",
+        "OOOXOOOOOOOOOOOO",
+        "OXOOOOOOOOOOOOOO",
+        "OOOOOOOXOOOOOOOO",
+        "OOOOOOXOOOOOOOXO",
+        "OOOXXOOOOXOOOOOO",
+        "OOOOOOOXOOOOOOOO",
+        "OOOOOOOOOOOOXOOO",
+        "OOOOXOOOOOOOOOOO",
+        "OOOOOOOOOOOOOXOO",
+        "OOOOOOOOOOOXOOOX",
+        "OOOOOOOOOOOOOOXO",
+        "OOOOXOOXOOOOOOOO",
+        "OXOOOXOOOOOOOOOO",
+        "OOOOXOOOOOOOOOOX",
+        "OOOOOOOOOOOOOOOO",
+    ]
+
 # -------- Player constants --------
 PLAYER_START_X = 78
 PLAYER_START_Y = 190
-PLAYER_BOUNDS = (10, 146), (150, 180) # TODO: Check if correct
+PLAYER_BOUNDS = (16, 140), (150, 180) # TODO: Check if correct
 
 PLAYER_SIZE = (4, 9)
 
@@ -38,6 +61,14 @@ PLAYER_MISSILE_SPEED = 10
 
 PLAYER_MISSILE_SIZE = (1, 5) # TODO: Sprite may be (1, 6), right now it is (1, 5)
 
+# -------- Mushroom constants --------
+MAX_MUSHROOMS = 304             # Default 304 (19*16) | Maximum number of mushrooms that can appear at the same time
+MUSHROOM_NUMBER_OF_ROWS = 19    # Default 19 | Number of rows -> Determines value of MAX_MUSHROOMS
+MUSHROOM_NUMBER_OF_COLS = 16    # Default 16 | Number of mushrooms per row -> Determines value of MAX_MUSHROOMS
+MUSHROOM_X_SPACING = 8      #
+MUSHROOM_Y_SPACING = 9
+MUSHROOM_COLUMN_START_EVEN = 20
+MUSHROOM_COLUMN_START_ODD = 16
 
 # -------- States --------
 class PlayerMissileState(NamedTuple):
@@ -50,7 +81,7 @@ class CentipedeState(NamedTuple):
     player_y: chex.Array
     player_velocity_x: chex.Array
     player_missile: PlayerMissileState
-    # mushroom_positions: chex.Array # (128, 2) array for mushroom positions
+    mushroom_positions: chex.Array # (304, 5) array for mushroom positions -> mushroom_positions need 5 entries per mushroom: 1. x value 2. y value 3. is shown 4. lives (1, 2 or 3) 5. is poisoned -> there are also 304 mushrooms in total
     # centipede_position: chex.Array # (9, ?) must contain position, direction, speed and if head
     # spider_position: chex.Array # (1, 3) array for spider (x, y, direction)
     # flea_position: chex.Array # (1, 3) array for flea, 2 lives, speed doubles after 1 hit
@@ -91,11 +122,15 @@ def load_sprites():
     player_missile = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/player_missile/player_missile.npy"))
     flea = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/enemies/flea.npy"))
     spider = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/enemies/spider.npy"))
+    bottom_border = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/ui/bottom_border.npy"))
+    mushroom = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/mushrooms/mushroom.npy"))
 
     SPRITE_PLAYER = jnp.expand_dims(player, 0)
     SPRITE_PLAYER_MISSILE = jnp.expand_dims(player_missile, 0)
     SPRITE_FLEA = jnp.expand_dims(flea, 0)
     SPRITE_SPIDER = jnp.expand_dims(spider, 0)
+    SPRITE_BOTTOM_BORDER = jnp.expand_dims(bottom_border, 0)
+    SPRITE_MUSHROOM = jnp.expand_dims(mushroom, 0)
 
     # Debug
     frame_player = aj.get_sprite_frame(SPRITE_PLAYER, 0)
@@ -106,6 +141,8 @@ def load_sprites():
         SPRITE_PLAYER_MISSILE,
         SPRITE_FLEA,
         SPRITE_SPIDER,
+        SPRITE_BOTTOM_BORDER,
+        SPRITE_MUSHROOM,
     )
 
 (
@@ -113,10 +150,37 @@ def load_sprites():
     SPRITE_PLAYER_MISSILE,
     SPRITE_FLEA,
     SPRITE_SPIDER,
+    SPRITE_BOTTOM_BORDER,
+    SPRITE_MUSHROOM,
 ) = load_sprites()
 
 # -------- Game Logic --------
 
+## -------- Mushroom Spawn Logic --------
+def initialize_mushroom_positions() -> chex.Array:
+
+    mushroom_positions = []
+
+    for row in range(MUSHROOM_NUMBER_OF_ROWS):
+        row_is_even = row % 2 == 0
+        column_counter = MUSHROOM_COLUMN_START_EVEN if row_is_even else MUSHROOM_COLUMN_START_ODD
+        row_y = 16 + row * MUSHROOM_Y_SPACING
+
+        for col in range(MUSHROOM_NUMBER_OF_COLS):
+            x = int(column_counter)
+            y = int(row_y)
+
+            # Sichtbarkeit anhand des Patterns
+            char = CENTIPEDE_STARTING_PATTERN[row][col].upper() if row < len(CENTIPEDE_STARTING_PATTERN) and col < len(CENTIPEDE_STARTING_PATTERN[row]) else "O"
+            is_shown = 1 if char == "X" else 0
+
+            is_poisoned = 0
+            lives = 3
+
+            mushroom_positions.append([x, y, is_shown, is_poisoned, lives])
+            column_counter += MUSHROOM_X_SPACING
+
+    return jnp.array(mushroom_positions)
 
 @jax.jit
 def player_step(
@@ -212,11 +276,19 @@ def player_missile_step(
     # Base x
     base_x = jnp.where(spawn, state.player_x + 1, state.player_missile.x) # player x on spawn or keep x
     # Base y
-    base_y = jnp.where(spawn, state.player_y, state.player_missile.y) # player y on spawn or keey y
+    base_y = jnp.where(spawn, state.player_y + 5, state.player_missile.y) # player y on spawn or keey y
 
     # move only when alive
-    new_y = jnp.where(new_is_alive, base_y - PLAYER_MISSILE_SPEED, 0.0)
-    new_x = jnp.where(new_is_alive, base_x, 0.0)
+    new_y = jnp.where(
+        spawn,
+        state.player_y + 5 - PLAYER_MISSILE_SPEED,
+        jnp.where(new_is_alive, base_y - PLAYER_MISSILE_SPEED, 0.0)
+    )
+    new_x = jnp.where(
+        new_is_alive,
+        base_x,
+        0.0
+    )
 
     return PlayerMissileState(x=new_x, y=new_y, is_alive=new_is_alive)
 
@@ -310,6 +382,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             player_y=jnp.array(PLAYER_START_Y),
             player_velocity_x=jnp.array(0),
             player_missile=PlayerMissileState(x=jnp.array(0), y=jnp.array(0), is_alive=jnp.array(False)),
+            mushroom_positions=initialize_mushroom_positions(),
             score=jnp.array(0),
             lives=jnp.array(3),
             step_counter=jnp.array(0),
@@ -365,6 +438,26 @@ class CentipedeRenderer(AtraJaxisRenderer):
             # Where visible, use the new color; otherwise keep black (zeros)
             return jnp.where(visible_mask, color_broadcasted, 0)
 
+        # -------- Render mushrooms --------
+        frame_mushroom = aj.get_sprite_frame(SPRITE_MUSHROOM, state.step_counter)
+        frame_mushroom = recolor_sprite(frame_mushroom, jnp.array([92, 186, 92, 255]))
+
+        def render_mushrooms(i, raster_base):
+            should_render = state.mushroom_positions[i][2] == 1
+            return jax.lax.cond(
+                should_render,
+                lambda r: aj.render_at(
+                    r,
+                    state.mushroom_positions[i][0],
+                    state.mushroom_positions[i][1],
+                    frame_mushroom,
+                ),
+                lambda r: r,
+                raster_base,
+            )
+
+        raster = jax.lax.fori_loop(0, MAX_MUSHROOMS, render_mushrooms, raster)
+
         # -------- Render player --------
         frame_player = aj.get_sprite_frame(SPRITE_PLAYER, 0)
         frame_player = recolor_sprite(frame_player, jnp.array([92, 186, 92, 255]))
@@ -387,6 +480,16 @@ class CentipedeRenderer(AtraJaxisRenderer):
                 frame_player_missile,
             ),
         raster
+        )
+
+        # -------- Render bottom border --------
+        frame_bottom_border = aj.get_sprite_frame(SPRITE_BOTTOM_BORDER, 0)
+        frame_bottom_border = recolor_sprite(frame_bottom_border, jnp.array([92, 186, 92, 255]))
+        raster = aj.render_at(
+            raster,
+            16,
+            190,
+            frame_bottom_border,
         )
 
         return raster
