@@ -1,4 +1,5 @@
 from functools import partial
+import os
 from typing import NamedTuple, Tuple
 import jax
 import jax.numpy as jnp
@@ -6,6 +7,7 @@ import chex
 import pygame
 
 from jaxatari.environment import JaxEnvironment
+from jaxatari.renderers import AtraJaxisRenderer
 import jaxatari.spaces as spaces
 
 # Constants for game environment
@@ -94,6 +96,7 @@ class BreakoutObservation(NamedTuple):
     player: EntityPosition
     ball: EntityPosition
     blocks: chex.Array
+    # TODO: move this into info??
     score: chex.Array
     lives: chex.Array
 
@@ -103,7 +106,7 @@ class BreakoutInfo(NamedTuple):
 
 
 # Game state container
-class State(NamedTuple):
+class BreakoutState(NamedTuple):
     player_x: chex.Array
     player_speed: chex.Array
     small_paddle: chex.Array
@@ -149,7 +152,7 @@ def player_step(
     state_player_speed: chex.Array,
     acceleration_counter: chex.Array,
     action: chex.Array,
-) -> (chex.Array, chex.Array, chex.Array):
+) -> Tuple[chex.Array, chex.Array, chex.Array]:
     """Updates the player position based on the action."""
     left = action == LEFT
     right = action == RIGHT
@@ -246,17 +249,41 @@ def detect_paddle_hit(ball_x, ball_y, player_x, small_paddle):
     """Detects if the ball has hit the paddle."""
     paddle_width = jnp.where(small_paddle, PLAYER_SIZE_SMALL[0], PLAYER_SIZE[0])
 
-    paddle_hit_y = jnp.logical_and(
+    # Check for collision from above (ball hitting paddle top)
+    paddle_hit_y_from_above = jnp.logical_and(
         ball_y + BALL_SIZE[1] > PLAYER_START_Y,
         ball_y + BALL_SIZE[1] <= PLAYER_START_Y + PLAYER_SIZE[1]
     )
 
-    paddle_hit_x = jnp.logical_and(
+    # Check for collision from sides (ball hitting paddle left or right edge)
+    paddle_hit_x_from_left = jnp.logical_and(
+        ball_x + BALL_SIZE[0] >= player_x,
+        ball_x + BALL_SIZE[0] <= player_x + 2  # Small tolerance for side hit
+    )
+    
+    paddle_hit_x_from_right = jnp.logical_and(
+        ball_x <= player_x + paddle_width,
+        ball_x >= player_x + paddle_width - 2  # Small tolerance for side hit
+    )
+
+    # X-axis collision check (ball overlaps with paddle horizontally)
+    paddle_hit_x_overlap = jnp.logical_and(
         ball_x + BALL_SIZE[0] >= player_x,
         ball_x <= player_x + paddle_width
     )
 
-    return jnp.logical_and(paddle_hit_x, paddle_hit_y)
+    # Y-axis collision check (ball overlaps with paddle vertically)
+    paddle_hit_y_overlap = jnp.logical_and(
+        ball_y + BALL_SIZE[1] >= PLAYER_START_Y,
+        ball_y <= PLAYER_START_Y + PLAYER_SIZE[1]
+    )
+
+    # Combine all collision types
+    hit_from_above = jnp.logical_and(paddle_hit_x_overlap, paddle_hit_y_from_above)
+    hit_from_left = jnp.logical_and(paddle_hit_x_from_left, paddle_hit_y_overlap)
+    hit_from_right = jnp.logical_and(paddle_hit_x_from_right, paddle_hit_y_overlap)
+
+    return jnp.logical_or(jnp.logical_or(hit_from_above, hit_from_left), hit_from_right)
 
 @jax.jit
 def ball_step(state, game_started, player_x):
@@ -571,18 +598,19 @@ def check_block_collision(state, ball_x, ball_y, ball_speed_idx, ball_direction_
         operand=None
     )
 
-class JaxBreakout(JaxEnvironment[State, BreakoutObservation, BreakoutInfo]):
+class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInfo]):
     def __init__(self):
         super().__init__()
+        self.renderer = BreakoutRenderer()
 
     @partial(jax.jit, static_argnums=(0,))
-    def reset(self, key = None) -> tuple[BreakoutObservation, State]:
+    def reset(self, key = None) -> tuple[BreakoutObservation, BreakoutState]:
         """Initialize game state"""
         init_speed_idx = 0
         init_direction_idx = 0
         init_vel_x, init_vel_y = get_ball_velocity(init_speed_idx, init_direction_idx, 0)
 
-        state =  State(
+        state =  BreakoutState(
             player_x=jnp.array(PLAYER_START_X),
             player_speed=jnp.array(0),
             small_paddle=jnp.array(False),
@@ -606,9 +634,12 @@ class JaxBreakout(JaxEnvironment[State, BreakoutObservation, BreakoutInfo]):
 
         return self._get_observation(state), state
 
+    def render(self, state: BreakoutState) -> jnp.ndarray:
+        return self.renderer.render(state)
+
     @partial(jax.jit, static_argnums=(0,))
-    def step(self, state: State, action: chex.Array) -> Tuple[
-        BreakoutObservation, State, chex.Array, chex.Array, BreakoutInfo]:
+    def step(self, state: BreakoutState, action: chex.Array) -> Tuple[
+        BreakoutObservation, BreakoutState, chex.Array, chex.Array, BreakoutInfo]:
         prev_score = state.score
         new_state = self._step(state, action)
         obs = self._get_observation(new_state)
@@ -618,7 +649,7 @@ class JaxBreakout(JaxEnvironment[State, BreakoutObservation, BreakoutInfo]):
         return obs, new_state, reward, done, info
 
     @partial(jax.jit, static_argnums=(0,))
-    def _step(self, state: State, action: chex.Array) -> State:
+    def _step(self, state: BreakoutState, action: chex.Array) -> BreakoutState:
         # Update player position
         new_player_x, new_paddle_v, new_acceleration_counter = player_step(
             state.player_x, state.player_speed, state.acceleration_counter, action
@@ -668,7 +699,7 @@ class JaxBreakout(JaxEnvironment[State, BreakoutObservation, BreakoutInfo]):
         new_lives = jnp.where(life_lost, state.lives - 1, state.lives)
         small_paddle = jnp.where(life_lost, jnp.array(False), small_paddle)
 
-        return State(
+        return BreakoutState(
             player_x=new_player_x,
             player_speed=new_paddle_v,
             small_paddle=small_paddle,
@@ -691,7 +722,7 @@ class JaxBreakout(JaxEnvironment[State, BreakoutObservation, BreakoutInfo]):
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_observation(self, state: State) -> BreakoutObservation:
+    def _get_observation(self, state: BreakoutState) -> BreakoutObservation:
         paddle_width = jnp.where(state.small_paddle, PLAYER_SIZE_SMALL[0], PLAYER_SIZE[0])
 
         player = EntityPosition(
@@ -717,7 +748,7 @@ class JaxBreakout(JaxEnvironment[State, BreakoutObservation, BreakoutInfo]):
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: State) -> BreakoutInfo:
+    def _get_info(self, state: BreakoutState) -> BreakoutInfo:
         return BreakoutInfo(
             time=state.step_counter,
             wall_resets=state.wall_resets
@@ -728,7 +759,7 @@ class JaxBreakout(JaxEnvironment[State, BreakoutObservation, BreakoutInfo]):
         return current_score - previous_score
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_done(self, state: State) -> chex.Array:
+    def _get_done(self, state: BreakoutState) -> chex.Array:
         return state.lives <= 0
 
     def action_space(self) -> spaces.Discrete:
@@ -763,7 +794,7 @@ class JaxBreakout(JaxEnvironment[State, BreakoutObservation, BreakoutInfo]):
                 "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
                 "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
             }),
-            "blocks": spaces.Box(low=0, high=1, shape=(6, 18), dtype=jnp.int32),
+            "blocks": spaces.Box(low=0, high=1, shape=(NUM_ROWS, BLOCKS_PER_ROW), dtype=jnp.int32),
             "score": spaces.Box(low=0, high=999999, shape=(), dtype=jnp.int32),
             "lives": spaces.Box(low=0, high=5, shape=(), dtype=jnp.int32),
         })
@@ -780,101 +811,191 @@ class JaxBreakout(JaxEnvironment[State, BreakoutObservation, BreakoutInfo]):
         )
 
 
-class Renderer:
+    def obs_to_flat_array(self, obs: BreakoutObservation) -> jnp.ndarray:
+        return jnp.concatenate([
+            obs.player.x.flatten(),
+            obs.player.y.flatten(),
+            obs.player.width.flatten(),
+            obs.player.height.flatten(),
+            obs.ball.x.flatten(),
+            obs.ball.y.flatten(),
+            obs.ball.width.flatten(),
+            obs.ball.height.flatten(),
+            obs.blocks.flatten(),
+            obs.score.flatten(),
+            obs.lives.flatten(),
+        ])
+    
+
+import jaxatari.rendering.atraJaxis as aj
+class BreakoutRenderer(AtraJaxisRenderer):
     def __init__(self):
-        pygame.init()
-        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pygame.display.set_caption("Breakout")
-        self.clock = pygame.time.Clock()
+        super().__init__()
+        self.SPRITE_BG, self.SPRITE_PLAYER, self.SPRITE_BALL, self.DIGIT_SPRITES = self.load_sprites()
+        self.BLOCK_COLORS = [jnp.array(color, dtype=jnp.uint8) for color in BLOCK_COLORS]
 
-    def render(self, state: State):
-        # Clear screen
-        self.screen.fill(BACKGROUND_COLOR)
+        self.BLOCK_SIZE = (BLOCK_SIZE[0], BLOCK_SIZE[1])
 
-        # Draw walls
-        # Top wall
-        pygame.draw.rect(
-            self.screen,
-            WALL_COLOR,
-            (0, WALL_TOP_Y * 3, WINDOW_WIDTH, WALL_TOP_HEIGHT * 3),
+        # Pre-compute the raster layers for every possible block position.
+        self.ALL_POSSIBLE_BLOCK_RASTERS = self._precompute_block_rasters()
+
+    def load_sprites(self):
+        """Load all sprites required for Pong rendering."""
+        MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+        # Load sprites
+        player = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/breakout/player.npy"), transpose=True)
+        ball = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/breakout/ball.npy"), transpose=True)
+
+        bg = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/breakout/background.npy"), transpose=True)
+
+        # Convert all sprites to the expected format (add frame dimension)
+        SPRITE_BG = jnp.expand_dims(bg, axis=0)
+        SPRITE_PLAYER = jnp.expand_dims(player, axis=0)
+        SPRITE_BALL = jnp.expand_dims(ball, axis=0)
+
+        # Load digits for scores
+        DIGIT_SPRITES = aj.load_and_pad_digits(
+            os.path.join(MODULE_DIR, "sprites/breakout/score_{}.npy"),
+            num_chars=10,
         )
 
-        # Left wall
-        pygame.draw.rect(
-            self.screen,
-            WALL_COLOR,
-            (0, WALL_TOP_Y * 3, WALL_SIDE_WIDTH * 3, (196 - 17) * 3),
+        return (
+            SPRITE_BG,
+            SPRITE_PLAYER,
+            SPRITE_BALL,
+            DIGIT_SPRITES
         )
+    
+    
+    def _precompute_block_rasters(self):
+        """
+        Calculates a stack of rasters, one for each possible block position.
+        This is done once at initialization to speed up the main render loop.
+        """
+        # Helper function to draw a single block on a blank canvas of fixed size.
+        def draw_single_block(x, y, color):
+            blank_raster = jnp.zeros((WINDOW_WIDTH, WINDOW_HEIGHT, 3), dtype=jnp.uint8)
+            patch = jnp.full((self.BLOCK_SIZE[0], self.BLOCK_SIZE[1], 3), color, dtype=jnp.uint8)
+            return jax.lax.dynamic_update_slice(blank_raster, patch, (x, y, 0))
 
-        # Right wall
-        pygame.draw.rect(
-            self.screen,
-            WALL_COLOR,
-            (
-                WINDOW_WIDTH - WALL_SIDE_WIDTH * 3,
-                WALL_TOP_Y * 3,
-                WALL_SIDE_WIDTH * 3,
-                (196 - 18) * 3,
-            ),
+        # Generate coordinates and colors for ALL possible block positions.
+        rows_grid, cols_grid = jnp.meshgrid(
+            jnp.arange(NUM_ROWS, dtype=jnp.int32),
+            jnp.arange(BLOCKS_PER_ROW, dtype=jnp.int32),
+            indexing='ij'
         )
+        all_xs = (BLOCK_START_X + cols_grid * self.BLOCK_SIZE[0]).flatten()
+        all_ys = (BLOCK_START_Y + rows_grid * self.BLOCK_SIZE[1]).flatten()
+        
+        # Convert JAX array to regular Python array for indexing (should be fine since we only call this during init?)
+        rows_flat = rows_grid.flatten()
+        all_colors = jnp.array([self.BLOCK_COLORS[int(row)] for row in rows_flat])
 
-        # Draw blocks
-        for row in range(NUM_ROWS):
-            for col in range(BLOCKS_PER_ROW):
-                if state.blocks[row, col] == 1:
-                    block_rect = pygame.Rect(
-                        (BLOCK_START_X + col * BLOCK_SIZE[0]) * 3,
-                        (BLOCK_START_Y + row * BLOCK_SIZE[1]) * 3,
-                        BLOCK_SIZE[0] * 3,
-                        BLOCK_SIZE[1] * 3,
-                    )
-                    pygame.draw.rect(self.screen, BLOCK_COLORS[row], block_rect)
+        # Vectorize the drawing function over all possible blocks.
+        # This produces a stack of rasters, one for each potential block position.
+        # Shape: (NUM_BLOCKS, WIDTH, HEIGHT, 3)
+        return jax.vmap(draw_single_block, in_axes=(0, 0, 0))(all_xs, all_ys, all_colors)
 
-        # Draw player paddle
-        paddle_width = PLAYER_SIZE_SMALL[0] if state.small_paddle else PLAYER_SIZE[0]
-        player_rect = pygame.Rect(
-            int(state.player_x) * 3,
-            PLAYER_START_Y * 3,
-            paddle_width * 3,
-            PLAYER_SIZE[1] * 3,
-        )
-        pygame.draw.rect(self.screen, PLAYER_COLOR, player_rect)
 
-        # Draw ball only if the game has started
-        if state.game_started and state.ball_y < 197:
-            ball_rect = pygame.Rect(
-                int(state.ball_x) * 3,
-                int(state.ball_y) * 3,
-                BALL_SIZE[0] * 3,
-                BALL_SIZE[1] * 3,
-            )
-            pygame.draw.rect(self.screen, BALL_COLOR, ball_rect)
+    @partial(jax.jit, static_argnums=(0,))
+    def render(self, state):
+        """
+        Renders the current game state using JAX operations.
 
-        # Draw score and lives
-        font = pygame.font.Font(None, 36)
-        score_text = font.render(f"Score: {state.score}", True, (255, 255, 255))
-        lives_text = font.render(f"Lives: {state.lives}", True, (255, 255, 255))
-        self.screen.blit(score_text, (10, 10))
-        self.screen.blit(lives_text, (WINDOW_WIDTH - 100, 10))
+        Args:
+            state: A PongState object containing the current game state.
 
-        pygame.display.flip()
+        Returns:
+            A JAX array representing the rendered frame.
+        """
+        # Create empty raster
+        raster = jnp.zeros((WINDOW_WIDTH, WINDOW_HEIGHT, 3))
+
+        # Render background - (0, 0) is top-left corner
+        frame_bg = aj.get_sprite_frame(self.SPRITE_BG, 0)
+        raster = aj.render_at(raster, 0, 0, frame_bg)
+
+        # Render player paddle
+        frame_player = aj.get_sprite_frame(self.SPRITE_PLAYER, 0)
+        raster = aj.render_at(raster, state.player_x, PLAYER_START_Y, frame_player)
+
+        # Render ball - ball position is (ball_x, ball_y)
+        # Move ball outside visible area when game hasn't started
+        ball_x = jnp.where(state.game_started, state.ball_x, -10)
+        ball_y = jnp.where(state.game_started, state.ball_y, -10)
+        frame_ball = aj.get_sprite_frame(self.SPRITE_BALL, 0)
+        raster = aj.render_at(raster, ball_x, ball_y, frame_ball)
+
+        # 1. Create a mask for currently active blocks from the game state.
+        active_mask = (state.blocks == 1).flatten()
+
+        # 2. Apply the mask to the pre-computed rasters to zero out inactive blocks.
+        # The mask is reshaped to allow broadcasting across the raster dimensions.
+        masked_rasters = self.ALL_POSSIBLE_BLOCK_RASTERS * active_mask[:, None, None, None]
+
+        # 3. Sum the masked rasters to create a single layer with all active blocks.
+        # Summation works because non-overlapping blocks were drawn on zeroed backgrounds.
+        blocks_layer = jnp.sum(masked_rasters, axis=0, dtype=jnp.uint8)
+
+        # 4. Add the block layer onto the main raster.
+        raster += blocks_layer
+
+        # 1. Get digit array
+        player_score_digits = aj.int_to_digits(state.score, max_digits=3)
+        player_lifes_digit = aj.int_to_digits(state.lives, max_digits=1)
+        number_players_digit = aj.int_to_digits(1, max_digits=1)
+
+        # score starts at 36, 5
+        # number of lives at 100, 5
+        # number players at 136, 5 (always 1 for us)
+
+        # 1. Render score
+        raster = aj.render_label_selective(raster, 36, 5,
+                                            player_score_digits, self.DIGIT_SPRITES,
+                                            0, 3,
+                                            spacing=16)
+        
+        # 2. Render number of lives
+        raster = aj.render_label_selective(raster, 100, 5,
+                                            player_lifes_digit, self.DIGIT_SPRITES,
+                                            0, 1,
+                                            spacing=16)
+        
+        # 3. Render number of players
+        raster = aj.render_label_selective(raster, 136, 5,
+                                            number_players_digit, self.DIGIT_SPRITES,
+                                            0, 1,
+                                            spacing=16)
+
+        # after y=196 til y=210 render a black rectangle (its blocking the view of the ball)
+        # Force the last 14 rows (y=196 to y=210) to be black
+        raster = raster.at[:, 196:210, :].set(0)
+
+        return raster
 
 
 if __name__ == "__main__":
-    # Initialize game and renderer
+    # Initialize Pygame
+    pygame.init()
+    screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+    pygame.display.set_caption("Breakout")
+    clock = pygame.time.Clock()
+
     game = JaxBreakout()
-    renderer = Renderer()
+    renderer = BreakoutRenderer()
 
     # Get jitted functions
     jitted_step = jax.jit(game.step)
     jitted_reset = jax.jit(game.reset)
+    jitted_render = jax.jit(renderer.render)
 
     obs, curr_state = jitted_reset()
 
     # Game loop
     running = True
-    frameskip = 1
     frame_by_frame = False
+    frameskip = 1
     counter = 1
 
     while running:
@@ -901,8 +1022,11 @@ if __name__ == "__main__":
                 if done:
                     running = False
 
-        renderer.render(curr_state)
+        # Render and display
+        raster = jitted_render(curr_state)
+        aj.update_pygame(screen, raster, 3, 160, 210)
+
         counter += 1
-        renderer.clock.tick(60)
+        clock.tick(60)
 
     pygame.quit()

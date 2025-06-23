@@ -740,25 +740,22 @@ class PongRenderer(AtraJaxisRenderer):
         Returns:
             A JAX array representing the rendered frame.
         """
-        # Create empty raster with CORRECT orientation for atraJaxis framework
-        # Note: For pygame, the raster is expected to be (width, height, channels)
-        # where width corresponds to the horizontal dimension of the screen
-        raster = jnp.zeros((WIDTH, HEIGHT, 3))
+        # Create empty raster
+        raster = jnp.zeros((WINDOW_WIDTH, WINDOW_HEIGHT, 3))
 
         # Render background - (0, 0) is top-left corner
         frame_bg = aj.get_sprite_frame(self.SPRITE_BG, 0)
         raster = aj.render_at(raster, 0, 0, frame_bg)
 
-        # Render player paddle - IMPORTANT: Swap x and y coordinates
-        # render_at takes (raster, y, x, sprite) but we need to swap them due to transposition
+        # Render player paddle
         frame_player = aj.get_sprite_frame(self.SPRITE_PLAYER, 0)
         raster = aj.render_at(raster, PLAYER_X, state.player_y, frame_player)
 
-        # Render enemy paddle - same swap needed
+        # Render enemy paddle
         frame_enemy = aj.get_sprite_frame(self.SPRITE_ENEMY, 0)
         raster = aj.render_at(raster, ENEMY_X,state.enemy_y, frame_enemy)
 
-        # Render ball - ball position is (ball_x, ball_y) but needs to be swapped
+        # Render ball
         frame_ball = aj.get_sprite_frame(self.SPRITE_BALL, 0)
         raster = aj.render_at(raster, state.ball_x, state.ball_y, frame_ball)
 
@@ -786,7 +783,7 @@ class PongRenderer(AtraJaxisRenderer):
                                          120 + 16 // 2,
                                          120)
 
-        # 3. Render player score using the selective renderer
+        # 3. Render player score
         raster = aj.render_label_selective(raster, player_render_x, 3,
                                             player_score_digits, self.PLAYER_DIGIT_SPRITES,
                                             player_start_index, player_num_to_render,
@@ -824,6 +821,7 @@ if __name__ == "__main__":
     # Get jitted functions
     jitted_step = jax.jit(game.step)
     jitted_reset = jax.jit(game.reset)
+    jitted_render = jax.jit(renderer.render)
 
     obs, curr_state = jitted_reset()
 
@@ -856,7 +854,7 @@ if __name__ == "__main__":
                 obs, curr_state, reward, done, info = jitted_step(curr_state, action)
 
         # Render and display
-        raster = renderer.render(curr_state)
+        raster = jitted_render(curr_state)
 
         aj.update_pygame(screen, raster, 3, WIDTH, HEIGHT)
 
