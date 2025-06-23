@@ -15,16 +15,22 @@ import pygame
 from functools import partial
 
 import jaxatari
-from jaxatari.wrappers import AtariWrapper, FlattenObservationWrapper
+from jaxatari.wrappers import AtariWrapper, FlattenObservationWrapper, ObjectCentricWrapper, PixelAndObjectCentricWrapper
 import jaxatari.games.jax_pong as jax_pong
+import jaxatari.spaces as spaces
 
 
-def normalize_observation_jaxatari(obs: jnp.ndarray) -> jnp.ndarray:
-    single_frame_max_values = jnp.array([160, 210, 160, 210, 160, 210], dtype=jnp.float32)
-    num_features_per_frame = 6
+def normalize_observation_jaxatari(obs: jnp.ndarray, obs_space: spaces.Space) -> jnp.ndarray:
+    # assuming the obs space is flattened at this point, get the max values for each feature
+    max_values = obs_space.high.flatten()
+    min_values = obs_space.low.flatten()
+
+    num_features_per_frame = len(max_values)
     num_frames = obs.shape[-1] // num_features_per_frame
-    max_values = jnp.tile(single_frame_max_values, num_frames)
-    return 2 * (obs / max_values) - 1.0
+    max_values = jnp.tile(max_values, num_frames)
+    min_values = jnp.tile(min_values, num_frames)
+
+    return 2* ((obs - min_values)/(max_values-min_values)) - 1.0
 
 
 def env_step(env_step_fn, state, action, agent_key):
@@ -38,7 +44,8 @@ def collect_rollout_step_vmapped(
     current_env_states_batched: Any,  # A PyTree of batched environment states
     agent_key: jnp.ndarray,  # A single key, will be split for vmap
     representative_env_step_fn: Callable,  # Single step function to vmap over
-    num_envs: int
+    num_envs: int,
+    obs_space: spaces.Space
 ) -> Tuple[jnp.ndarray, Any, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Function to collect a single step of rollout data using jax.vmap for env steps."""
     # 1. Get actions and values from the policy
@@ -52,21 +59,18 @@ def collect_rollout_step_vmapped(
     actions = pi.sample(seed=agent_key)  # actions shape: (num_envs,)
     log_probs = pi.log_prob(actions)    # log_probs shape: (num_envs,)
 
-    # 2. Prepare keys for vmapped environment steps
-    step_keys = jax.random.split(agent_key, num_envs)  # shape: (num_envs, key_shape)
-
-    # 3. Vmap the environment step function
+    # 2. Vmap the environment step function
     vmapped_step_fn = jax.vmap(
-        representative_env_step_fn, in_axes=(0, 0, 0), out_axes=0
+        representative_env_step_fn, in_axes=(0, 0), out_axes=0
     )
 
     # current_env_states_batched is a PyTree where leaves have shape (num_envs, ...)
     # actions needs to be int32 for env step
     next_raw_obs_batched, next_env_states_batched, rewards_batched, dones_batched, _ = \
-        vmapped_step_fn(step_keys, current_env_states_batched, actions.astype(jnp.int32))
+        vmapped_step_fn(current_env_states_batched, actions.astype(jnp.int32))
 
-    # 4. Normalize observations
-    next_obs_norm_batched = normalize_observation_jaxatari(next_raw_obs_batched)
+    # 3. Normalize observations
+    next_obs_norm_batched = normalize_observation_jaxatari(next_raw_obs_batched, obs_space)
     # Ensure it's (num_envs, features_flat_after_norm)
     if next_obs_norm_batched.ndim == 1 and num_envs == 1:  # Special case for num_envs=1
         next_obs_norm_batched = next_obs_norm_batched.reshape(1, -1)
@@ -89,7 +93,7 @@ def collect_rollout_step_vmapped(
 # Create a JIT-compiled version with static arguments
 collect_rollout_step_vmapped_jit = jax.jit(
     collect_rollout_step_vmapped,
-    static_argnums=(4, 5)  # Only mark representative_env_step_fn and num_envs as static
+    static_argnums=(4, 5, 6)  # Only mark representative_env_step_fn and num_envs as static
 )
 
 jax.jit
@@ -200,9 +204,10 @@ def train_ppo_with_jaxatari(config: Dict[str, Any]):
     # create all environments
     envs = []
     for i in range(config["NUM_ENVS"]):
-        env = jax_pong.JaxPong()
-        env: AtariWrapper = AtariWrapper(env, sticky_actions=False, frame_stack_size=buffer_window, frame_skip=config["FRAMESKIP"])
-        env: FlattenObservationWrapper = FlattenObservationWrapper(env)
+        env = jaxatari.make(game_name)
+        env: AtariWrapper = AtariWrapper(env, sticky_actions=True, frame_stack_size=buffer_window, frame_skip=config["FRAMESKIP"]) # get the atari wrapper to handle things like frame stacking, sticky actions, etc.
+        env: ObjectCentricWrapper = ObjectCentricWrapper(env) # use the object centric wrapper to only return object centric observations
+        env: FlattenObservationWrapper = FlattenObservationWrapper(env) # flatten the object centric observation to a single vector
         envs.append(env)
 
     # We will use envs[0].step as the representative_env_step_fn
@@ -213,6 +218,8 @@ def train_ppo_with_jaxatari(config: Dict[str, Any]):
     reset_keys = jax.random.split(main_rng, config["NUM_ENVS"] + 1)  # +1 for main_rng split later
     main_rng = reset_keys[0]
 
+    obs_space = envs[0].observation_space()
+
     for i, env in enumerate(envs):
         # Each env.reset needs its own key
         obs, curr_state = env.reset(key=reset_keys[i+1])
@@ -222,14 +229,17 @@ def train_ppo_with_jaxatari(config: Dict[str, Any]):
     current_raw_obs_stacked = jnp.stack(obs_list)  # (num_envs, *raw_obs_shape)
     obs_shape_flat = current_raw_obs_stacked.shape[1:]  # Shape of one flattened raw observation
 
-    # Get the base environment directly
-    possible_actions = envs[0]._env.get_action_space()
+    # Get the base environment directly TODO: maybe pass the action space through as well?
+    possible_actions = envs[0]._env.action_space()
+
+    # at this point print the possible actions
+    print(f"Possible actions: {possible_actions}")
 
     agent_key, init_key = jax.random.split(main_rng)
-    train_state = create_ppo_train_state(init_key, config, obs_shape_flat, len(possible_actions))
+    train_state = create_ppo_train_state(init_key, config, obs_shape_flat, possible_actions.n)
 
     # Initial normalization and state batching
-    current_obs_stacked_norm_flat = normalize_observation_jaxatari(current_raw_obs_stacked).reshape(config["NUM_ENVS"], -1)
+    current_obs_stacked_norm_flat = normalize_observation_jaxatari(current_raw_obs_stacked, obs_space).reshape(config["NUM_ENVS"], -1)
     # Batch the list of PyTree states into a single PyTree with leading batch dimension
     current_batched_env_states = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs, axis=0), *states_list_py)
 
@@ -269,7 +279,8 @@ def train_ppo_with_jaxatari(config: Dict[str, Any]):
                 current_batched_env_states,     # Batched PyTree of env states
                 rollout_sample_key,             # Key for this step
                 representative_env_step_fn,     # Single step function to vmap over
-                config["NUM_ENVS"]
+                config["NUM_ENVS"],
+                obs_space
             )
 
             # Split key for next iteration
@@ -291,7 +302,7 @@ def train_ppo_with_jaxatari(config: Dict[str, Any]):
                     reset_key, agent_key = jax.random.split(agent_key)
                     new_obs_done, new_state_done = envs[i].reset(reset_key)
                     # Update the corresponding slices in next_obs_norm and next_batched_env_states
-                    next_obs_norm = next_obs_norm.at[i].set(normalize_observation_jaxatari(new_obs_done).flatten())
+                    next_obs_norm = next_obs_norm.at[i].set(normalize_observation_jaxatari(new_obs_done, obs_space).flatten())
                     # Update the batched state PyTree
                     next_batched_env_states = jax.tree_util.tree_map(
                         lambda leaf, new_state: leaf.at[i].set(new_state),
@@ -308,7 +319,6 @@ def train_ppo_with_jaxatari(config: Dict[str, Any]):
             rollout_log_probs = rollout_log_probs.at[step_idx].set(log_probs)
             rollout_rewards = rollout_rewards.at[step_idx].set(rewards)
             rollout_dones = rollout_dones.at[step_idx].set(dones)
-            rollout_values = rollout_values.at[step_idx].set(value)
             
             current_obs_stacked_norm_flat = next_obs_norm
             current_batched_env_states = next_batched_env_states
@@ -395,48 +405,6 @@ def train_ppo_with_jaxatari(config: Dict[str, Any]):
 
     pbar.close()
     print("Training finished.")
-    
-    if config.get("VISUALIZE_AFTER_TRAINING", False):
-        # Initialize pygame for visualization
-        pygame.init()
-        
-        vis_env_key = jax.random.PRNGKey(config["SEED"] + 777)
-        vis_env_base = jax_pong.JaxPong()
-        vis_env: AtariWrapper = AtariWrapper(vis_env_base, sticky_actions=False, frame_stack_size=config["BUFFER_WINDOW"], frame_skip=config["FRAMESKIP"])
-        vis_env: FlattenObservationWrapper = FlattenObservationWrapper(vis_env)
-
-        vis_reset_key, agent_key = jax.random.split(agent_key)
-        obs_viz_raw, state_viz = vis_env.reset(key=vis_reset_key)
-        obs_viz_norm_flat = normalize_observation_jaxatari(obs_viz_raw).reshape(1, -1)  # Batch dim of 1
-
-        total_reward_viz = 0
-        running = True
-
-        input("Press Enter to start visualization...")
-
-        for step_count_viz in range(config.get("VIZ_STEPS", 1000)):
-            if not running: break
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT: running = False
-            if not running: break
-
-            viz_step_key, agent_key = jax.random.split(agent_key)
-            pi_viz, _ = train_state.apply_fn({'params': train_state.params}, obs_viz_norm_flat)
-            action_viz = pi_viz.mode()  # Use mode for deterministic visualization
-
-            # Ensure action_viz is a scalar if env expects it
-            obs_viz_raw, state_viz, reward_viz, done_viz, _ = vis_env.step(viz_step_key, state_viz, action_viz[0] if action_viz.ndim > 0 else action_viz)
-            obs_viz_norm_flat = normalize_observation_jaxatari(obs_viz_raw).reshape(1, -1)
-            total_reward_viz += reward_viz.item()  # .item() if reward is a JAX array
-
-            if done_viz:
-                print(f"Visualization Episode finished with total reward {total_reward_viz} in {step_count_viz+1} steps.")
-                vis_reset_key, agent_key = jax.random.split(agent_key)
-                obs_viz_raw, state_viz = vis_env.reset(key=vis_reset_key)
-                obs_viz_norm_flat = normalize_observation_jaxatari(obs_viz_raw).reshape(1, -1)
-                total_reward_viz = 0
-        pygame.quit()
-        print("Visualization finished.")
 
     training_results_metrics = {
         "timesteps": all_timesteps_history,

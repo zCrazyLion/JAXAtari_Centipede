@@ -1,4 +1,7 @@
 import faulthandler
+
+import jaxatari
+from jaxatari.wrappers import ObjectCentricWrapper
 faulthandler.enable()
 
 import jax
@@ -41,6 +44,7 @@ import flax.core
 import pandas as pd
 from typing import Dict, Any, Optional, Union, Tuple
 import pygame
+from tqdm import tqdm
 
 # Constants for visualization
 SCALING_FACTOR = 3
@@ -59,15 +63,15 @@ ppo_config_distrax = {
     "ENV_NAME_OCATARI": "Pong", # Specific key for OCAtari env name
     "ENV_NAME_JAXATARI": "pong", # Specific key for JAXAtari env name
     "ENV_TYPE": "ocatari", # Can be "ocatari" or "jaxatari"
-    "TOTAL_TIMESTEPS": 5_000_000,
-    "TOTAL_TIMESTEPS_PER_EPOCH": 1_000,
+    "TOTAL_TIMESTEPS": 20_000_000,
+    "TOTAL_TIMESTEPS_PER_EPOCH": 10_000,
     "LR": 5e-4,               # Learning rate
-    "NUM_ENVS": 32,              # Number of parallel environments
-    "NUM_STEPS": 128,           # Steps per environment per rollout (batch size for actor)
+    "NUM_ENVS": 128,              # Number of parallel environments
+    "NUM_STEPS": 256,           # Steps per environment per rollout (batch size for actor)
     "GAMMA": 0.99,              # Discount factor
     "GAE_LAMBDA": 0.95,         # GAE lambda
-    "NUM_MINIBATCHES": 4,       # Number of minibatches for PPO update
-    "UPDATE_EPOCHS": 4,         # Number of epochs for PPO update
+    "NUM_MINIBATCHES": 16,       # Number of minibatches for PPO update
+    "UPDATE_EPOCHS": 10,         # Number of epochs for PPO update
     "CLIP_EPS": 0.2,            # PPO clip parameter
     "CLIP_VF_EPS": 0.2,         # PPO clip for value function (optional, if different from CLIP_EPS)
     "ENT_COEF": 0.01,           # Entropy coefficient
@@ -79,10 +83,10 @@ ppo_config_distrax = {
     
     "BUFFER_WINDOW": 4,
     "FRAMESKIP": 4,
-    "REPEAT_ACTION_PROBABILITY": 0.0,
+    "REPEAT_ACTION_PROBABILITY": 0.25,
 
     "LOG_INTERVAL_UPDATES": 20, # Log every 20 PPO updates
-    "VISUALIZE_AFTER_TRAINING": True, 
+    "VISUALIZE_AFTER_TRAINING": False, 
     "VIZ_STEPS": 1000,
     "VIZ_FPS": 30, # FPS for visualization
     "SAVE_VIZ_VIDEO": True,
@@ -213,8 +217,9 @@ def evaluate_ppo_agent(
             repeat_action_probability=config_dict["REPEAT_ACTION_PROBABILITY"]
         )
     else:  # JAX environment
-        eval_env_base = JaxPong()
-        eval_env = AtariWrapper(eval_env_base, sticky_actions=False, frame_stack_size=config_dict["BUFFER_WINDOW"], frame_skip=config_dict["FRAMESKIP"])
+        eval_env_base = jaxatari.make(env_name.lower())
+        eval_env = AtariWrapper(eval_env_base, sticky_actions=True, frame_stack_size=config_dict["BUFFER_WINDOW"], frame_skip=config_dict["FRAMESKIP"])
+        eval_env = ObjectCentricWrapper(eval_env)
         eval_env = FlattenObservationWrapper(eval_env)
 
     episode_rewards = []
@@ -227,7 +232,7 @@ def evaluate_ppo_agent(
     else:
         _obs_temp, _ = eval_env.reset(key=jax.random.PRNGKey(eval_seed))
         obs_shape_flat_eval = (np.prod(_obs_temp.shape),)
-        action_dim_eval = len(eval_env._env.get_action_space())
+        action_dim_eval = eval_env._env.action_space().n
 
     if isinstance(agent_representation, str):
         print(f"Loading PPO (Distrax) model params from: {agent_representation}")
@@ -245,13 +250,13 @@ def evaluate_ppo_agent(
 
     eval_rng_key = jax.random.PRNGKey(eval_seed)
 
-    for episode in range(num_episodes):
+    for episode in tqdm(range(num_episodes), desc="Evaluating Episodes", unit="ep"):
         if env_type == "ocatari":
             obs_stacked, _ = eval_env.reset(seed=eval_seed + episode)
             obs_norm_flat = normalize_observation_ocatari(obs_stacked).reshape(1, -1)
         else:
-            obs_stacked, state = eval_env.reset(key=jax.random.PRNGKey(eval_seed + episode))
-            obs_norm_flat = normalize_observation_jaxatari(obs_stacked).reshape(1, -1)
+            obs, state = eval_env.reset(key=jax.random.PRNGKey(eval_seed + episode))
+            obs_norm_flat = normalize_observation_jaxatari(obs, eval_env.observation_space()).reshape(1, -1)
         
         episode_reward = 0
         done = False
@@ -267,9 +272,8 @@ def evaluate_ppo_agent(
                 next_obs_norm_flat = normalize_observation_ocatari(next_obs_stacked).reshape(1, -1)
                 done = terminated or truncated
             else:
-                step_key, eval_rng_key = jax.random.split(eval_rng_key)
-                next_obs_stacked, state, reward, done, _ = eval_env.step(step_key, state, action_agent)
-                next_obs_norm_flat = normalize_observation_jaxatari(next_obs_stacked).reshape(1, -1)
+                next_obs, state, reward, done, _ = eval_env.step(state, action_agent)
+                next_obs_norm_flat = normalize_observation_jaxatari(next_obs, eval_env.observation_space()).reshape(1, -1)
 
             episode_reward += reward
             obs_norm_flat = next_obs_norm_flat
@@ -339,7 +343,7 @@ def plot_training_metrics(metrics: Dict[str, Any], save_path: str, env_name: str
     print(f"Training plots saved to {save_path}")
     plt.close()
 
-def compare_agents(agent_paths: Dict[str, str], config_dict: Dict[str, Any], num_episodes: int = 1) -> None:
+def compare_agents(agent_paths: Dict[str, str], config_dict: Dict[str, Any], num_episodes: int = 100) -> None:
     """
     Compare multiple trained agents by evaluating them on both environments.
     
@@ -434,13 +438,12 @@ def visualize_agent(agent_path: str, config_dict: Dict[str, Any], num_episodes: 
         obs_shape_flat = (np.prod(vis_env.observation_space.shape),)
         action_dim = vis_env.action_space.n
     else:  # JAX environment
-        vis_env_base = JaxPong()
-        vis_env = AtariWrapper(vis_env_base, sticky_actions=False, frame_stack_size=config_dict["BUFFER_WINDOW"], frame_skip=config_dict["FRAMESKIP"])
+        vis_env_base = jaxatari.make(env_name.lower())
+        vis_env = AtariWrapper(vis_env_base, sticky_actions=True, frame_stack_size=config_dict["BUFFER_WINDOW"], frame_skip=config_dict["FRAMESKIP"])
+        vis_env = ObjectCentricWrapper(vis_env)
         vis_env = FlattenObservationWrapper(vis_env)
         obs_shape_flat = vis_env.reset(key=jax.random.PRNGKey(0))[0].shape
-        action_dim = len(vis_env._env.get_action_space())
-        # Initialize renderer for JAX environment
-        renderer = JaxPongRenderer()
+        action_dim = vis_env._env.action_space().n
     
     # Initialize agent
     dummy_rng = jax.random.PRNGKey(0)
@@ -452,13 +455,14 @@ def visualize_agent(agent_path: str, config_dict: Dict[str, Any], num_episodes: 
     
     if env_type == "ocatari":
         obs_viz, _ = vis_env.reset(seed=config_dict["SEED"])
+        print(obs_viz)
         obs_viz_norm_flat = normalize_observation_ocatari(obs_viz).reshape(1, -1)
         current_frame = vis_env.render()
     else:
         print("Resetting environment...")
         vis_reset_key, agent_key = jax.random.split(agent_key)
         obs_viz_raw, state_viz = vis_env.reset(key=vis_reset_key)
-        obs_viz_norm_flat = normalize_observation_jaxatari(obs_viz_raw).reshape(1, -1)
+        obs_viz_norm_flat = normalize_observation_jaxatari(obs_viz_raw, vis_env.observation_space()).reshape(1, -1)
         print("Environment reset complete")
     
     total_reward_viz = 0
@@ -502,11 +506,11 @@ def visualize_agent(agent_path: str, config_dict: Dict[str, Any], num_episodes: 
         else:
             viz_step_key, agent_key = jax.random.split(agent_key)
             next_obs_viz_raw, state_viz, reward_viz, done_viz, _ = vis_env.step(
-                viz_step_key, state_viz, action_viz[0] if action_viz.ndim > 0 else action_viz
+                state_viz, action_viz[0] if action_viz.ndim > 0 else action_viz
             )
-            next_obs_viz_norm_flat = normalize_observation_jaxatari(next_obs_viz_raw).reshape(1, -1)
+            next_obs_viz_norm_flat = normalize_observation_jaxatari(next_obs_viz_raw, vis_env.observation_space()).reshape(1, -1)
             # Render the game state using JaxPongRenderer directly
-            raster = renderer.render(state_viz.env_state)
+            raster = vis_env_base.render(state_viz.env_state)
             # Update pygame display with the rendered frame
             aj.update_pygame(pygame_screen, raster, SCALING_FACTOR, WIDTH, HEIGHT)
             
@@ -532,7 +536,7 @@ def visualize_agent(agent_path: str, config_dict: Dict[str, Any], num_episodes: 
             else:
                 vis_reset_key, agent_key = jax.random.split(agent_key)
                 obs_viz_raw, state_viz = vis_env.reset(key=vis_reset_key)
-                obs_viz_norm_flat = normalize_observation_jaxatari(obs_viz_raw).reshape(1, -1)
+                obs_viz_norm_flat = normalize_observation_jaxatari(obs_viz_raw, vis_env.observation_space()).reshape(1, -1)
     
     # Release video writer if it exists
     if video_writer:
@@ -602,7 +606,10 @@ def main():
         
     elif args.mode == "compare":
         if not args.compare_paths:
-            raise ValueError("Model paths must be provided for comparison mode")
+            if args.model_path: 
+                args.compare_paths = [args.model_path]
+            else:
+                raise ValueError("Model paths must be provided for comparison mode")
             
         agent_paths = {f"agent_{i}": path for i, path in enumerate(args.compare_paths)}
         compare_agents(agent_paths, current_config, num_episodes=args.num_episodes)

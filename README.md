@@ -85,7 +85,7 @@ env = PixelObsWrapper(AtariWrapper(base_env))  # Returns pixel observations
 # OR
 env = PixelAndObjectCentricWrapper(AtariWrapper(base_env))  # Returns both
 # OR
-env = FlattenObservationWrapper(AtariWrapper(base_env))  # Returns flattened observations
+env = FlattenObservationWrapper(ObjectCentricWrapper(AtariWrapper(base_env)))  # Returns flattened observations
 
 # Add logging wrapper for training
 env = LogWrapper(env)
@@ -100,7 +100,7 @@ from jaxatari.wrappers import AtariWrapper, ObjectCentricWrapper
 
 # Create environment with wrappers
 base_env = jaxatari.make("pong")
-env = ObjectCentricWrapper(AtariWrapper(base_env))
+env = FlattenObservationWrapper(ObjectCentricWrapper(AtariWrapper(base_env)))
 
 rng = jax.random.PRNGKey(0)
 
@@ -108,21 +108,21 @@ rng = jax.random.PRNGKey(0)
 vmap_reset = lambda n_envs: lambda rng: jax.vmap(env.reset)(
     jax.random.split(rng, n_envs)
 )
-vmap_step = lambda n_envs: lambda rng, env_state, action: jax.vmap(
+vmap_step = lambda n_envs: lambda env_state, action: jax.vmap(
     env.step
-)(jax.random.split(rng, n_envs), env_state, action)
+)(env_state, action)
 
 # Initialize 128 parallel environments
 init_obs, env_state = vmap_reset(128)(rng)
 action = jax.random.randint(rng, (128,), 0, env.action_space().n)
 
 # Take one step
-new_obs, new_env_state, reward, done, info = vmap_step(128)(rng, env_state, action)
+new_obs, new_env_state, reward, done, info = vmap_step(128)(env_state, action)
 
 # Take 100 steps with scan
 def step_fn(carry, unused):
     _, env_state = carry
-    new_obs, new_env_state, reward, done, info = vmap_step(128)(rng, env_state, action)
+    new_obs, new_env_state, reward, done, info = vmap_step(128)(env_state, action)
     return (new_obs, new_env_state), (reward, done, info)
 
 carry = (init_obs, env_state)
@@ -161,7 +161,7 @@ JAXAtari provides several wrappers to customize environment behavior:
 - **`ObjectCentricWrapper`**: Returns flattened object-centric features (2D array: `[frame_stack, features]`)
 - **`PixelObsWrapper`**: Returns pixel observations (4D array: `[frame_stack, height, width, channels]`)
 - **`PixelAndObjectCentricWrapper`**: Returns both pixel and object-centric observations
-- **`FlattenObservationWrapper`**: Flattens any observation structure
+- **`FlattenObservationWrapper`**: Flattens any observation structure to a single 1D array
 - **`LogWrapper`**: Tracks episode returns and lengths for training
 - **`MultiRewardLogWrapper`**: Tracks multiple reward components separately
 
@@ -179,6 +179,8 @@ env = PixelAndObjectCentricWrapper(AtariWrapper(jaxatari.make("pong")))
 
 # For training with logging
 env = LogWrapper(ObjectCentricWrapper(AtariWrapper(jaxatari.make("pong"))))
+
+# All wrapper combinations can be flattened using the FlattenObservationWrapper
 ```
 
 ---

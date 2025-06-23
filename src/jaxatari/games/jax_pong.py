@@ -97,8 +97,6 @@ class PongState(NamedTuple):
 class EntityPosition(NamedTuple):
     x: jnp.ndarray
     y: jnp.ndarray
-    width: jnp.ndarray
-    height: jnp.ndarray
 
 
 class PongObservation(NamedTuple):
@@ -548,28 +546,22 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
         player = EntityPosition(
             x=jnp.array(PLAYER_X),
             y=state.player_y,
-            width=jnp.array(PLAYER_SIZE[0]),
-            height=jnp.array(PLAYER_SIZE[1]),
         )
 
         # create enemy
         enemy = EntityPosition(
             x=jnp.array(ENEMY_X),
             y=state.enemy_y,
-            width=jnp.array(ENEMY_SIZE[0]),
-            height=jnp.array(ENEMY_SIZE[1]),
         )
 
         ball = EntityPosition(
             x=state.ball_x,
             y=state.ball_y,
-            width=jnp.array(BALL_SIZE[0]),
-            height=jnp.array(BALL_SIZE[1]),
         )
         return PongObservation(
             player=player,
-            enemy=enemy,
             ball=ball,
+            enemy=enemy,
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -577,12 +569,12 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
            return jnp.concatenate([
                obs.player.x.flatten(),
                obs.player.y.flatten(),
-               obs.enemy.x.flatten(),
-               obs.enemy.y.flatten(),
                obs.ball.x.flatten(),
                obs.ball.y.flatten(),
+               obs.enemy.x.flatten(),
+               obs.enemy.y.flatten()
             ]
-           )
+        )
 
     def action_space(self) -> spaces.Discrete:
         """Returns the action space for Pong.
@@ -609,23 +601,15 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
             "player": spaces.Dict({
                 "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
                 "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
-                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-            }),
-            "enemy": spaces.Dict({
-                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
-                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
-                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
             }),
             "ball": spaces.Dict({
                 "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
                 "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
-                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
             }),
-            "score_player": spaces.Box(low=0, high=20, shape=(), dtype=jnp.int32),
-            "score_enemy": spaces.Box(low=0, high=20, shape=(), dtype=jnp.int32),
+            "enemy": spaces.Dict({
+                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+            }),
         })
 
     def image_space(self) -> spaces.Box:
