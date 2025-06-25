@@ -13,7 +13,10 @@ import jaxatari.rendering.atraJaxis as aj
 import time
 from functools import partial
 from typing import NamedTuple
+
+from jaxatari import spaces
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action, EnvState, EnvObs
+from jaxatari.games.jax_seaquest import SeaquestObservation
 from jaxatari.renderers import AtraJaxisRenderer
 
 # -------- Game constants --------
@@ -93,6 +96,14 @@ class CentipedeState(NamedTuple):
     rng_key: jax.random.PRNGKey
     # TODO: fill
 
+class PlayerEntity(NamedTuple):
+    x: jnp.ndarray
+    y: jnp.ndarray
+    o: jnp.ndarray
+    width: jnp.ndarray
+    height: jnp.ndarray
+    active: jnp.ndarray
+
 class EntityPosition(NamedTuple):
     x: jnp.ndarray
     y: jnp.ndarray
@@ -101,13 +112,16 @@ class EntityPosition(NamedTuple):
     active: jnp.ndarray
 
 class CentipedeObservation(NamedTuple):
-    player: EntityPosition
+    player: PlayerEntity
     # mushrooms: jnp.ndarray
     # centipede: jnp.ndarray
     # spider: jnp.ndarray
     # flea: jnp.ndarray
     # scorpion: jnp.ndarray
+    # score: jnp.ndarray
+    # lives: jnp.ndarray
     # TODO: fill
+    # if changed: obs_to_flat_array, _get_observation, (step, reset)
 
 class CentipedeInfo(NamedTuple):
     # difficulty: jnp.ndarray # add if necessary
@@ -324,8 +338,52 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
     # TODO: add other funtions if needed
 
-    def get_action_space(self) -> jnp.ndarray:
-        return jnp.array(self.action_set)
+    @partial(jax.jit, static_argnums=(0,))
+    def render(self, state: CentipedeState) -> jnp.ndarray:
+        """Render the game state to a raster image."""
+        return self.renderer.render(state)
+
+    def flatten_entity_position(self, entity: EntityPosition) -> jnp.ndarray:
+        return jnp.concatenate([jnp.array([entity.x]), jnp.array([entity.y]), jnp.array([entity.width]), jnp.array([entity.height]), jnp.array([entity.active])])
+
+    def flatten_player_entity(self, entity: PlayerEntity) -> jnp.ndarray:
+        return jnp.concatenate([jnp.array([entity.x]), jnp.array([entity.y]), jnp.array([entity.o]), jnp.array([entity.width]), jnp.array([entity.height]), jnp.array([entity.active])])
+
+    @partial(jax.jit, static_argnums=(0,))
+    def obs_to_flat_array(self, obs: CentipedeObservation) -> jnp.ndarray:
+        return jnp.concatenate([
+            self.flatten_player_entity(obs.player)
+            # TODO: fill
+        ])
+
+    def action_space(self) -> spaces.Discrete:
+        return spaces.Discrete(len(self.action_set))
+
+    def observation_space(self) -> spaces.Dict:
+        """Returns the observation space for Seaquest.
+                The observation contains:
+        """
+        return spaces.Dict({
+            "player": spaces.Dict({
+                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "o": spaces.Box(low=0, high=1, shape=(), dtype=jnp.int32),
+                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "active": spaces.Box(low=0, high=1, shape=(), dtype=jnp.int32),
+            }),
+        })
+
+    def image_space(self) -> spaces.Box:
+        """Returns the image space for Seaquest.
+        The image is a RGB image with shape (160, 210, 3).
+        """
+        return spaces.Box(
+            low=0,
+            high=255,
+            shape=(160, 210, 3),
+            dtype=jnp.uint8
+        )
 
     @partial(jax.jit, static_argnums=(0, ))
     def _get_observation(self, state: CentipedeState) -> CentipedeObservation:
