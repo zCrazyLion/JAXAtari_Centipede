@@ -50,7 +50,7 @@ CENTIPEDE_STARTING_PATTERN = [
 # -------- Player constants --------
 PLAYER_START_X = 78
 PLAYER_START_Y = 190
-PLAYER_BOUNDS = (16, 140), (150, 180) # TODO: Check if correct
+PLAYER_BOUNDS = (16, 140), (150, 179) # TODO: Check if correct
 
 PLAYER_SIZE = (4, 9)
 
@@ -480,25 +480,48 @@ class CentipedeRenderer(AtraJaxisRenderer):
     def render(self, state):
         raster = jnp.zeros((WIDTH, HEIGHT, 3))
 
-        def recolor_sprite(sprite: jnp.ndarray, color: jnp.ndarray) -> jnp.ndarray:
-            # if color.shape[0] == 3:
-            #     jnp.append(color, jnp.array(255))
+        def recolor_sprite(
+                sprite: jnp.ndarray,
+                color: jnp.ndarray, # RGB, up to 4 dimensions
+                bounds: tuple[int, int, int, int] = None  # (top, left, bottom, right)
+        ) -> jnp.ndarray:
+            # Ensure color is the same dtype as sprite
+            dtype = sprite.dtype
+            color = color.astype(dtype)
+
             assert sprite.ndim == 3 and sprite.shape[2] in (3, 4), "Sprite must be HxWx3 or HxWx4"
+
+            if color.shape[0] < sprite.shape[2]:
+                missing = sprite.shape[2] - color.shape[0]
+                pad = jnp.full((missing,), 255, dtype=dtype)
+                color = jnp.concatenate([color, pad], axis=0)
+
+
             assert color.shape[0] == sprite.shape[2], "Color channels must match sprite channels"
 
-            # Define a visibility mask: pixel is visible if any of its channels > 0
-            visible_mask = jnp.any(sprite != 0, axis=-1)  # (H, W)
-            visible_mask = visible_mask[:, :, None]  # (H, W, 1) for broadcasting
+            H, W, _ = sprite.shape
 
-            # Broadcast color to the same shape as sprite
-            color_broadcasted = jnp.broadcast_to(color, sprite.shape)
+            if bounds is None:
+                region = sprite
+            else:
+                top, left, bottom, right = bounds
+                assert 0 <= left < right <= H and 0 <= top < bottom <= W, "Invalid bounds"
+                region = sprite[left:right, top:bottom]
 
-            # Where visible, use the new color; otherwise keep black (zeros)
-            return jnp.where(visible_mask, color_broadcasted, 0)
+            visible_mask = jnp.any(region != 0, axis=-1, keepdims=True)  # (h, w, 1)
+
+            color_broadcasted = jnp.broadcast_to(color, region.shape).astype(dtype)
+            recolored_region = jnp.where(visible_mask, color_broadcasted, jnp.zeros_like(color_broadcasted))
+
+            if bounds is None:
+                return recolored_region
+            else:
+                recolored_sprite = sprite.at[left:right, top:bottom].set(recolored_region)
+                return recolored_sprite
 
         # -------- Render mushrooms --------
         frame_mushroom = aj.get_sprite_frame(SPRITE_MUSHROOM, state.step_counter)
-        frame_mushroom = recolor_sprite(frame_mushroom, jnp.array([92, 186, 92, 255]))
+        frame_mushroom = recolor_sprite(frame_mushroom, jnp.array([92, 186, 92]))
 
         def render_mushrooms(i, raster_base):
             should_render = state.mushroom_positions[i][2] == 1
@@ -518,7 +541,7 @@ class CentipedeRenderer(AtraJaxisRenderer):
 
         # -------- Render player --------
         frame_player = aj.get_sprite_frame(SPRITE_PLAYER, 0)
-        frame_player = recolor_sprite(frame_player, jnp.array([92, 186, 92, 255]))
+        frame_player = recolor_sprite(frame_player, jnp.array([92, 186, 92]))
         raster = aj.render_at(
             raster,
             state.player_x,
@@ -528,7 +551,7 @@ class CentipedeRenderer(AtraJaxisRenderer):
 
         # -------- Render player missile --------
         frame_player_missile = aj.get_sprite_frame(SPRITE_PLAYER_MISSILE, 0)
-        frame_player_missile = recolor_sprite(frame_player_missile, jnp.array([92, 186, 92, 255]))
+        frame_player_missile = recolor_sprite(frame_player_missile, jnp.array([92, 186, 92]))
         raster = jnp.where(
             state.player_missile.is_alive,
             aj.render_at(
@@ -542,7 +565,7 @@ class CentipedeRenderer(AtraJaxisRenderer):
 
         # -------- Render bottom border --------
         frame_bottom_border = aj.get_sprite_frame(SPRITE_BOTTOM_BORDER, 0)
-        frame_bottom_border = recolor_sprite(frame_bottom_border, jnp.array([92, 186, 92, 255]))
+        frame_bottom_border = recolor_sprite(frame_bottom_border, jnp.array([92, 186, 92]))
         raster = aj.render_at(
             raster,
             16,
