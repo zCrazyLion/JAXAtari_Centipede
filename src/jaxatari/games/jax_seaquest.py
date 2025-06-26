@@ -83,7 +83,7 @@ class SpawnState(NamedTuple):
     lane_dependent_pattern: chex.Array  # Track waves independently per lane [4 lanes]
     to_be_spawned: (
         chex.Array
-    )  # tracks which enemies are still in the spawning cycle [4 lanes * 3 slots] -> necessary due to the spaced out spawning of multiple enemies
+    )  # tracks which spider are still in the spawning cycle [4 lanes * 3 slots] -> necessary due to the spaced out spawning of multiple spider
     survived: (
         chex.Array
     )  # track if last enemy survived [4 lanes * 3 slots] -> 1 if survived whilst going right, 0 if not, -1 if survived whilst going left
@@ -106,8 +106,8 @@ def initialize_spawn_state() -> SpawnState:
         ),  # Each lane starts at wave 0
         to_be_spawned=jnp.zeros(
             12, dtype=jnp.int32
-        ),  # Track which enemies are still in the spawning cycle
-        survived=jnp.zeros(12, dtype=jnp.int32),  # Track which enemies survived
+        ),  # Track which spider are still in the spawning cycle
+        survived=jnp.zeros(12, dtype=jnp.int32),  # Track which spider survived
         prev_sub=jnp.ones(
             4, dtype=jnp.int32
         ),  # Track previous entity type (0 if shark, 1 if sub) -> starts at 1 since the first wave is sharks
@@ -382,7 +382,7 @@ def check_missile_collisions(
     spawn_state: SpawnState,
     rng_key: chex.PRNGKey,
 ) -> tuple[chex.Array, chex.Array, chex.Array, chex.Array, SpawnState, chex.PRNGKey]:
-    """Check for collisions between player missile and enemies"""
+    """Check for collisions between player missile and spider"""
     # Create missile position array for collision check
     missile_rect_pos = jnp.array([missile_pos[0], missile_pos[1]])
     missile_active = missile_pos[2] != 0
@@ -644,9 +644,9 @@ def get_pattern_for_difficulty(
 
     Pattern meanings:
     0: Single enemy (initial pattern)
-    1: Two adjacent enemies
-    2: Two enemies with gap
-    3: Three enemies in a row
+    1: Two adjacent spider
+    2: Two spider with gap
+    3: Three spider in a row
     """
     # Basic pattern arrays for different formations
     PATTERNS = jnp.array(
@@ -1468,7 +1468,7 @@ def spawn_divers(
 
     Follows these rules:
     1. Divers can only spawn in lanes marked as 'spawnable' in diver_array (value 1)
-    2. Divers only spawn in empty lanes (no enemies present)
+    2. Divers only spawn in empty lanes (no spider present)
     3. Divers don't spawn in lanes where submarines will spawn next
 
     Args:
@@ -1492,10 +1492,10 @@ def spawn_divers(
         # Check if a diver exists in this slot
         diver_exists = diver_pos[2] != 0
 
-        # Base index for this lane's enemies
+        # Base index for this lane's spider
         base_idx = i * 3
 
-        # Check if lane has any active enemies
+        # Check if lane has any active spider
         lane_empty = jnp.all(
             jnp.array(
                 [
@@ -1955,7 +1955,7 @@ def spawn_step(
     rng_key: chex.PRNGKey,
 ) -> Tuple[SpawnState, chex.Array, chex.Array, chex.Array, chex.Array]:
     """Main spawn handling function to be called in game step"""
-    # Move existing enemies
+    # Move existing spider
     new_shark_positions, new_sub_positions, spawn_state_after_movement, new_key = (
         step_enemy_movement(
             spawn_state, shark_positions, sub_positions, state.step_counter, rng_key
@@ -2918,7 +2918,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
             )
 
             # append the surface submarine to the other submarines for the collision check
-            # check if the player has collided with any of the enemies
+            # check if the player has collided with any of the spider
             player_collision, collision_points = check_player_collision(
                 player_x,
                 player_y,
