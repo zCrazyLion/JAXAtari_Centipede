@@ -25,8 +25,25 @@ WIDTH = 160
 HEIGHT = 210
 SCALING_FACTOR = 4
 
+## -------- Player constants --------
+PLAYER_START_X = 76
+PLAYER_START_Y = 190 - 18
+PLAYER_BOUNDS = (16, 140), (150, 172) # TODO: Check if correct
+
+PLAYER_SIZE = (4, 9)
+
+MAX_VELOCITY_X = 6 # Default: 6 | Maximum speed in x direction (pixels per frame)
+ACCELERATION_X = 0.2 # Default: 0.2 | How fast player accelerates
+FRICTION_X = 1 # Default: 1 | 1 = 100% -> player stops immediately, 0 = 0% -> player does not stop, 0.5 = 50 % -> player loses 50% of its velocity every frame
+MAX_VELOCITY_Y = 2.5 # Default: 2.5 | Maximum speed in y direction (pixels per frame)
+
+## -------- Player missile constants --------
+PLAYER_MISSILE_SPEED = 10
+
+PLAYER_MISSILE_SIZE = (1, 5) # TODO: Sprite may be (1, 6), right now it is (1, 5)
+
 ## -------- Starting Pattern (X -> placed, O -> not placed) --------
-CENTIPEDE_STARTING_PATTERN = [
+MUSHROOM_STARTING_PATTERN = [
         "OOOOOOOOOOOOOOOO",
         "OOOOOOOOXOOOOXOO",
         "OOOOOOOOOXOOOOXO",
@@ -48,23 +65,6 @@ CENTIPEDE_STARTING_PATTERN = [
         "OOOOOOOOOOOOOOOO",
     ]
 
-## -------- Player constants --------
-PLAYER_START_X = 76
-PLAYER_START_Y = 190 - 18
-PLAYER_BOUNDS = (16, 140), (150, 172) # TODO: Check if correct
-
-PLAYER_SIZE = (4, 9)
-
-MAX_VELOCITY_X = 6 # Default: 6 | Maximum speed in x direction (pixels per frame)
-ACCELERATION_X = 0.2 # Default: 0.2 | How fast player accelerates
-FRICTION_X = 1 # Default: 1 | 1 = 100% -> player stops immediately, 0 = 0% -> player does not stop, 0.5 = 50 % -> player loses 50% of its velocity every frame
-MAX_VELOCITY_Y = 2.5 # Default: 2.5 | Maximum speed in y direction (pixels per frame)
-
-## -------- Player missile constants --------
-PLAYER_MISSILE_SPEED = 10
-
-PLAYER_MISSILE_SIZE = (1, 5) # TODO: Sprite may be (1, 6), right now it is (1, 5)
-
 ## -------- Mushroom constants --------
 MAX_MUSHROOMS = 304             # Default 304 (19*16) | Maximum number of mushrooms that can appear at the same time
 MUSHROOM_NUMBER_OF_ROWS = 19    # Default 19 | Number of rows -> Determines value of MAX_MUSHROOMS
@@ -73,6 +73,10 @@ MUSHROOM_X_SPACING = 8      #
 MUSHROOM_Y_SPACING = 9
 MUSHROOM_COLUMN_START_EVEN = 20
 MUSHROOM_COLUMN_START_ODD = 16
+
+## -------- Centipede constants --------
+MAX_SEGMENTS = 9
+SEGMENT_SIZE = (4, 6)
 
 # -------- States --------
 class PlayerMissileState(NamedTuple):
@@ -86,13 +90,13 @@ class CentipedeState(NamedTuple):
     player_velocity_x: chex.Array
     player_missile: PlayerMissileState
     mushroom_positions: chex.Array # (304, 5) array for mushroom positions -> mushroom_positions need 5 entries per mushroom: 1. x value 2. y value 3. is shown 4. lives (1, 2 or 3) 5. is poisoned -> there are also 304 mushrooms in total
-    # centipede_position: chex.Array # (9, ?) must contain position, direction, speed and if head
+    centipede_position: chex.Array # (9, 4) must contain position, direction and status(head)
     # spider_position: chex.Array # (1, 3) array for spider (x, y, direction)
     # flea_position: chex.Array # (1, 3) array for flea, 2 lives, speed doubles after 1 hit
     # scorpion_position: chex.Array # (1, ?) array for scorpion, only moves from right to left?: (x, y)
     score: chex.Array
     lives: chex.Array
-    wave: chex.Array
+    wave: chex.Array # number of wave (+ 0.5 if second (faster) wave
     step_counter: chex.Array
     rng_key: jax.random.PRNGKey
     # TODO: fill
@@ -135,15 +139,33 @@ def load_sprites():
 
     player = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/player/player.npy"))
     player_missile = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/player_missile/player_missile.npy"))
-    flea = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/flea/1.npy"))
-    spider = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/1.npy"))
-    bottom_border = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/ui/bottom_border.npy"))
     mushroom = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/mushrooms/mushroom.npy"))
+    centipede = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/centipede/segment.npy"))
+    spider1 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/1.npy"))
+    spider2 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/2.npy"))
+    spider3 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/3.npy"))
+    spider4 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/4.npy"))
+    flea1 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/flea/1.npy"))
+    bottom_border = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/ui/bottom_border.npy"))
+
+    spider_sprites = aj.pad_to_match([spider1, spider2, spider3, spider4])
 
     SPRITE_PLAYER = jnp.expand_dims(player, 0)
     SPRITE_PLAYER_MISSILE = jnp.expand_dims(player_missile, 0)
-    SPRITE_FLEA = jnp.expand_dims(flea, 0)
-    SPRITE_SPIDER = jnp.expand_dims(spider, 0)
+
+    SPRITE_CENTIPEDE = jnp.expand_dims(centipede, 0)
+    SPRITE_FLEA = jnp.expand_dims(flea1, 0)
+    SPRITE_SPIDER = jnp.concatenate(
+        [
+            jnp.repeat(spider_sprites[0][None], 4, axis=0),
+            jnp.repeat(spider_sprites[1][None], 4, axis=0),
+            jnp.repeat(spider_sprites[2][None], 4, axis=0),
+            jnp.repeat(spider_sprites[3][None], 4, axis=0),
+        ]
+    )
+
+    jax.debug.print("{}", centipede.shape)
+
     SPRITE_BOTTOM_BORDER = jnp.expand_dims(bottom_border, 0)
     SPRITE_MUSHROOM = jnp.expand_dims(mushroom, 0)
 
@@ -154,15 +176,14 @@ def load_sprites():
     frame_player = aj.get_sprite_frame(SPRITE_PLAYER, 0)
     #jax.debug.print("{x}, {y}", x=frame_player, y=(frame_player.shape[0], frame_player.shape[1], frame_player.shape[2]))
 
-    jax.debug.print("{}", SPRITE_SPIDER[:,:,:,0])
-
     return (
         SPRITE_PLAYER,
         SPRITE_PLAYER_MISSILE,
-        SPRITE_FLEA,
-        SPRITE_SPIDER,
-        SPRITE_BOTTOM_BORDER,
         SPRITE_MUSHROOM,
+        SPRITE_CENTIPEDE,
+        SPRITE_SPIDER,
+        SPRITE_FLEA,
+        SPRITE_BOTTOM_BORDER,
         DIGITS,
         LIFE_INDICATOR,
     )
@@ -170,10 +191,11 @@ def load_sprites():
 (
     SPRITE_PLAYER,
     SPRITE_PLAYER_MISSILE,
-    SPRITE_FLEA,
-    SPRITE_SPIDER,
-    SPRITE_BOTTOM_BORDER,
     SPRITE_MUSHROOM,
+    SPRITE_CENTIPEDE,
+    SPRITE_SPIDER,
+    SPRITE_FLEA,
+    SPRITE_BOTTOM_BORDER,
     DIGITS,
     LIFE_INDICATOR,
 ) = load_sprites()
@@ -195,7 +217,7 @@ def initialize_mushroom_positions() -> chex.Array: # TODO: make jittable
             y = int(row_y)
 
             # Sichtbarkeit anhand des Patterns
-            char = CENTIPEDE_STARTING_PATTERN[row][col].upper() if row < len(CENTIPEDE_STARTING_PATTERN) and col < len(CENTIPEDE_STARTING_PATTERN[row]) else "O"
+            char = MUSHROOM_STARTING_PATTERN[row][col].upper() if row < len(MUSHROOM_STARTING_PATTERN) and col < len(MUSHROOM_STARTING_PATTERN[row]) else "O"
             is_shown = 1 if char == "X" else 0
 
             is_poisoned = 0
@@ -205,6 +227,26 @@ def initialize_mushroom_positions() -> chex.Array: # TODO: make jittable
             column_counter += MUSHROOM_X_SPACING
 
     return jnp.array(mushroom_positions)
+
+@jax.jit
+def spawn_centipede(wave: jnp.ndarray) -> chex.Array:
+    base_x = 79
+    base_y = 5
+    initial_positions = jnp.zeros((MAX_SEGMENTS, 4))
+
+    def spawn_segment(i, segments: jnp.ndarray):
+        is_head = i == 0
+        return segments.at[i].set(
+            jnp.where(
+                is_head,
+                jnp.array([base_x + 4*i, base_y, 1, 11]),
+                jnp.array([base_x + 4*i, base_y, 1, 1]),
+            )
+        )
+
+    centipede = jax.lax.fori_loop(0, MAX_SEGMENTS, spawn_segment, initial_positions)
+    jax.debug.print("{}", centipede)
+    return centipede
 
 @jax.jit
 def player_step(
@@ -451,6 +493,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             player_velocity_x=jnp.array(0),
             player_missile=PlayerMissileState(x=jnp.array(0), y=jnp.array(0), is_alive=jnp.array(False)),
             mushroom_positions=initialize_mushroom_positions(),
+            centipede_position=spawn_centipede(wave=jnp.array(0)),
             score=jnp.array(0),
             lives=jnp.array(3),
             step_counter=jnp.array(0),
@@ -490,48 +533,11 @@ class CentipedeRenderer(AtraJaxisRenderer):
     def render(self, state: CentipedeState):
         raster = jnp.zeros((WIDTH, HEIGHT, 3))
 
-        def recolor_sprite( # TODO: recolor sprites only when colors change (new wave)
-                sprite: jnp.ndarray,
-                color: jnp.ndarray, # RGB, up to 4 dimensions
-                bounds: tuple[int, int, int, int] = None  # (top, left, bottom, right)
-        ) -> jnp.ndarray:
-            # Ensure color is the same dtype as sprite
-            dtype = sprite.dtype
-            color = color.astype(dtype)
-
-            assert sprite.ndim == 3 and sprite.shape[2] in (3, 4), "Sprite must be HxWx3 or HxWx4"
-
-            if color.shape[0] < sprite.shape[2]:
-                missing = sprite.shape[2] - color.shape[0]
-                pad = jnp.full((missing,), 255, dtype=dtype)
-                color = jnp.concatenate([color, pad], axis=0)
-
-
-            assert color.shape[0] == sprite.shape[2], "Color channels must match sprite channels"
-
-            H, W, _ = sprite.shape
-
-            if bounds is None:
-                region = sprite
-            else:
-                top, left, bottom, right = bounds
-                assert 0 <= left < right <= H and 0 <= top < bottom <= W, "Invalid bounds"
-                region = sprite[left:right, top:bottom]
-
-            visible_mask = jnp.any(region != 0, axis=-1, keepdims=True)  # (h, w, 1)
-
-            color_broadcasted = jnp.broadcast_to(color, region.shape).astype(dtype)
-            recolored_region = jnp.where(visible_mask, color_broadcasted, jnp.zeros_like(color_broadcasted))
-
-            if bounds is None:
-                return recolored_region
-            else:
-                recolored_sprite = sprite.at[left:right, top:bottom].set(recolored_region)
-                return recolored_sprite
+        # TODO: recolor sprites only when colors change (new wave)
 
         ### -------- Render mushrooms --------
-        frame_mushroom = aj.get_sprite_frame(SPRITE_MUSHROOM, state.step_counter)
-        frame_mushroom = recolor_sprite(frame_mushroom, jnp.array([92, 186, 92]))
+        frame_mushroom = aj.get_sprite_frame(SPRITE_MUSHROOM, 0)
+        frame_mushroom = aj.recolor_sprite(frame_mushroom, jnp.array([92, 186, 92]))
 
         def render_mushrooms(i, raster_base):
             should_render = state.mushroom_positions[i][2] == 1
@@ -549,9 +555,29 @@ class CentipedeRenderer(AtraJaxisRenderer):
 
         raster = jax.lax.fori_loop(0, MAX_MUSHROOMS, render_mushrooms, raster)
 
+        ### -------- Render centipede --------
+        frame_centipede = aj.get_sprite_frame(SPRITE_CENTIPEDE, 0)
+        frame_centipede = aj.recolor_sprite(frame_centipede, jnp.array([92, 186, 92]))
+
+        def render_centipede_segment(i, raster_base):
+            should_render = state.centipede_position[i][2] != 0
+            return jax.lax.cond(
+                should_render,
+                lambda r: aj.render_at(
+                    r,
+                    state.centipede_position[i][0],
+                    state.centipede_position[i][1],
+                    frame_centipede,
+                ),
+                lambda r: r,
+                raster_base
+            )
+
+        raster = jax.lax.fori_loop(0, MAX_SEGMENTS, render_centipede_segment, raster)
+
         ### -------- Render player --------
         frame_player = aj.get_sprite_frame(SPRITE_PLAYER, 0)
-        frame_player = recolor_sprite(frame_player, jnp.array([92, 186, 92]))
+        frame_player = aj.recolor_sprite(frame_player, jnp.array([92, 186, 92]))
         raster = aj.render_at(
             raster,
             state.player_x,
@@ -561,7 +587,7 @@ class CentipedeRenderer(AtraJaxisRenderer):
 
         ### -------- Render player missile --------
         frame_player_missile = aj.get_sprite_frame(SPRITE_PLAYER_MISSILE, 0)
-        frame_player_missile = recolor_sprite(frame_player_missile, jnp.array([92, 186, 92]))
+        frame_player_missile = aj.recolor_sprite(frame_player_missile, jnp.array([92, 186, 92]))
         raster = jnp.where(
             state.player_missile.is_alive,
             aj.render_at(
@@ -575,7 +601,7 @@ class CentipedeRenderer(AtraJaxisRenderer):
 
         ### -------- Render bottom border --------
         frame_bottom_border = aj.get_sprite_frame(SPRITE_BOTTOM_BORDER, 0)
-        frame_bottom_border = recolor_sprite(frame_bottom_border, jnp.array([92, 186, 92]))
+        frame_bottom_border = aj.recolor_sprite(frame_bottom_border, jnp.array([92, 186, 92]))
         raster = aj.render_at(
             raster,
             16,
@@ -584,13 +610,13 @@ class CentipedeRenderer(AtraJaxisRenderer):
         )
 
         ### -------- Render score -------- TODO: make colorable, dynamic digit count
-        score_array = aj.int_to_digits(state.score, max_digits=5)
+        score_array = aj.int_to_digits(state.score, max_digits=6)
         # first_nonzero = jnp.argmax(score_array != 0)
         # _, score_array = jnp.split(score_array, first_nonzero - 1)
-        raster = aj.render_label(raster, 108, 187, score_array, DIGITS, spacing=8)
+        raster = aj.render_label(raster, 100, 187, score_array, DIGITS, spacing=8)
 
         ### -------- Render live indicator --------
-        life_indicator = recolor_sprite(LIFE_INDICATOR, jnp.array([92, 186, 92]))
+        life_indicator = aj.recolor_sprite(LIFE_INDICATOR, jnp.array([92, 186, 92]))
         raster = render_indicator(raster, 16, 187, state.lives - 1, life_indicator, spacing=8)
 
         return raster
