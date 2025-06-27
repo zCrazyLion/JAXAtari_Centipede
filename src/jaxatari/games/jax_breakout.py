@@ -643,7 +643,7 @@ class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInf
         prev_score = state.score
         new_state = self._step(state, action)
         obs = self._get_observation(new_state)
-        reward = self._get_reward(prev_score, new_state.score)
+        reward = self._get_reward(state, new_state)
         done = self._get_done(new_state)
         info = self._get_info(new_state)
         return obs, new_state, reward, done, info
@@ -755,8 +755,8 @@ class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInf
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_reward(self, previous_score: chex.Array, current_score: chex.Array) -> chex.Array:
-        return current_score - previous_score
+    def _get_reward(self, previous_state: BreakoutState, current_state: BreakoutState) -> chex.Array:
+        return current_state.score - previous_state.score
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: BreakoutState) -> chex.Array:

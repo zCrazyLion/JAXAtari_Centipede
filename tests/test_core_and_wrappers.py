@@ -423,8 +423,8 @@ def test_wrapper_observation_spaces():
     # Shape: (stack_size, H, W, C)
     assert space.shape == (stack_size, 160, 210, 3)
     # Bounds and dtype for pixel data.
-    assert space.low == 0
-    assert space.high == 255
+    assert jnp.all(space.low == 0)
+    assert jnp.all(space.high == 255)
     assert space.dtype == jnp.uint8
 
     # --- Test ObjectCentricWrapper ---
@@ -436,9 +436,9 @@ def test_wrapper_observation_spaces():
     single_frame_size = get_object_centric_obs_size(base_env.observation_space())
     assert space.shape == (stack_size, single_frame_size)
 
-    # Check that the bounds are 1D and match a single frame
-    assert space.low.shape == (single_frame_size,)
-    assert space.high.shape == (single_frame_size,)
+    # Check that the bounds match the space shape (2D, broadcasted from 1D single frame)
+    assert space.low.shape == (stack_size, single_frame_size)
+    assert space.high.shape == (stack_size, single_frame_size)
 
     # --- Test PixelAndObjectCentricWrapper ---
     both_env = PixelAndObjectCentricWrapper(atari_env)
@@ -449,13 +449,16 @@ def test_wrapper_observation_spaces():
     # The first element should be the stacked pixel space.
     pixel_part = space.spaces[0]
     assert pixel_part.shape == (stack_size, 160, 210, 3)
-    assert pixel_part.low == 0
-    assert pixel_part.high == 255
+    assert jnp.all(pixel_part.low == 0)
+    assert jnp.all(pixel_part.high == 255)
 
     # The second element should be the original stacked object-centric dict space.
     object_part = space.spaces[1]
     assert isinstance(object_part, spaces.Box)
     assert object_part.shape == (stack_size, get_object_centric_obs_size(base_env.observation_space()))
+    # Check that the bounds match the space shape (2D, broadcasted from 1D single frame)
+    assert object_part.low.shape == (stack_size, get_object_centric_obs_size(base_env.observation_space()))
+    assert object_part.high.shape == (stack_size, get_object_centric_obs_size(base_env.observation_space()))
 
 
 def test_flatten_observation_wrapper_space_structure():

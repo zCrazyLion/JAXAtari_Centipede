@@ -52,8 +52,8 @@ WALL_BOTTOM_Y = 194
 WALL_BOTTOM_HEIGHT = 16
 
 # Pygame window dimensions
-WINDOW_WIDTH = 160 * 3
-WINDOW_HEIGHT = 210 * 3
+WINDOW_WIDTH = 160
+WINDOW_HEIGHT = 210
 
 def get_human_action() -> chex.Array:
     """
@@ -534,7 +534,7 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
         )
 
         done = self._get_done(new_state)
-        env_reward = self._get_env_reward(state, new_state)
+        env_reward = self._get_reward(state, new_state)
         all_rewards = self._get_all_reward(state, new_state)
         info = self._get_info(new_state, all_rewards)
         observation = self._get_observation(new_state)
@@ -652,12 +652,13 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
             dtype=jnp.uint8
         )
 
+    # TODO: the all_rewards parameter is not in the base class, this may lead to some issues
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: PongState, all_rewards: chex.Array) -> PongInfo:
+    def _get_info(self, state: PongState, all_rewards: chex.Array = None) -> PongInfo:
         return PongInfo(time=state.step_counter, all_rewards=all_rewards)
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_env_reward(self, previous_state: PongState, state: PongState):
+    def _get_reward(self, previous_state: PongState, state: PongState):
         return (state.player_score - state.enemy_score) - (
             previous_state.player_score - previous_state.enemy_score
         )
@@ -803,7 +804,7 @@ class PongRenderer(AtraJaxisRenderer):
                                            enemy_start_index, enemy_num_to_render,
                                            spacing=16)
 
-        return raster
+        return raster.astype(jnp.uint8)
 
 
 if __name__ == "__main__":
