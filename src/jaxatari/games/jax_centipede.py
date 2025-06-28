@@ -12,7 +12,7 @@ import pygame
 import jaxatari.rendering.atraJaxis as aj
 import time
 from functools import partial
-from typing import NamedTuple
+from typing import NamedTuple, Tuple
 
 from jaxatari import spaces
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action, EnvState, EnvObs
@@ -44,25 +44,25 @@ PLAYER_MISSILE_SIZE = (1, 5) # TODO: Sprite may be (1, 6), right now it is (1, 5
 
 ## -------- Starting Pattern (X -> placed, O -> not placed) --------
 MUSHROOM_STARTING_PATTERN = [
-        "OOOOOOOOOOOOOOOO",
-        "OOOOOOOOXOOOOXOO",
-        "OOOOOOOOOXOOOOXO",
-        "OOOOOOOOOOXXOOOO",
-        "OOOXOOOOOOOOOOOO",
-        "OXOOOOOOOOOOOOOO",
-        "OOOOOOOXOOOOOOOO",
-        "OOOOOOXOOOOOOOXO",
-        "OOOXXOOOOXOOOOOO",
-        "OOOOOOOXOOOOOOOO",
-        "OOOOOOOOOOOOXOOO",
-        "OOOOXOOOOOOOOOOO",
-        "OOOOOOOOOOOOOXOO",
-        "OOOOOOOOOOOXOOOX",
-        "OOOOOOOOOOOOOOXO",
-        "OOOOXOOXOOOOOOOO",
-        "OXOOOXOOOOOOOOOO",
-        "OOOOXOOOOOOOOOOX",
-        "OOOOOOOOOOOOOOOO",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
+        "XXXXXXXXXXXXXXXX",
     ]
 
 ## -------- Mushroom constants --------
@@ -73,6 +73,7 @@ MUSHROOM_X_SPACING = 8      #
 MUSHROOM_Y_SPACING = 9
 MUSHROOM_COLUMN_START_EVEN = 20
 MUSHROOM_COLUMN_START_ODD = 16
+MUSHROOM_SIZE = (4, 3)
 
 ## -------- Centipede constants --------
 MAX_SEGMENTS = 9
@@ -202,31 +203,108 @@ def load_sprites():
 
 # -------- Game Logic --------
 
+@jax.jit
+def check_collision_single(pos1, size1, pos2, size2):
+    """Check collision between two single entities"""
+    # Calculate edges for rectangle 1
+    rect1_left = pos1[0]
+    rect1_right = pos1[0] + size1[0]
+    rect1_top = pos1[1]
+    rect1_bottom = pos1[1] + size1[1]
+
+    # Calculate edges for rectangle 2
+    rect2_left = pos2[0]
+    rect2_right = pos2[0] + size2[0]
+    rect2_top = pos2[1]
+    rect2_bottom = pos2[1] + size2[1]
+
+    # Check overlap
+    horizontal_overlap = jnp.logical_and(
+        rect1_left < rect2_right,
+        rect1_right > rect2_left
+    )
+
+    vertical_overlap = jnp.logical_and(
+        rect1_top < rect2_bottom,
+        rect1_bottom > rect2_top
+    )
+
+    return jnp.logical_and(horizontal_overlap, vertical_overlap)
+
+@jax.jit
+def check_missile_collision_with_mushrooms(
+    missile_pos_x: chex.Array,
+    missile_pos_y: chex.Array,
+    missile_is_alive: chex.Array,
+    mushroom_positions: chex.Array
+) -> tuple[chex.Array, chex.Array]:
+    def check_single_mushroom(i, carry):
+        is_alive, mushrooms = carry
+
+        def no_hit():
+            return is_alive, mushrooms
+
+        def check_hit():
+            mushroom = mushrooms[i]
+            mush_pos = mushroom[:2]
+            mush_hp = mushroom[3]
+
+            collision = check_collision_single(
+                pos1=jnp.array([missile_pos_x, missile_pos_y]),
+                size1=PLAYER_MISSILE_SIZE,
+                pos2=mush_pos,
+                size2=MUSHROOM_SIZE
+            )
+
+            def on_hit():
+                new_hp = mush_hp - 1
+                updated_mushroom_positions = mushrooms.at[i, 3].set(new_hp)
+                return False, updated_mushroom_positions
+
+            def check_hp():
+                return jax.lax.cond(mush_hp > 0, on_hit, lambda: (is_alive, mushrooms))
+
+            return jax.lax.cond(collision, check_hp, lambda: (is_alive, mushrooms))
+
+        return jax.lax.cond(is_alive, check_hit, no_hit)
+
+    init_carry = (missile_is_alive, mushroom_positions)
+    missile_active, updated_mushrooms = jax.lax.fori_loop(
+        0, 304, check_single_mushroom, init_carry
+    )
+
+    return missile_active, updated_mushrooms
+
 ## -------- Mushroom Spawn Logic --------
-def initialize_mushroom_positions() -> chex.Array: # TODO: make jittable
+@jax.jit
+def initialize_mushroom_positions() -> chex.Array:
+    # Create row and column indices
+    row_indices = jnp.repeat(jnp.arange(MUSHROOM_NUMBER_OF_ROWS), MUSHROOM_NUMBER_OF_COLS)
+    col_indices = jnp.tile(jnp.arange(MUSHROOM_NUMBER_OF_COLS), MUSHROOM_NUMBER_OF_ROWS)
 
-    mushroom_positions = []
+    # Compute row parity
+    row_is_even = row_indices % 2 == 0
+    column_start = jnp.where(row_is_even, MUSHROOM_COLUMN_START_EVEN, MUSHROOM_COLUMN_START_ODD)
+    x = column_start + MUSHROOM_X_SPACING * col_indices
+    x = x.astype(jnp.int32)
 
-    for row in range(MUSHROOM_NUMBER_OF_ROWS):
-        row_is_even = row % 2 == 0
-        column_counter = MUSHROOM_COLUMN_START_EVEN if row_is_even else MUSHROOM_COLUMN_START_ODD
-        row_y = row * MUSHROOM_Y_SPACING + 7
+    y = (row_indices * MUSHROOM_Y_SPACING + 7).astype(jnp.int32)
 
-        for col in range(MUSHROOM_NUMBER_OF_COLS):
-            x = int(column_counter)
-            y = int(row_y)
+    # Build full pattern as array
+    pattern_array = jnp.array([
+        [1 if c.upper() == 'X' else 0 for c in row.ljust(MUSHROOM_NUMBER_OF_COLS, 'O')]
+        for row in MUSHROOM_STARTING_PATTERN
+    ])
+    pattern_array = jnp.pad(
+        pattern_array,
+        ((0, max(0, MUSHROOM_NUMBER_OF_ROWS - pattern_array.shape[0])), (0, 0)),
+        constant_values=0
+    )
 
-            # Sichtbarkeit anhand des Patterns
-            char = MUSHROOM_STARTING_PATTERN[row][col].upper() if row < len(MUSHROOM_STARTING_PATTERN) and col < len(MUSHROOM_STARTING_PATTERN[row]) else "O"
-            is_shown = 1 if char == "X" else 0
+    lives = pattern_array[row_indices, col_indices] * 3  # 3 lives if visible, 0 if not
+    is_poisoned = jnp.zeros_like(lives)
 
-            is_poisoned = 0
-            lives = 3
-
-            mushroom_positions.append([x, y, is_shown, is_poisoned, lives])
-            column_counter += MUSHROOM_X_SPACING
-
-    return jnp.array(mushroom_positions)
+    return jnp.stack([x, y, is_poisoned, lives], axis=1)
 
 @jax.jit
 def spawn_centipede(wave: jnp.ndarray) -> chex.Array:
@@ -338,6 +416,12 @@ def player_missile_step(
         True,
         jnp.where(kill_missile, False, state.player_missile.is_alive)  # on kill or keep
     )
+
+    for i in range(0, 304, 50):
+        jax.debug.print("Mushroom positions {i}–{j}: {chunk}",
+                        i=i,
+                        j=i + 50,
+                        chunk=state.mushroom_positions[i:i + 50])
 
     # Base x
     base_x = jnp.where(spawn, state.player_x + 1, state.player_missile.x) # player x on spawn or keep x
@@ -514,11 +598,21 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         new_player_missile_state = player_missile_step(state, action)
 
+        missile_active, updated_mushrooms = check_missile_collision_with_mushrooms(
+            new_player_missile_state.x,
+            new_player_missile_state.y,
+            new_player_missile_state.is_alive,
+            state.mushroom_positions,
+        )
+
+        new_player_missile_state = new_player_missile_state._replace(is_alive=missile_active)
+
         return_state = state._replace(
             player_x=new_player_x,
             player_y=new_player_y,
             player_velocity_x=new_velocity_x,
             player_missile=new_player_missile_state,
+            mushroom_positions=updated_mushrooms,
             step_counter=state.step_counter + 1
         )
 
@@ -533,14 +627,50 @@ class CentipedeRenderer(AtraJaxisRenderer):
     def render(self, state: CentipedeState):
         raster = jnp.zeros((WIDTH, HEIGHT, 3))
 
-        # TODO: recolor sprites only when colors change (new wave)
+        def recolor_sprite(  # TODO: recolor sprites only when colors change (new wave)
+                sprite: jnp.ndarray,
+                color: jnp.ndarray,  # RGB, up to 4 dimensions
+                bounds: tuple[int, int, int, int] = None  # (top, left, bottom, right)
+        ) -> jnp.ndarray:
+            # Ensure color is the same dtype as sprite
+            dtype = sprite.dtype
+            color = color.astype(dtype)
+
+            assert sprite.ndim == 3 and sprite.shape[2] in (3, 4), "Sprite must be HxWx3 or HxWx4"
+
+            if color.shape[0] < sprite.shape[2]:
+                missing = sprite.shape[2] - color.shape[0]
+                pad = jnp.full((missing,), 255, dtype=dtype)
+                color = jnp.concatenate([color, pad], axis=0)
+
+            assert color.shape[0] == sprite.shape[2], "Color channels must match sprite channels"
+
+            H, W, _ = sprite.shape
+
+            if bounds is None:
+                region = sprite
+            else:
+                top, left, bottom, right = bounds
+                assert 0 <= left < right <= H and 0 <= top < bottom <= W, "Invalid bounds"
+                region = sprite[left:right, top:bottom]
+
+            visible_mask = jnp.any(region != 0, axis=-1, keepdims=True)  # (h, w, 1)
+
+            color_broadcasted = jnp.broadcast_to(color, region.shape).astype(dtype)
+            recolored_region = jnp.where(visible_mask, color_broadcasted, jnp.zeros_like(color_broadcasted))
+
+            if bounds is None:
+                return recolored_region
+            else:
+                recolored_sprite = sprite.at[left:right, top:bottom].set(recolored_region)
+                return recolored_sprite
 
         ### -------- Render mushrooms --------
         frame_mushroom = aj.get_sprite_frame(SPRITE_MUSHROOM, 0)
-        frame_mushroom = aj.recolor_sprite(frame_mushroom, jnp.array([92, 186, 92]))
+        frame_mushroom = recolor_sprite(frame_mushroom, jnp.array([92, 186, 92]))
 
         def render_mushrooms(i, raster_base):
-            should_render = state.mushroom_positions[i][2] == 1
+            should_render = state.mushroom_positions[i][3] > 0
             return jax.lax.cond(
                 should_render,
                 lambda r: aj.render_at(
@@ -557,7 +687,7 @@ class CentipedeRenderer(AtraJaxisRenderer):
 
         ### -------- Render centipede --------
         frame_centipede = aj.get_sprite_frame(SPRITE_CENTIPEDE, 0)
-        frame_centipede = aj.recolor_sprite(frame_centipede, jnp.array([92, 186, 92]))
+        frame_centipede = recolor_sprite(frame_centipede, jnp.array([92, 186, 92]))
 
         def render_centipede_segment(i, raster_base):
             should_render = state.centipede_position[i][2] != 0
@@ -577,7 +707,7 @@ class CentipedeRenderer(AtraJaxisRenderer):
 
         ### -------- Render player --------
         frame_player = aj.get_sprite_frame(SPRITE_PLAYER, 0)
-        frame_player = aj.recolor_sprite(frame_player, jnp.array([92, 186, 92]))
+        frame_player = recolor_sprite(frame_player, jnp.array([92, 186, 92]))
         raster = aj.render_at(
             raster,
             state.player_x,
@@ -587,7 +717,7 @@ class CentipedeRenderer(AtraJaxisRenderer):
 
         ### -------- Render player missile --------
         frame_player_missile = aj.get_sprite_frame(SPRITE_PLAYER_MISSILE, 0)
-        frame_player_missile = aj.recolor_sprite(frame_player_missile, jnp.array([92, 186, 92]))
+        frame_player_missile = recolor_sprite(frame_player_missile, jnp.array([92, 186, 92]))
         raster = jnp.where(
             state.player_missile.is_alive,
             aj.render_at(
@@ -601,7 +731,7 @@ class CentipedeRenderer(AtraJaxisRenderer):
 
         ### -------- Render bottom border --------
         frame_bottom_border = aj.get_sprite_frame(SPRITE_BOTTOM_BORDER, 0)
-        frame_bottom_border = aj.recolor_sprite(frame_bottom_border, jnp.array([92, 186, 92]))
+        frame_bottom_border = recolor_sprite(frame_bottom_border, jnp.array([92, 186, 92]))
         raster = aj.render_at(
             raster,
             16,
@@ -616,7 +746,7 @@ class CentipedeRenderer(AtraJaxisRenderer):
         raster = aj.render_label(raster, 100, 187, score_array, DIGITS, spacing=8)
 
         ### -------- Render live indicator --------
-        life_indicator = aj.recolor_sprite(LIFE_INDICATOR, jnp.array([92, 186, 92]))
+        life_indicator = recolor_sprite(LIFE_INDICATOR, jnp.array([92, 186, 92]))
         raster = render_indicator(raster, 16, 187, state.lives - 1, life_indicator, spacing=8)
 
         return raster
