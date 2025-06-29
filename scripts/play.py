@@ -86,6 +86,7 @@ def main():
 
     save_keys = {}
     running = True
+    pause = False
     frame_by_frame = False
     frame_rate = args.fps
     next_frame_asked = False
@@ -132,10 +133,16 @@ def main():
                 running = False
                 continue
             elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_f:
+                if event.key == pygame.K_p: # pause
+                    pause = not pause
+                elif event.key == pygame.K_r: # reset
+                    obs, state = jitted_reset(key)
+                elif event.key == pygame.K_f:
                     frame_by_frame = not frame_by_frame
                 elif event.key == pygame.K_n:
                     next_frame_asked = True
+        if pause or (frame_by_frame and not next_frame_asked):
+            continue
         if args.random:
             # sample an action from the action space array
             action = action_space.sample(key)
