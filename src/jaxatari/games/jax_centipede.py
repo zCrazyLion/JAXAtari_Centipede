@@ -23,7 +23,7 @@ from jaxatari.rendering.atraJaxis import render_indicator
 # -------- Game constants --------
 WIDTH = 160
 HEIGHT = 210
-SCALING_FACTOR = 4
+SCALING_FACTOR = 6
 
 ## -------- Player constants --------
 PLAYER_START_X = 76
@@ -40,29 +40,29 @@ MAX_VELOCITY_Y = 2.5 # Default: 2.5 | Maximum speed in y direction (pixels per f
 ## -------- Player missile constants --------
 PLAYER_MISSILE_SPEED = 10
 
-PLAYER_MISSILE_SIZE = (1, 5) # TODO: Sprite may be (1, 6), right now it is (1, 5)
+PLAYER_MISSILE_SIZE = (0, 8) # (0, 8) because of collision logic from missile
 
 ## -------- Starting Pattern (X -> placed, O -> not placed) --------
 MUSHROOM_STARTING_PATTERN = [
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
-        "XXXXXXXXXXXXXXXX",
+        "OOOOOOOOOOOOOOOO",
+        "OOOOOOOOXOOOOXOO",
+        "OOOOOOOOOXOOOOXO",
+        "OOOOOOOOOOXXOOOO",
+        "OOOXOOOOOOOOOOOO",
+        "OXOOOOOOOOOOOOOO",
+        "OOOOOOOXOOOOOOOO",
+        "OOOOOOXOOOOOOOXO",
+        "OOOXXOOOOXOOOOOO",
+        "OOOOOOOXOOOOOOOO",
+        "OOOOOOOOOOOOXOOO",
+        "OOOOXOOOOOOOOOOO",
+        "OOOOOOOOOOOOOXOO",
+        "OOOOOOOOOOOXOOOX",
+        "OOOOOOOOOOOOOOXO",
+        "OOOOXOOXOOOOOOOO",
+        "OXOOOXOOOOOOOOOO",
+        "OOOOXOOOOOOOOOOX",
+        "OOOOOOOOOOOOOOOO",
     ]
 
 ## -------- Mushroom constants --------
@@ -74,6 +74,7 @@ MUSHROOM_Y_SPACING = 9
 MUSHROOM_COLUMN_START_EVEN = 20
 MUSHROOM_COLUMN_START_ODD = 16
 MUSHROOM_SIZE = (4, 3)
+MUSHROOM_HITBOX_Y_OFFSET = 6
 
 ## -------- Centipede constants --------
 MAX_SEGMENTS = 9
@@ -165,7 +166,7 @@ def load_sprites():
         ]
     )
 
-    jax.debug.print("{}", centipede.shape)
+    #jax.debug.print("{}", centipede.shape)
 
     SPRITE_BOTTOM_BORDER = jnp.expand_dims(bottom_border, 0)
     SPRITE_MUSHROOM = jnp.expand_dims(mushroom, 0)
@@ -250,7 +251,7 @@ def check_missile_collision_with_mushrooms(
             mush_hp = mushroom[3]
 
             collision = check_collision_single(
-                pos1=jnp.array([missile_pos_x, missile_pos_y]),
+                pos1=jnp.array([missile_pos_x, missile_pos_y + MUSHROOM_HITBOX_Y_OFFSET]),
                 size1=PLAYER_MISSILE_SIZE,
                 pos2=mush_pos,
                 size2=MUSHROOM_SIZE
@@ -416,13 +417,13 @@ def player_missile_step(
         True,
         jnp.where(kill_missile, False, state.player_missile.is_alive)  # on kill or keep
     )
-
+    '''
     for i in range(0, 304, 50):
         jax.debug.print("Mushroom positions {i}–{j}: {chunk}",
                         i=i,
                         j=i + 50,
                         chunk=state.mushroom_positions[i:i + 50])
-
+    '''
     # Base x
     base_x = jnp.where(spawn, state.player_x + 1, state.player_missile.x) # player x on spawn or keep x
     # Base y
