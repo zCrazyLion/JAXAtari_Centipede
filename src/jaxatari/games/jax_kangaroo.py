@@ -187,10 +187,9 @@ class KangarooInfo(NamedTuple):
     all_rewards: chex.Array
 
 
-class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo]):
-    def __init__(self, frameskip: int = 1, reward_funcs: list[callable]=None):
-        super().__init__()
-        self.consts = KangarooConstants()
+class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo, KangarooConstants]):
+    def __init__(self, consts: KangarooConstants = None, frameskip: int = 1, reward_funcs: list[callable]=None):
+        super().__init__(consts)
         self.frameskip = frameskip
         self.frame_stack_size = 4
         if reward_funcs is not None:
@@ -216,6 +215,7 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
             Action.DOWNRIGHTFIRE,
             Action.DOWNLEFTFIRE
         ]
+        self.consts = consts or KangarooConstants()
         self.obs_size = 111
         self.renderer = KangarooRenderer(self.consts)
 

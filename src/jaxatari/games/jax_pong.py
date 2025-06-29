@@ -76,10 +76,10 @@ class PongInfo(NamedTuple):
     all_rewards: chex.Array
 
 
-class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
-    def __init__(self, reward_funcs: list[callable]=None):
-        super().__init__()
-        self.consts = PongConstants()
+class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo, PongConstants]):
+    def __init__(self, consts: PongConstants = None, reward_funcs: list[callable]=None):
+        consts = consts or PongConstants()
+        super().__init__(consts)
         self.renderer = PongRenderer(self.consts)
         if reward_funcs is not None:
             reward_funcs = tuple(reward_funcs)
@@ -558,7 +558,8 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
 
 
 class PongRenderer(JAXGameRenderer):
-    def __init__(self, consts=None):
+    def __init__(self, consts: PongConstants = None):
+        super().__init__()
         self.consts = consts or PongConstants()
         (
             self.SPRITE_BG,

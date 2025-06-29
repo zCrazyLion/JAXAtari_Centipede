@@ -288,7 +288,7 @@ def load_sprites():
 ) = load_sprites()
 
 
-class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInfo]):
+class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInfo, SeaquestConstants]):
     def initialize_spawn_state(self) -> SpawnState:
         """Initialize spawn state with first wave matching original game."""
         return SpawnState(
@@ -2463,8 +2463,9 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
         return jnp.minimum(base_points + additional_points, max_points)
 
 
-    def __init__(self, reward_funcs: list[callable] = None):
-        super().__init__()
+    def __init__(self, consts: SeaquestConstants = None, reward_funcs: list[callable] = None):
+        consts = consts or SeaquestConstants()
+        super().__init__(consts)
         if reward_funcs is not None:
             reward_funcs = tuple(reward_funcs)
         self.reward_funcs = reward_funcs
@@ -2490,8 +2491,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
         ]
         self.frame_stack_size = 4
         self.obs_size = 6 + 12 * 5 + 12 * 5 + 4 * 5 + 4 * 5 + 5 + 5 + 4
-        self.renderer = SeaquestRenderer()
-        self.consts = SeaquestConstants()
+        self.renderer = SeaquestRenderer(self.consts)
 
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state: SeaquestState) -> jnp.ndarray:
@@ -3079,7 +3079,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
 
 class SeaquestRenderer(JAXGameRenderer):
-    def __init__(self, consts=None):
+    def __init__(self, consts: SeaquestConstants = None):
         super().__init__()
         self.offset_length = len(PL_SUB_OFFSETS)
         self.diver_offset_length = len(DIVER_OFFSETS)
