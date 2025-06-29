@@ -6,6 +6,7 @@ import jax
 from functools import partial
 from jax import lax
 
+BORDER = True
 
 class AgnosticPath(Path):
     """A class that can handle input with Windows (\\) and/or posix (/) separators for paths"""
@@ -19,6 +20,23 @@ class AgnosticPath(Path):
             if parts and not parts[0] in ("/", "\\"):
                 parts = ("/",) + parts
         return super().__new__(cls, *parts, **kwargs)
+
+
+def add_border(frame):
+    """Assumes only one non-transparent pixel color in the array."""
+    if frame.shape[:2] == (160, 210):
+        return frame  # No border for background
+    h, w, c = frame.shape
+    flat_frame = frame.reshape(h*w, 4)  # Ensure the last dimension is RGBA
+    border_color = jnp.array([255, 255, 255, 50], dtype=jnp.uint8) # set alpha to 50 transparency
+    # Top and bottom borders
+    frame = frame.at[0, :, :].set(border_color)
+    frame = frame.at[-1, :, :].set(border_color)
+    
+    # Left and right borders
+    frame = frame.at[:, 0, :].set(border_color)
+    frame = frame.at[:, -1, :].set(border_color)
+    return frame
 
 
 def loadFrame(fileName, transpose=True):
@@ -40,10 +58,8 @@ def loadFrame(fileName, transpose=True):
 
     if transpose:
         # Source assumed H, W, C -> transpose to W, H, C
-        return jnp.transpose(frame, (1, 0, 2))
-    else:
-         # Source assumed W, H, C
-        return frame
+        frame = jnp.transpose(frame, (1, 0, 2))
+    return frame
 
 
 @partial(jax.jit, static_argnames=["path_pattern", "num_chars"])
@@ -390,6 +406,8 @@ def pad_to_match(sprites):
             mode="constant",
             constant_values=0,
         )
+        if BORDER:
+            padded_sprite = add_border(padded_sprite)
         padded_sprites.append(padded_sprite)
 
     return padded_sprites

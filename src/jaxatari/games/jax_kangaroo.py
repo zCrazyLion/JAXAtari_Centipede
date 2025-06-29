@@ -18,10 +18,8 @@ from jaxatari.games.kangaroo_levels import (
 RESET = 18
 
 # -------- Game constants --------
-RENDER_SCALE_FACTOR = 4
 SCREEN_WIDTH, SCREEN_HEIGHT = 160, 210
 PLAYER_WIDTH, PLAYER_HEIGHT = 8, 24
-ENEMY_WIDTH, ENEMY_HEIGHT = 8, 24
 FRUIT_WIDTH = 8
 FRUIT_HEIGHT = 12
 MAX_PLATFORMS = 10
@@ -59,9 +57,8 @@ MOVEMENT_SPEED = 1
 LEFT_CLIP = 16
 RIGHT_CLIP = 144
 
-COCONUT_WIDTH = 3
-COCONUT_HEIGHT = 4
-
+COCONUT_WIDTH = 2
+COCONUT_HEIGHT = 3
 
 # -------- Entity Classes --------
 class Entity(NamedTuple):
@@ -277,7 +274,7 @@ def entities_collide_with_threshold(
     # Check if overlap exceeds required threshold
     meets_threshold = overlap_width >= min_required_overlap
 
-    return jnp.where((overlap_width < 0) | (overlap_height < 0), False, meets_threshold)
+    return jnp.where((overlap_width <= 0) | (overlap_height <= 0), False, meets_threshold)
 
 
 @partial(jax.jit, static_argnums=())
@@ -292,7 +289,7 @@ def entities_collide(
     e2_h: chex.Array,
 ) -> chex.Array:
     """
-    Calls do_collide_with_threshold with a threshold of 0 and checks if two rectangles overlap.
+    Calls do_collide_with_threshold with a threshold of 1 and checks if two rectangles overlap.
     """
     return entities_collide_with_threshold(
         e1_x, e1_y, e1_w, e1_h, e2_x, e2_y, e2_w, e2_h, 0
@@ -383,7 +380,9 @@ def player_is_on_ladder(
 @partial(jax.jit, donate_argnums=(0))
 # -------- Jumping and Climbing --------
 def player_jump_controller(
-    state: KangarooState, jump_pressed: chex.Array, ladder_intersect: chex.Array
+    state: KangarooState,
+    jump_pressed: chex.Array,
+    ladder_intersect: chex.Array
 ):
     """
     Schedule:
@@ -1150,7 +1149,7 @@ def lives_controller(state: KangarooState):
         state.player.x,
         state.player.y,
         PLAYER_WIDTH,
-        state.player.height,
+        state.player.height - 8,
         state.level.falling_coco_position[0],
         state.level.falling_coco_position[1],
         COCONUT_WIDTH,
@@ -1206,12 +1205,15 @@ def falling_coconut_controller(state: KangarooState):
         ((state.level.step_counter % 8) == 0) | spawn_new_coco
     )
 
+    # coco go down or up before dropping
+    coco_down = (state.level.step_counter % 32) < 16
+
     # detect if coco is above player and switch from x-following state to dropping state
     coco_first_time_above_player = (
         ~state.level.falling_coco_dropping
         & falling_coco_exists
         & (
-            ((state.level.falling_coco_position[0] + COCONUT_WIDTH) > state.player.x)
+            ((state.level.falling_coco_position[0]) > state.player.x)
             & (state.level.falling_coco_position[0] < (state.player.x + PLAYER_WIDTH))
         )
         & update_positions
@@ -1237,15 +1239,19 @@ def falling_coconut_controller(state: KangarooState):
             spawn_new_coco,
             0,
             jnp.where(
-                state.level.falling_coco_dropping & update_positions,
+                state.level.falling_coco_dropping & update_positions, # coco is dropping
                 state.level.falling_coco_counter + 1,
-                state.level.falling_coco_counter,
+                jnp.where(
+                    update_positions & coco_down,  # coco is going down
+                    state.level.falling_coco_counter + 1,
+                    state.level.falling_coco_counter - 1,
+                ),
             ),
         ),
         state.level.falling_coco_counter,
     )
 
-    reset_coco = new_falling_coco_counter > 20
+    reset_coco = (new_falling_coco_counter > 20) | state.player.is_crashing
     new_falling_coco_counter = jnp.where(reset_coco, 0, new_falling_coco_counter)
 
     new_falling_coco_dropping = jnp.where(reset_coco, False, new_falling_coco_dropping)
@@ -1257,9 +1263,10 @@ def falling_coconut_controller(state: KangarooState):
         state.level.falling_coco_position[0] + 2,
         state.level.falling_coco_position[0],
     )
+
     new_falling_coco_position_y = jnp.where(
         update_positions & (falling_coco_exists | spawn_new_coco),
-        8 * new_falling_coco_counter + 8,
+        8 * new_falling_coco_counter + 9,
         state.level.falling_coco_position[1],
     )
 
@@ -1972,7 +1979,6 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
                 needs_release=needs_release,
             ),
         )
-
         new_state = jax.lax.cond(
             reset_cond,
             lambda: self.reset_level(1),
@@ -2111,7 +2117,11 @@ class KangarooRenderer(AtraJaxisRenderer):
                  sprites[name] = loaded_sprite
 
         # pad the kangaroo and monkey sprites since they have to be used interchangeably (and jax enforces same sizes)
-        ape_sprites = aj.pad_to_match([sprites['ape_climb_left'], sprites['ape_climb_right'], sprites['ape_moving'], sprites['ape_standing'], sprites['throwing_ape']])
+        ape_sprites = aj.pad_to_match([sprites['ape_climb_left'], 
+                                       sprites['ape_climb_right'], 
+                                       sprites['ape_moving'], 
+                                       sprites['ape_standing'], 
+                                       sprites['throwing_ape']])
 
         sprites['ape_climb_left'] = ape_sprites[0]
         sprites['ape_climb_right'] = ape_sprites[1]
@@ -2120,7 +2130,14 @@ class KangarooRenderer(AtraJaxisRenderer):
         sprites['throwing_ape'] = ape_sprites[4]
 
         # --- pad kangaroo ---
-        kangaroo_sprites = aj.pad_to_match([sprites['kangaroo'], sprites['kangaroo_climb'], sprites['kangaroo_dead'], sprites['kangaroo_ducking'], sprites['kangaroo_jump_high'], sprites['kangaroo_jump'], sprites['kangaroo_walk'], sprites['kangaroo_boxing']])
+        kangaroo_sprites = aj.pad_to_match([sprites['kangaroo'],
+                                            sprites['kangaroo_climb'],
+                                            sprites['kangaroo_dead'],
+                                            sprites['kangaroo_ducking'],
+                                            sprites['kangaroo_jump_high'],
+                                            sprites['kangaroo_jump'],
+                                            sprites['kangaroo_walk'],
+                                            sprites['kangaroo_boxing']])
 
         sprites['kangaroo'] = kangaroo_sprites[0]
         sprites['kangaroo_climb'] = kangaroo_sprites[1]
@@ -2339,7 +2356,11 @@ class KangarooRenderer(AtraJaxisRenderer):
         player_sprite = sprite_lambda
         sprite_is_valid = player_sprite is not None
         def render_player_sprite(raster_to_update):
-             return aj.render_at(raster_to_update, player_pos_x.astype(int), player_pos_y.astype(int), aj.get_sprite_frame(player_sprite, 0), flip_horizontal=flip_player)
+             return aj.render_at(raster_to_update,
+                                 player_pos_x.astype(int),
+                                 player_pos_y.astype(int),
+                                 aj.get_sprite_frame(player_sprite, 0),
+                                 flip_horizontal=flip_player)
         raster = jax.lax.cond(sprite_is_valid, render_player_sprite, lambda r: r, raster)
 
         # --- Draw Child ---
