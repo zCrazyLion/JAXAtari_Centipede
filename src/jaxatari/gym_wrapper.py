@@ -255,6 +255,9 @@ class GymnasiumJaxAtariWrapper(FunctionalJaxEnv):
         np_truncated = self._convert_to_numpy(jax_truncated)
         np_info = self._convert_to_numpy(jax_info)
         
+        # Ensure correct dtype (e.g. uint8 instead of float32)
+        np_obs = self._cast_obs_dtype(np_obs)
+        
         return np_obs, np_reward, np_terminated, np_truncated, np_info
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict] = None):
@@ -264,6 +267,10 @@ class GymnasiumJaxAtariWrapper(FunctionalJaxEnv):
         # Manually convert all outputs to NumPy before returning
         np_obs = self._convert_to_numpy(jax_obs)
         np_info = self._convert_to_numpy(jax_info)
+        
+        # Ensure correct dtype (e.g. uint8 instead of float32)
+        np_obs = self._cast_obs_dtype(np_obs)
+        
         return np_obs, np_info
 
     def render(self):
@@ -275,9 +282,52 @@ class GymnasiumJaxAtariWrapper(FunctionalJaxEnv):
             frame = self._jaxatari_env.render(self.state)
             # Convert to numpy array (force copy to host if needed)
             frame = np.array(frame)
+            # Cast to correct dtype if necessary
+            frame = self._cast_obs_dtype(frame)
             # If the frame has a batch dimension, squeeze it out
             if frame.ndim == 4 and frame.shape[0] == 1:
                 frame = frame[0]
             return frame
         else:
             raise ValueError(f"Render mode {self.render_mode} not supported")
+
+    # ---------------------------------------------------------------------
+    # Utility helpers for dtype handling
+    # ---------------------------------------------------------------------
+
+    def _cast_obs_dtype(self, obs):
+        """Recursively cast the observation to the dtype declared in `self.observation_space`.
+
+        Some jaxatari environments internally store frames using float32, but the Gymnasium
+        convention (and our `Box` space definition) expects `uint8`.  Returning a mismatched
+        dtype can break downstream wrappers as well as unit-tests that assert on dtypes.
+
+        Notes
+        -----
+        * Only observation tensors/arrays are cast – rewards, termination flags and infos
+          keep their original dtypes.
+        * If the `observation_space` is a composite (Tuple/Dict) we conservatively attempt
+          to cast *every* ndarray we encounter in the observation structure to the dtype of
+          the *outer* space when that space exposes a `dtype` attribute.  For typical Atari
+          environments this is a simple `Box` space so this heuristic works well.
+        """
+
+        # Determine target dtype if available.  Default to uint8 which is standard for Atari.
+        target_dtype = getattr(self.observation_space, "dtype", np.uint8)
+
+        def _rec_cast(x):
+            if isinstance(x, np.ndarray):
+                # Only cast if the dtype actually differs – avoids unnecessary copies.
+                if x.dtype != target_dtype:
+                    return x.astype(target_dtype, copy=False)
+                return x
+            elif isinstance(x, tuple):
+                return tuple(_rec_cast(v) for v in x)
+            elif isinstance(x, list):
+                return [_rec_cast(v) for v in x]
+            elif isinstance(x, dict):
+                return {k: _rec_cast(v) for k, v in x.items()}
+            else:
+                return x
+
+        return _rec_cast(obs)
