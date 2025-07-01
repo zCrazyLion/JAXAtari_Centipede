@@ -28,3 +28,8 @@ build-backend = "hatchling.build"
 dev = [
   "pytest",
 ]
+gh_ci = [
+  "pytest",
+  "pytest-sugar",
+  "pytest-github-actions-annotate-failures",
+]
