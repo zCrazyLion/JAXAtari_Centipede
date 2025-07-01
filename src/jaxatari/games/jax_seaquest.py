@@ -218,16 +218,19 @@ def load_sprites():
     en_torp = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/enemy_torp/1.npy"))
 
     # Pad player submarine sprites to match each other
-    pl_sub_sprites = aj.pad_to_match([pl_sub1, pl_sub2, pl_sub3])
-
+    pl_sub_sprites, pl_sub_offsets = aj.pad_to_match([pl_sub1, pl_sub2, pl_sub3])
+    pl_sub_offsets = jnp.array(pl_sub_offsets)
     # Pad diver sprites to match each other
-    diver_sprites = aj.pad_to_match([diver1, diver2])
+    diver_sprites, diver_offsets = aj.pad_to_match([diver1, diver2])
+    diver_offsets = jnp.array(diver_offsets)
 
     # Pad shark sprites to match each other
-    shark_sprites = aj.pad_to_match([shark1, shark2])
+    shark_sprites, shark_offsets = aj.pad_to_match([shark1, shark2])
+    shark_offsets = jnp.array(shark_offsets)
 
     # Pad enemy submarine sprites to match each other
-    enemy_sub_sprites = aj.pad_to_match([enemy_sub1, enemy_sub2, enemy_sub3])
+    enemy_sub_sprites, enemy_sub_offsets = aj.pad_to_match([enemy_sub1, enemy_sub2, enemy_sub3])
+    enemy_sub_offsets = jnp.array(enemy_sub_offsets)
 
     # Pad player torpedo sprites to match each other
     pl_torp_sprites = [pl_torp]
@@ -281,7 +284,7 @@ def load_sprites():
 
     # Enemy torpedo sprites
     SPRITE_EN_TORP = jnp.repeat(en_torp_sprites[0][None], 1, axis=0)
-
+    # Return all sprites and all offsets for future use
     return (
         SPRITE_BG,
         SPRITE_PL_SUB,
@@ -293,8 +296,11 @@ def load_sprites():
         DIGITS,
         LIFE_INDICATOR,
         DIVER_INDICATOR,
+        pl_sub_offsets,
+        diver_offsets,
+        shark_offsets,
+        enemy_sub_offsets,
     )
-
 
 # Load sprites once at module level
 (
@@ -308,6 +314,10 @@ def load_sprites():
     DIGITS,
     LIFE_INDICATOR,
     DIVER_INDICATOR,
+    PL_SUB_OFFSETS,
+    DIVER_OFFSETS,
+    SHARK_OFFSETS,
+    ENEMY_SUB_OFFSETS,
 ) = load_sprites()
 
 @jax.jit
@@ -3066,6 +3076,13 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 from jaxatari.renderers import AtraJaxisRenderer
 
 class SeaquestRenderer(AtraJaxisRenderer):
+    def __init__(self):
+        super().__init__()
+        self.offset_length = len(PL_SUB_OFFSETS)
+        self.diver_offset_length = len(DIVER_OFFSETS)
+        self.shark_offset_length = len(SHARK_OFFSETS)
+        self.enemy_sub_offset_length = len(ENEMY_SUB_OFFSETS)
+
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state):
         raster = jnp.zeros((WIDTH, HEIGHT, 3))
@@ -3076,15 +3093,17 @@ class SeaquestRenderer(AtraJaxisRenderer):
 
         # render player submarine
         frame_pl_sub = aj.get_sprite_frame(SPRITE_PL_SUB, state.step_counter)
+        idx_pl_sub = state.step_counter % self.offset_length
+        pl_sub_offset = jnp.take(PL_SUB_OFFSETS, idx_pl_sub, axis=0)
         raster = aj.render_at(
             raster,
             state.player_x,
             state.player_y,
             frame_pl_sub,
             flip_horizontal=state.player_direction == FACE_LEFT,
+            flip_offset=pl_sub_offset,
         )
-
-        # render player torpedo
+        # Player torpedo
         frame_pl_torp = aj.get_sprite_frame(SPRITE_PL_TORP, state.step_counter)
         should_render = state.player_missile_position[0] > 0
         raster = jax.lax.cond(
@@ -3106,6 +3125,8 @@ class SeaquestRenderer(AtraJaxisRenderer):
 
         def render_diver(i, raster_base):
             should_render = diver_positions[i][0] > 0
+            idx_diver = i % self.diver_offset_length
+            diver_offset = jnp.take(DIVER_OFFSETS, idx_diver, axis=0)
             return jax.lax.cond(
                 should_render,
                 lambda r: aj.render_at(
@@ -3114,6 +3135,7 @@ class SeaquestRenderer(AtraJaxisRenderer):
                     diver_positions[i][1],
                     frame_diver,
                     flip_horizontal=(diver_positions[i][2] == FACE_LEFT),
+                    flip_offset=diver_offset,
                 ),
                 lambda r: r,
                 raster_base,
@@ -3126,6 +3148,8 @@ class SeaquestRenderer(AtraJaxisRenderer):
 
         def render_shark(i, raster_base):
             should_render = state.shark_positions[i][0] > 0
+            idx_shark = i % self.shark_offset_length
+            shark_offset = jnp.take(SHARK_OFFSETS, idx_shark, axis=0)
             return jax.lax.cond(
                 should_render,
                 lambda r: aj.render_at(
@@ -3134,6 +3158,7 @@ class SeaquestRenderer(AtraJaxisRenderer):
                     state.shark_positions[i][1],
                     frame_shark,
                     flip_horizontal=(state.shark_positions[i][2] == FACE_LEFT),
+                    flip_offset=shark_offset,
                 ),
                 lambda r: r,
                 raster_base,
@@ -3147,6 +3172,8 @@ class SeaquestRenderer(AtraJaxisRenderer):
 
         def render_enemy_sub(i, raster_base):
             should_render = state.sub_positions[i][0] > 0
+            idx_enemy_sub = i % self.enemy_sub_offset_length
+            enemy_sub_offset = jnp.take(ENEMY_SUB_OFFSETS, idx_enemy_sub, axis=0)
             return jax.lax.cond(
                 should_render,
                 lambda r: aj.render_at(
@@ -3155,6 +3182,7 @@ class SeaquestRenderer(AtraJaxisRenderer):
                     state.sub_positions[i][1],
                     frame_enemy_sub,
                     flip_horizontal=(state.sub_positions[i][2] == FACE_LEFT),
+                    flip_offset=enemy_sub_offset,
                 ),
                 lambda r: r,
                 raster_base,
@@ -3164,6 +3192,8 @@ class SeaquestRenderer(AtraJaxisRenderer):
 
         def render_enemy_surface_sub(i, raster_base):
             should_render = state.surface_sub_position[0] > 0
+            idx_enemy_sub = i % self.enemy_sub_offset_length
+            enemy_sub_offset = jnp.take(ENEMY_SUB_OFFSETS, idx_enemy_sub, axis=0)
             return jax.lax.cond(
                 should_render,
                 lambda r: aj.render_at(
@@ -3172,6 +3202,7 @@ class SeaquestRenderer(AtraJaxisRenderer):
                     state.surface_sub_position[1],
                     frame_enemy_sub,
                     flip_horizontal=(state.surface_sub_position[2] == FACE_LEFT),
+                    flip_offset=enemy_sub_offset,
                 ),
                 lambda r: r,
                 raster_base,
