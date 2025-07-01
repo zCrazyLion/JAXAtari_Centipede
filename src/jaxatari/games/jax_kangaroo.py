@@ -1223,7 +1223,7 @@ def lives_controller(state: KangarooState):
 
 
 @partial(jax.jit, donate_argnums=(0))
-def falling_coconut_controller(state: KangarooState):
+def falling_coconut_controller(state: KangarooState, punching: chex.Array):
     falling_coco_exists = (state.level.falling_coco_position[0] != 13) | (
         state.level.falling_coco_position[1] != -1
     )
@@ -1246,7 +1246,6 @@ def falling_coconut_controller(state: KangarooState):
             ((state.level.falling_coco_position[0]) >= state.player.x)
             & (state.level.falling_coco_position[0] <= (state.player.x + PLAYER_WIDTH))
         )
-        & update_positions
     )
 
     update_positions = jnp.where(coco_first_time_above_player, True, update_positions)
@@ -1284,7 +1283,36 @@ def falling_coconut_controller(state: KangarooState):
         state.level.falling_coco_counter,
     )
 
-    reset_coco = (new_falling_coco_counter > 20) | state.player.is_crashing
+    # detect if player is punching the coco
+    fist_w = 3
+    fist_h = 4
+    fist_x = jnp.where(
+        state.player.orientation > 0,
+        state.player.x + PLAYER_WIDTH,
+        state.player.x - fist_w,
+    )
+    fist_y = state.player.y + 8
+
+    coco_punching = (
+        entities_collide_with_threshold(
+            fist_x,
+            fist_y,
+            fist_w,
+            fist_h,
+            state.level.falling_coco_position[0],
+            state.level.falling_coco_position[1],
+            COCONUT_WIDTH,
+            COCONUT_HEIGHT,
+            0.01,
+        )
+        & punching
+    )
+
+    score_addition = jnp.where(coco_punching, 200, 0)
+
+    reset_coco = (
+        (new_falling_coco_counter > 20) | state.player.is_crashing | coco_punching
+    )
     new_falling_coco_counter = jnp.where(reset_coco, 0, new_falling_coco_counter)
 
     new_falling_coco_dropping = jnp.where(reset_coco, False, new_falling_coco_dropping)
@@ -1314,6 +1342,7 @@ def falling_coconut_controller(state: KangarooState):
         new_falling_coco_dropping,
         new_falling_coco_counter,
         new_falling_coco_skip_update,
+        score_addition,
     )
 
 
@@ -1867,7 +1896,9 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
         )
 
         # Handle fruit collection
-        score_addition, new_actives, new_fruit_stages, bell_timer = fruits_step(state)
+        fruit_score_addition, new_actives, new_fruit_stages, bell_timer = fruits_step(
+            state
+        )
         child_timer, new_child_x, new_child_y, new_child_velocity = child_step(state)
 
         # Handle Main Timer
@@ -1878,14 +1909,15 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
             new_falling_coco_dropping,
             new_falling_coco_counter,
             new_falling_coco_skip_update,
-        ) = falling_coconut_controller(state)
+            falling_coco_score_addition,
+        ) = falling_coconut_controller(state, punch_left | punch_right)
 
         # update monkeys
         (
             new_monkey_states,
             new_monkey_positions,
             new_monkey_throw_timers,
-            score_addition2,
+            monkey_hit_score_addition,
             new_coco_positions,
             new_coco_states,
             flip,
@@ -1899,13 +1931,16 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
             new_last_stood_on_platform_y,
         ) = lives_controller(state)
 
-        # reset_current_level_progress()
-
         # add the time after finishing a level
-        score_addition3 = jnp.where(level_finished, state.level.timer, 0)
+        level_switch_score_addition = jnp.where(level_finished, state.level.timer, 0)
 
         # add score if levelup from lvl3 to lvl1
-        score_addition = score_addition + score_addition2 + score_addition3
+        score_addition = (
+            fruit_score_addition
+            + monkey_hit_score_addition
+            + level_switch_score_addition
+            + falling_coco_score_addition
+        )
         score_addition = jax.lax.cond(
             new_current_level == 4,
             lambda: score_addition + 1400,
