@@ -27,5 +27,5 @@ jobs:
       - name: Run tests
         run: |
           . .venv/bin/activate
-          pytest
+          pytest --tb=line -ra --color=yes
         shell: bash
