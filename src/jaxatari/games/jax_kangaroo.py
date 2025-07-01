@@ -259,7 +259,14 @@ def entities_collide_with_threshold(
     e2_h: chex.Array,
     threshold: chex.Array,
 ) -> chex.Array:
-    """Returns True if rectangles overlap by at least threshold fraction. This only Checks for overlap in the x dimension."""
+    """Returns True if rectangles overlap by at least threshold fraction. This only Checks for overlap in the x dimension.
+    e1_x, e1_y, e1_w, e1_h: Entity 1 position and size
+    e2_x, e2_y, e2_w, e2_h: Entity 2 position and size
+    threshold: Minimum fraction of overlap required (0-1)
+
+    Returns:
+        bool: True if entities overlap by at least threshold fraction, False otherwise
+    """
     overlap_start_x = jnp.maximum(e1_x, e2_x)
     overlap_end_x = jnp.minimum(e1_x + e1_w, e2_x + e2_w)
     overlap_start_y = jnp.maximum(e1_y, e2_y)
@@ -269,15 +276,15 @@ def entities_collide_with_threshold(
     overlap_width = overlap_end_x - overlap_start_x
     overlap_height = overlap_end_y - overlap_start_y
 
+    smallest_entity_width = jnp.minimum(e1_w, e2_w)
+
     # Calculate minimum required overlap area based on threshold
-    min_required_overlap = e1_w * threshold
+    min_required_overlap = smallest_entity_width * threshold
 
     # Check if overlap exceeds required threshold
     meets_threshold = overlap_width >= min_required_overlap
 
-    return jnp.where(
-        (overlap_width <= 0) | (overlap_height <= 0), False, meets_threshold
-    )
+    return jnp.where((overlap_width < 0) | (overlap_height < 0), False, meets_threshold)
 
 
 @partial(jax.jit, static_argnums=())
@@ -292,7 +299,7 @@ def entities_collide(
     e2_h: chex.Array,
 ) -> chex.Array:
     """
-    Calls do_collide_with_threshold with a threshold of 1 and checks if two rectangles overlap.
+    Calls do_collide_with_threshold with a threshold of 0 and checks if two rectangles overlap.
     """
     return entities_collide_with_threshold(
         e1_x, e1_y, e1_w, e1_h, e2_x, e2_y, e2_w, e2_h, 0
@@ -978,9 +985,13 @@ def player_step(state: KangarooState, action: chex.Array):
 
     # x-axis movement
     x = jnp.where(
-        state.player.is_crashing | state.levelup_timer != 0,
+        state.level.step_counter % 3 != 0,
         x,
-        jnp.clip(x + vel_x, LEFT_CLIP, RIGHT_CLIP - PLAYER_WIDTH),
+        jnp.where(
+            state.player.is_crashing | state.levelup_timer != 0,
+            x,
+            jnp.clip(x + vel_x, LEFT_CLIP, RIGHT_CLIP - PLAYER_WIDTH),
+        ),
     )
 
     # y-axis movement
@@ -1157,7 +1168,7 @@ def lives_controller(state: KangarooState):
 
     player_collided_with_horizontal_coco = jnp.any(collision)
 
-    crashed_falling_coco = entities_collide(
+    crashed_falling_coco = entities_collide_with_threshold(
         state.player.x,
         state.player.y,
         PLAYER_WIDTH,
@@ -1166,6 +1177,7 @@ def lives_controller(state: KangarooState):
         state.level.falling_coco_position[1],
         COCONUT_WIDTH,
         COCONUT_HEIGHT,
+        0.1,
     )
 
     remove_live = (
@@ -1225,11 +1237,13 @@ def falling_coconut_controller(state: KangarooState):
         ~state.level.falling_coco_dropping
         & falling_coco_exists
         & (
-            ((state.level.falling_coco_position[0]) > state.player.x)
-            & (state.level.falling_coco_position[0] < (state.player.x + PLAYER_WIDTH))
+            ((state.level.falling_coco_position[0]) >= state.player.x)
+            & (state.level.falling_coco_position[0] <= (state.player.x + PLAYER_WIDTH))
         )
         & update_positions
     )
+
+    update_positions = jnp.where(coco_first_time_above_player, True, update_positions)
 
     new_falling_coco_dropping = jnp.where(
         coco_first_time_above_player, True, state.level.falling_coco_dropping
