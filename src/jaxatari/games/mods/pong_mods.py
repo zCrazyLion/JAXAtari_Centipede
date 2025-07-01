@@ -7,9 +7,9 @@ import jax
 import jax.numpy as jnp
 from jaxatari.games.jax_pong import PongState
 
-from jaxatari.wrappers import GymnaxWrapper
+from jaxatari.wrappers import JaxatariWrapper
 
-class LazyEnemyWrapper(GymnaxWrapper):
+class LazyEnemyWrapper(JaxatariWrapper):
     """Enemy stops moving after returning a shot."""
     @functools.partial(jax.jit, static_argnums=(0,))
     def make_lazy(self, prev_state: PongState, state: PongState) -> PongState:
@@ -39,7 +39,7 @@ class LazyEnemyWrapper(GymnaxWrapper):
 
         return new_obs, new_state, reward, done, info
 
-class RandomizedEnemyWrapper(GymnaxWrapper):
+class RandomizedEnemyWrapper(JaxatariWrapper):
     """Enemy stops moving after returning a shot."""
     @functools.partial(jax.jit, static_argnums=(0,))
     def make_random(self, prev_state: PongState, state: PongState) -> PongState:
