@@ -405,7 +405,13 @@ def player_jump_controller(
     is_jumping = state.player.is_jumping
 
     cooldown_condition = state.player.cooldown_counter > 0
-    jump_start = jump_pressed & ~is_jumping & ~ladder_intersect & ~cooldown_condition
+    jump_start = (
+        jump_pressed
+        & ~is_jumping
+        & ~ladder_intersect
+        & ~cooldown_condition
+        & ((player_y + PLAYER_HEIGHT) > 28)
+    )
 
     # Update jump state on start
     jump_counter = jnp.where(jump_start, 0, jump_counter)
