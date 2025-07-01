@@ -9,12 +9,11 @@ dependencies = [
     "chex==0.1.87",
     "flax==0.10.6",
     "gymnasium==1.2.0",
-    "gymnasium[other]==1.2.0",
+    "gymnax==0.0.8",
     "jax==0.6.0",
     "ml-dtypes==0.5.1",
     "numpy==2.2.6",
     "opt-einsum==3.4.0",
-    "pygame==2.5.0",
     "scipy==1.15.3",
     "toolz==1.0.0",
     "typing-extensions==4.14.0",
@@ -27,8 +26,12 @@ build-backend = "hatchling.build"
 [project.optional-dependencies]
 dev = [
   "pytest",
+  "pygame==2.5.0",
+  "gymnasium[other]==1.2.0",
 ]
 gh_ci = [
+  "pygame==2.5.0",
+  "gymnasium[other]==1.2.0",
   "pytest",
   "pytest-sugar",
   "pytest-github-actions-annotate-failures",
