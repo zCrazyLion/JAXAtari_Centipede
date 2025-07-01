@@ -5,9 +5,11 @@ import jax
 import jax.numpy as jnp
 import chex
 from jax import Array
+
 import jaxatari.spaces as spaces
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
-
+from jaxatari.renderers import JAXGameRenderer
+import jaxatari.rendering.jax_rendering_utils as jr
 from jaxatari.games.kangaroo_levels import (
     LevelConstants,
     Kangaroo_Level_1,
@@ -2060,10 +2062,8 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
     def _get_done(self, state: KangarooState) -> bool:
         return jnp.logical_and(state.lives <= 0, state.player.y == 188)
 
-import jaxatari.rendering.atraJaxis as aj
-from jaxatari.renderers import AtraJaxisRenderer
 
-class KangarooRenderer(AtraJaxisRenderer):
+class KangarooRenderer(JAXGameRenderer):
     # Type hint for sprites dictionary
     sprites: Dict[str, Any]
 
@@ -2089,7 +2089,7 @@ class KangarooRenderer(AtraJaxisRenderer):
         # Helper function to load a single sprite frame
         def _load_sprite_frame(name: str) -> Optional[chex.Array]:
             path = os.path.join(self.sprite_path, f'{name}.npy')
-            frame = aj.loadFrame(path)
+            frame = jr.loadFrame(path)
             if isinstance(frame, jnp.ndarray) and frame.ndim >= 2:
                 return frame.astype(jnp.uint8)
 
@@ -2111,7 +2111,7 @@ class KangarooRenderer(AtraJaxisRenderer):
                  sprites[name] = loaded_sprite
 
         # pad the kangaroo and monkey sprites since they have to be used interchangeably (and jax enforces same sizes)
-        ape_sprites = aj.pad_to_match([sprites['ape_climb_left'], sprites['ape_climb_right'], sprites['ape_moving'], sprites['ape_standing'], sprites['throwing_ape']])
+        ape_sprites = jr.pad_to_match([sprites['ape_climb_left'], sprites['ape_climb_right'], sprites['ape_moving'], sprites['ape_standing'], sprites['throwing_ape']])
 
         sprites['ape_climb_left'] = ape_sprites[0]
         sprites['ape_climb_right'] = ape_sprites[1]
@@ -2120,7 +2120,7 @@ class KangarooRenderer(AtraJaxisRenderer):
         sprites['throwing_ape'] = ape_sprites[4]
 
         # --- pad kangaroo ---
-        kangaroo_sprites = aj.pad_to_match([sprites['kangaroo'], sprites['kangaroo_climb'], sprites['kangaroo_dead'], sprites['kangaroo_ducking'], sprites['kangaroo_jump_high'], sprites['kangaroo_jump'], sprites['kangaroo_walk'], sprites['kangaroo_boxing']])
+        kangaroo_sprites = jr.pad_to_match([sprites['kangaroo'], sprites['kangaroo_climb'], sprites['kangaroo_dead'], sprites['kangaroo_ducking'], sprites['kangaroo_jump_high'], sprites['kangaroo_jump'], sprites['kangaroo_walk'], sprites['kangaroo_boxing']])
 
         sprites['kangaroo'] = kangaroo_sprites[0]
         sprites['kangaroo_climb'] = kangaroo_sprites[1]
@@ -2132,7 +2132,7 @@ class KangarooRenderer(AtraJaxisRenderer):
         sprites['kangaroo_boxing'] = kangaroo_sprites[7]
 
         # pad bell / ringing bell
-        bell_sprites = aj.pad_to_match([sprites['bell'], sprites['ringing_bell']])
+        bell_sprites = jr.pad_to_match([sprites['bell'], sprites['ringing_bell']])
 
         sprites['bell'] = bell_sprites[0]
         sprites['ringing_bell'] = bell_sprites[1]
@@ -2140,12 +2140,12 @@ class KangarooRenderer(AtraJaxisRenderer):
         # --- Load Digit Sprites ---
         # Score digits
         score_digit_path = os.path.join(self.sprite_path, 'score_{}.npy')
-        digits = aj.load_and_pad_digits(score_digit_path, num_chars=10)
+        digits = jr.load_and_pad_digits(score_digit_path, num_chars=10)
         sprites['digits'] = digits
 
         # Time digits
         time_digit_path = os.path.join(self.sprite_path, 'time_{}.npy')
-        time_digits = aj.load_and_pad_digits(time_digit_path, num_chars=10)
+        time_digits = jr.load_and_pad_digits(time_digit_path, num_chars=10)
         sprites['time_digits'] = time_digits
 
         # expand all sprites similar to the Pong/Seaquest loading
@@ -2190,9 +2190,9 @@ class KangarooRenderer(AtraJaxisRenderer):
                 lambda: self.background_2,  # Level 3
             ]
         )
-        selected_background = aj.get_sprite_frame(selected_background, 0)
+        selected_background = jr.get_sprite_frame(selected_background, 0)
 
-        raster = aj.render_at(raster, 0, 0, selected_background)
+        raster = jr.render_at(raster, 0, 0, selected_background)
 
         # --- Removed Wall Rendering ---
         # --- Removed Platform Rendering Loop ---
@@ -2207,7 +2207,7 @@ class KangarooRenderer(AtraJaxisRenderer):
             should_draw = jnp.logical_and(fruit_actives[i], fruit_sprite is not None)
             pos = fruit_positions[i]
             def render_fruit_sprite(raster_to_update):
-                return aj.render_at(raster_to_update, pos[0].astype(int), pos[1].astype(int), aj.get_sprite_frame(fruit_sprite, 0))
+                return jr.render_at(raster_to_update, pos[0].astype(int), pos[1].astype(int), jr.get_sprite_frame(fruit_sprite, 0))
             return jax.lax.cond(should_draw, render_fruit_sprite, lambda r: r, current_raster)
 
         num_fruits_to_draw = fruit_positions.shape[0]
@@ -2238,7 +2238,7 @@ class KangarooRenderer(AtraJaxisRenderer):
         should_draw_bell = jnp.logical_and(jnp.logical_and(not_all_fruits_collected, bell_pos_valid), sprite_is_valid)
 
         def draw_bell_func(current_raster):
-            return aj.render_at(current_raster, bell_pos[0].astype(int), bell_pos[1].astype(int), aj.get_sprite_frame(bell_sprite, 0), flip_horizontal=bell_in_range_left)
+            return jr.render_at(current_raster, bell_pos[0].astype(int), bell_pos[1].astype(int), jr.get_sprite_frame(bell_sprite, 0), flip_horizontal=bell_in_range_left)
         raster = jax.lax.cond(should_draw_bell, draw_bell_func, lambda r: r, raster)
 
         # --- Draw monkeys (Apes) ---
@@ -2284,7 +2284,7 @@ class KangarooRenderer(AtraJaxisRenderer):
             sprite_is_valid = monkey_sprite is not None
             should_draw = jnp.logical_and(should_draw, sprite_is_valid)
             def render_monkey_sprite(raster_to_update):
-                return aj.render_at(raster_to_update, pos[0].astype(int), pos[1].astype(int), aj.get_sprite_frame(monkey_sprite, 0), flip_horizontal=flip_h)
+                return jr.render_at(raster_to_update, pos[0].astype(int), pos[1].astype(int), jr.get_sprite_frame(monkey_sprite, 0), flip_horizontal=flip_h)
             return jax.lax.cond(should_draw, render_monkey_sprite, lambda r: r, current_raster)
 
         num_monkeys_to_draw = monkey_positions.shape[0]
@@ -2339,7 +2339,7 @@ class KangarooRenderer(AtraJaxisRenderer):
         player_sprite = sprite_lambda
         sprite_is_valid = player_sprite is not None
         def render_player_sprite(raster_to_update):
-             return aj.render_at(raster_to_update, player_pos_x.astype(int), player_pos_y.astype(int), aj.get_sprite_frame(player_sprite, 0), flip_horizontal=flip_player)
+             return jr.render_at(raster_to_update, player_pos_x.astype(int), player_pos_y.astype(int), jr.get_sprite_frame(player_sprite, 0), flip_horizontal=flip_player)
         raster = jax.lax.cond(sprite_is_valid, render_player_sprite, lambda r: r, raster)
 
         # --- Draw Child ---
@@ -2353,7 +2353,7 @@ class KangarooRenderer(AtraJaxisRenderer):
         child_sprite = child_sprite_lambda
         should_draw_child = jnp.logical_and(child_pos[0] != -1, child_sprite is not None)
         def draw_child_func(current_raster):
-            return aj.render_at(current_raster, child_pos[0].astype(int), child_pos[1].astype(int), aj.get_sprite_frame(child_sprite, 0), child_flip)
+            return jr.render_at(current_raster, child_pos[0].astype(int), child_pos[1].astype(int), jr.get_sprite_frame(child_sprite, 0), child_flip)
         raster = jax.lax.cond(should_draw_child, draw_child_func, lambda r: r, raster)
 
         # --- Draw falling coconut ---
@@ -2361,7 +2361,7 @@ class KangarooRenderer(AtraJaxisRenderer):
         coco_sprite = self.sprites.get('thrown_coconut', None)
         should_draw_falling_coco = jnp.logical_and(falling_coco_pos[1] != -1, coco_sprite is not None)
         def draw_falling_coco_func(current_raster):
-            return aj.render_at(current_raster, falling_coco_pos[0].astype(int), falling_coco_pos[1].astype(int), aj.get_sprite_frame(coco_sprite, 0))
+            return jr.render_at(current_raster, falling_coco_pos[0].astype(int), falling_coco_pos[1].astype(int), jr.get_sprite_frame(coco_sprite, 0))
         raster = jax.lax.cond(should_draw_falling_coco, draw_falling_coco_func, lambda r: r, raster)
 
         # --- Draw thrown coconuts ---
@@ -2372,7 +2372,7 @@ class KangarooRenderer(AtraJaxisRenderer):
             should_draw = jnp.logical_and(coco_states[i] != 0, coco_sprite is not None)
             pos = coco_positions[i]
             def render_coco_sprite(raster_to_update):
-                return aj.render_at(raster_to_update, pos[0].astype(int), pos[1].astype(int), aj.get_sprite_frame(coco_sprite, 0))
+                return jr.render_at(raster_to_update, pos[0].astype(int), pos[1].astype(int), jr.get_sprite_frame(coco_sprite, 0))
             return jax.lax.cond(should_draw, render_coco_sprite, lambda r: r, current_raster)
         num_cocos_to_draw = coco_positions.shape[0]
         raster = jax.lax.fori_loop(0, num_cocos_to_draw, _draw_coco, raster)
@@ -2380,19 +2380,19 @@ class KangarooRenderer(AtraJaxisRenderer):
         # --- Draw UI ---
         # Score
         digit_sprites = self.sprites.get('digits', None)
-        score_digits_indices = aj.int_to_digits(state.score, max_digits=6)
-        raster = aj.render_label(raster, 105, 182, score_digits_indices, digit_sprites[0], spacing=8)
+        score_digits_indices = jr.int_to_digits(state.score, max_digits=6)
+        raster = jr.render_label(raster, 105, 182, score_digits_indices, digit_sprites[0], spacing=8)
 
         # Lives
         life_sprite = self.sprites.get('kangaroo_lives', None)
         lives_count = jnp.maximum(state.lives.astype(int) - 1, 0)
-        raster = aj.render_indicator(raster, 15, 182, lives_count, life_sprite[0], spacing=8)
+        raster = jr.render_indicator(raster, 15, 182, lives_count, life_sprite[0], spacing=8)
 
         # Timer
         time_digit_sprites = self.sprites.get('time_digits', None)
         timer_val = jnp.maximum(state.level.timer.astype(int), 0)
-        timer_digits_indices = aj.int_to_digits(timer_val, max_digits=4)
-        raster = aj.render_label(raster, 80, 190, timer_digits_indices, time_digit_sprites[0], spacing=4)
+        timer_digits_indices = jr.int_to_digits(timer_val, max_digits=4)
+        raster = jr.render_label(raster, 80, 190, timer_digits_indices, time_digit_sprites[0], spacing=4)
 
         # Ensure the final raster has the correct dtype
         return raster.astype(jnp.uint8)

@@ -8,6 +8,8 @@ from typing import Tuple, NamedTuple, List, Dict, Optional, Any
 
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 import jaxatari.spaces as spaces
+from jaxatari.renderers import JAXGameRenderer
+import jaxatari.rendering.jax_rendering_utils as jr
 
 @dataclass
 class GameConfig:
@@ -354,11 +356,7 @@ class JaxFreeway(JaxEnvironment[GameState, FreewayObservation, FreewayInfo]):
         return jnp.concatenate([chicken_flat, cars_flat, score_flat]).astype(jnp.int32)
 
 
-
-from jaxatari.renderers import AtraJaxisRenderer
-import jaxatari.rendering.atraJaxis as aj
-
-class FreewayRenderer(AtraJaxisRenderer):
+class FreewayRenderer(JAXGameRenderer):
 
     def __init__(self):
         super().__init__()
@@ -375,7 +373,7 @@ class FreewayRenderer(AtraJaxisRenderer):
         # Helper function to load a single sprite frame
         def _load_sprite_frame(name: str) -> Optional[chex.Array]:
             path = os.path.join(sprite_path, f'{name}.npy')
-            frame = aj.loadFrame(path)
+            frame = jr.loadFrame(path)
             return frame.astype(jnp.uint8)
 
         # --- Load Sprites ---
@@ -393,7 +391,7 @@ class FreewayRenderer(AtraJaxisRenderer):
                  sprites[name] = loaded_sprite
 
         # pad the player sprites since they are used interchangably
-        ape_sprites = aj.pad_to_match([sprites['player_hit'], sprites['player_walk'], sprites['player_idle']])
+        ape_sprites = jr.pad_to_match([sprites['player_hit'], sprites['player_walk'], sprites['player_idle']])
 
         sprites['player_hit'] = ape_sprites[0]
         sprites['player_walk'] = ape_sprites[1]
@@ -402,7 +400,7 @@ class FreewayRenderer(AtraJaxisRenderer):
         # --- Load Digit Sprites ---
         # Score digits
         score_digit_path = os.path.join(sprite_path, 'score_{}.npy')
-        digits = aj.load_and_pad_digits(score_digit_path, num_chars=10)
+        digits = jr.load_and_pad_digits(score_digit_path, num_chars=10)
         sprites['score'] = digits
 
         # expand all sprites similar to the Pong/Seaquest loading
@@ -420,15 +418,15 @@ class FreewayRenderer(AtraJaxisRenderer):
         raster = jnp.zeros((160, 210, 3), dtype=jnp.uint8)
 
         # draw the background
-        background = aj.get_sprite_frame(self.sprites['background'], 0)
+        background = jr.get_sprite_frame(self.sprites['background'], 0)
 
-        raster = aj.render_at(raster,0, 0, background)
+        raster = jr.render_at(raster,0, 0, background)
 
         # draw fixed 2nd chicken at x=110 and y=self.config.bottom_border + self.config.chicken_height - 1
-        chicken_idle = aj.get_sprite_frame(self.sprites['player_idle'], 0)
-        chicken_walk = aj.get_sprite_frame(self.sprites['player_walk'], 0)
-        chicken_hit = aj.get_sprite_frame(self.sprites['player_hit'], 0)
-        raster = aj.render_at(raster, 110, self.game_config.bottom_border + self.game_config.chicken_height - 1, chicken_idle)
+        chicken_idle = jr.get_sprite_frame(self.sprites['player_idle'], 0)
+        chicken_walk = jr.get_sprite_frame(self.sprites['player_walk'], 0)
+        chicken_hit = jr.get_sprite_frame(self.sprites['player_hit'], 0)
+        raster = jr.render_at(raster, 110, self.game_config.bottom_border + self.game_config.chicken_height - 1, chicken_idle)
 
         # select a frame based on the walking frames (0-3 for walk, 4-7 for idle, repeat)
         use_idle = state.walking_frames < 4
@@ -446,38 +444,38 @@ class FreewayRenderer(AtraJaxisRenderer):
             lambda: chicken
         )
 
-        raster = aj.render_at(raster, self.game_config.chicken_x, state.chicken_y, chicken)
+        raster = jr.render_at(raster, self.game_config.chicken_x, state.chicken_y, chicken)
 
         # render the cars in the correct color (starting from the top: dark red, light green, dark green, light red, blue, brown, light blue, red, green, yellow)
-        dark_red = aj.get_sprite_frame(self.sprites['car_dark_red'], 0)
-        raster = aj.render_at(raster, state.cars[0, 0], state.cars[0, 1], dark_red)
+        dark_red = jr.get_sprite_frame(self.sprites['car_dark_red'], 0)
+        raster = jr.render_at(raster, state.cars[0, 0], state.cars[0, 1], dark_red)
 
-        light_green = aj.get_sprite_frame(self.sprites['car_light_green'], 0)
-        raster = aj.render_at(raster, state.cars[1, 0], state.cars[1, 1], light_green)
+        light_green = jr.get_sprite_frame(self.sprites['car_light_green'], 0)
+        raster = jr.render_at(raster, state.cars[1, 0], state.cars[1, 1], light_green)
 
-        dark_green = aj.get_sprite_frame(self.sprites['car_dark_green'], 0)
-        raster = aj.render_at(raster, state.cars[2, 0], state.cars[2, 1], dark_green)
+        dark_green = jr.get_sprite_frame(self.sprites['car_dark_green'], 0)
+        raster = jr.render_at(raster, state.cars[2, 0], state.cars[2, 1], dark_green)
 
-        light_red = aj.get_sprite_frame(self.sprites['car_light_red'], 0)
-        raster = aj.render_at(raster, state.cars[3, 0], state.cars[3, 1], light_red)
+        light_red = jr.get_sprite_frame(self.sprites['car_light_red'], 0)
+        raster = jr.render_at(raster, state.cars[3, 0], state.cars[3, 1], light_red)
 
-        blue = aj.get_sprite_frame(self.sprites['car_blue'], 0)
-        raster = aj.render_at(raster, state.cars[4, 0], state.cars[4, 1], blue)
+        blue = jr.get_sprite_frame(self.sprites['car_blue'], 0)
+        raster = jr.render_at(raster, state.cars[4, 0], state.cars[4, 1], blue)
 
-        brown = aj.get_sprite_frame(self.sprites['car_brown'], 0)
-        raster = aj.render_at(raster, state.cars[5, 0], state.cars[5, 1], brown)
+        brown = jr.get_sprite_frame(self.sprites['car_brown'], 0)
+        raster = jr.render_at(raster, state.cars[5, 0], state.cars[5, 1], brown)
 
-        light_blue = aj.get_sprite_frame(self.sprites['car_light_blue'], 0)
-        raster = aj.render_at(raster, state.cars[6, 0], state.cars[6, 1], light_blue)
+        light_blue = jr.get_sprite_frame(self.sprites['car_light_blue'], 0)
+        raster = jr.render_at(raster, state.cars[6, 0], state.cars[6, 1], light_blue)
 
-        red = aj.get_sprite_frame(self.sprites['car_red'], 0)
-        raster = aj.render_at(raster, state.cars[7, 0], state.cars[7, 1], red)
+        red = jr.get_sprite_frame(self.sprites['car_red'], 0)
+        raster = jr.render_at(raster, state.cars[7, 0], state.cars[7, 1], red)
 
-        green = aj.get_sprite_frame(self.sprites['car_green'], 0)
-        raster = aj.render_at(raster, state.cars[8, 0], state.cars[8, 1], green)
+        green = jr.get_sprite_frame(self.sprites['car_green'], 0)
+        raster = jr.render_at(raster, state.cars[8, 0], state.cars[8, 1], green)
 
-        yellow = aj.get_sprite_frame(self.sprites['car_yellow'], 0)
-        raster = aj.render_at(raster, state.cars[9, 0], state.cars[9, 1], yellow)
+        yellow = jr.get_sprite_frame(self.sprites['car_yellow'], 0)
+        raster = jr.render_at(raster, state.cars[9, 0], state.cars[9, 1], yellow)
 
         # ----------- SCORE -------------
         # Define score positions and spacing
@@ -494,7 +492,7 @@ class FreewayRenderer(AtraJaxisRenderer):
         def render_scores(raster_to_update):
             # --- Player Score (Left) ---
             # Convert score to digit indices (always 2, e.g., 0 -> [0,0], 10 -> [1,0])
-            player_score_digits_indices = aj.int_to_digits(state.score, max_digits=max_score_digits)
+            player_score_digits_indices = jr.int_to_digits(state.score, max_digits=max_score_digits)
 
             # Determine parameters based on score magnitude
             is_player_single_digit = state.score < 10
@@ -516,14 +514,14 @@ class FreewayRenderer(AtraJaxisRenderer):
                                              player_score_rightmost_digit_x - score_spacing)
 
             # Render player score using selective rendering
-            raster_updated = aj.render_label_selective(raster_to_update, player_render_x, score_y,
+            raster_updated = jr.render_label_selective(raster_to_update, player_render_x, score_y,
                                                        player_score_digits_indices, digit_sprites[0],
                                                        player_start_index, player_num_to_render,
                                                        spacing=score_spacing)
 
             # --- Enemy Score (Right - rendering a Dummy '0' since the right player is not playable) ---
             enemy_score = 0
-            enemy_score_digits_indices = aj.int_to_digits(enemy_score, max_digits=max_score_digits)  # [0, 0]
+            enemy_score_digits_indices = jr.int_to_digits(enemy_score, max_digits=max_score_digits)  # [0, 0]
             # Parameters for single digit '0'
             enemy_start_index = 1  # Read the second '0' from indices [0, 0]
             enemy_num_to_render = 1  # Render only one digit
@@ -531,7 +529,7 @@ class FreewayRenderer(AtraJaxisRenderer):
             enemy_render_x = enemy_score_rightmost_digit_x
 
             # Render enemy score using selective rendering
-            raster_final = aj.render_label_selective(raster_updated, enemy_render_x, score_y,
+            raster_final = jr.render_label_selective(raster_updated, enemy_render_x, score_y,
                                                      enemy_score_digits_indices, digit_sprites[0],
                                                      enemy_start_index, enemy_num_to_render,
                                                      spacing=score_spacing)  # Spacing doesn't matter here

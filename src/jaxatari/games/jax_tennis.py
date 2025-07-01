@@ -5,47 +5,49 @@ This implementation is deprecated and will be removed in the future! Therefore i
 import os
 from functools import partial
 from typing import NamedTuple, Tuple
-from jaxatari.environment import JaxEnvironment, EnvState, EnvObs, EnvInfo
 import jax
 import jax.numpy as jnp
 import chex
 import numpy as np
 import pygame
-import jaxatari.rendering.atraJaxis as aj
+
+from jaxatari.environment import JaxEnvironment
+from jaxatari.renderers import JAXGameRenderer
+import jaxatari.rendering.jax_rendering_utils as jr
 
 def load_sprites():
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
-    BG = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/tennis/bg/1.npy"))
+    BG = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/tennis/bg/1.npy"))
     
     frames_pl_r = []
     for i in range(1, 5):
-        frame = aj.loadFrame(os.path.join(MODULE_DIR, f"sprites/tennis/pl_red/{i}.npy"))
+        frame = jr.loadFrame(os.path.join(MODULE_DIR, f"sprites/tennis/pl_red/{i}.npy"))
         frames_pl_r.append(frame)
-    PL_R = jnp.array(aj.pad_to_match(frames_pl_r))
+    PL_R = jnp.array(jr.pad_to_match(frames_pl_r))
     
     frames_bat_r = []
     for i in range(1, 5):
-        frame = aj.loadFrame(os.path.join(MODULE_DIR, f"sprites/tennis/bat_r/{i}.npy"))
+        frame = jr.loadFrame(os.path.join(MODULE_DIR, f"sprites/tennis/bat_r/{i}.npy"))
         frames_bat_r.append(frame)
-    BAT_R = jnp.array(aj.pad_to_match(frames_bat_r))
+    BAT_R = jnp.array(jr.pad_to_match(frames_bat_r))
     
     frames_pl_b = []
     for i in range(1, 5):
-        frame = aj.loadFrame(os.path.join(MODULE_DIR, f"sprites/tennis/pl_blue/{i}.npy"))
+        frame = jr.loadFrame(os.path.join(MODULE_DIR, f"sprites/tennis/pl_blue/{i}.npy"))
         frames_pl_b.append(frame)
-    PL_B = jnp.array(aj.pad_to_match(frames_pl_b))
+    PL_B = jnp.array(jr.pad_to_match(frames_pl_b))
     
     frames_bat_b = []
     for i in range(1, 5):
-        frame = aj.loadFrame(os.path.join(MODULE_DIR, f"sprites/tennis/bat_b/{i}.npy"))
+        frame = jr.loadFrame(os.path.join(MODULE_DIR, f"sprites/tennis/bat_b/{i}.npy"))
         frames_bat_b.append(frame)
-    BAT_B = jnp.array(aj.pad_to_match(frames_bat_b))
+    BAT_B = jnp.array(jr.pad_to_match(frames_bat_b))
     
-    BALL = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/tennis/ball/1.npy"))
-    BALL_SHADE = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/tennis/ball_shade/1.npy"))
+    BALL = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/tennis/ball/1.npy"))
+    BALL_SHADE = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/tennis/ball_shade/1.npy"))
     
-    DIGITS_R = aj.load_and_pad_digits(os.path.join(MODULE_DIR, "sprites/tennis/digits_r/{}.npy"))
-    DIGITS_B = aj.load_and_pad_digits(os.path.join(MODULE_DIR, "sprites/tennis/digits_b/{}.npy"))
+    DIGITS_R = jr.load_and_pad_digits(os.path.join(MODULE_DIR, "sprites/tennis/digits_r/{}.npy"))
+    DIGITS_B = jr.load_and_pad_digits(os.path.join(MODULE_DIR, "sprites/tennis/digits_b/{}.npy"))
 
 
     return BG, PL_R, BAT_R, PL_B, BAT_B, BALL, BALL_SHADE, DIGITS_R, DIGITS_B
@@ -1849,9 +1851,8 @@ class AnimatorState(NamedTuple):
 
 OFFSET_BAT_Y = jnp.array([7, 7, 5, 3])
 
-from jaxatari.renderers import AtraJaxisRenderer
 
-class TennisRenderer(AtraJaxisRenderer):
+class TennisRenderer(JAXGameRenderer):
 
     @partial(jax.jit, static_argnums=(0,))
     def next_body_frame(self, diff_x, diff_y, frame):
@@ -1889,10 +1890,10 @@ class TennisRenderer(AtraJaxisRenderer):
 
         # render background
         raster = jnp.zeros((COURT_WIDTH, COURT_HEIGHT, 3))
-        raster = aj.render_at(raster, 0, 0, BG)
+        raster = jr.render_at(raster, 0, 0, BG)
 
         # render player
-        raster = aj.render_at(
+        raster = jr.render_at(
             raster,
             state.player_x,
             state.player_y,
@@ -1901,7 +1902,7 @@ class TennisRenderer(AtraJaxisRenderer):
         )
 
         # render enemy
-        raster = aj.render_at(
+        raster = jr.render_at(
             raster,
             state.enemy_x,
             state.enemy_y,
@@ -1910,11 +1911,11 @@ class TennisRenderer(AtraJaxisRenderer):
         )
 
         # render ball
-        raster = aj.render_at(raster, state.ball_x, state.ball_y, BALL)
+        raster = jr.render_at(raster, state.ball_x, state.ball_y, BALL)
 
         # render ball shade
 
-        raster = aj.render_at(raster, state.shadow_x, state.shadow_y, BALL_SHADE)
+        raster = jr.render_at(raster, state.shadow_x, state.shadow_y, BALL_SHADE)
 
         # render player bat
         r_bat_x, r_bat_y = self.bat_position(
@@ -1924,7 +1925,7 @@ class TennisRenderer(AtraJaxisRenderer):
             animator_state.r_bat_f,
         )
 
-        raster = aj.render_at(
+        raster = jr.render_at(
             raster,
             r_bat_x,
             r_bat_y,
@@ -1937,7 +1938,7 @@ class TennisRenderer(AtraJaxisRenderer):
         b_bat_x, b_bat_y = self.bat_position(
             state.enemy_x, state.enemy_y, state.enemy_direction, animator_state.b_bat_f
         )
-        raster = aj.render_at(
+        raster = jr.render_at(
             raster,
             b_bat_x,
             b_bat_y,
@@ -1947,11 +1948,11 @@ class TennisRenderer(AtraJaxisRenderer):
 
         # render scores
         
-        r_score_array = aj.int_to_digits(state.player_round_score, max_digits = 2)
-        b_score_array = aj.int_to_digits(state.enemy_round_score, max_digits = 2)
+        r_score_array = jr.int_to_digits(state.player_round_score, max_digits = 2)
+        b_score_array = jr.int_to_digits(state.enemy_round_score, max_digits = 2)
         
-        raster = aj.render_label(raster, 60, 10, r_score_array, DIGITS_R, spacing=7)
-        raster = aj.render_label(raster, 90, 10, b_score_array, DIGITS_B, spacing=7)
+        raster = jr.render_label(raster, 60, 10, r_score_array, DIGITS_R, spacing=7)
+        raster = jr.render_label(raster, 90, 10, b_score_array, DIGITS_B, spacing=7)
 
         # state transition
 
@@ -2034,7 +2035,7 @@ if __name__ == "__main__":
                 obs, curr_state, reward, done, info = jitted_step(curr_state, action)
 
         raster, animator_state = renderer.render(curr_state, animator_state)
-        aj.update_pygame(screen, raster, 4, COURT_WIDTH, COURT_HEIGHT)
+        jr.update_pygame(screen, raster, 4, COURT_WIDTH, COURT_HEIGHT)
 
         counter += 1
         clock.tick(30)

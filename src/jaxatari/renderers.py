@@ -2,7 +2,7 @@ class PyGameRenderer:
     def __init__(self):
         pass
 
-class AtraJaxisRenderer:
+class JAXGameRenderer:
     def __init__(self):
         pass
 

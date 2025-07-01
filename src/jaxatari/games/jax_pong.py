@@ -4,10 +4,10 @@ from typing import NamedTuple, Tuple
 import jax.lax
 import jax.numpy as jnp
 import chex
-import jaxatari.spaces as spaces
 
-from jaxatari.renderers import AtraJaxisRenderer
-from jaxatari.rendering import atraJaxis as aj
+import jaxatari.spaces as spaces
+from jaxatari.renderers import JAXGameRenderer
+from jaxatari.rendering import jax_rendering_utils as jr
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 
 # Constants for game environment
@@ -658,11 +658,11 @@ def load_sprites():
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 
     # Load sprites
-    player = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/player.npy"), transpose=True)
-    enemy = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/enemy.npy"), transpose=True)
-    ball = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/ball.npy"), transpose=True)
+    player = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/player.npy"), transpose=True)
+    enemy = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/enemy.npy"), transpose=True)
+    ball = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/ball.npy"), transpose=True)
 
-    bg = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/background.npy"), transpose=True)
+    bg = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/background.npy"), transpose=True)
 
     # Convert all sprites to the expected format (add frame dimension)
     SPRITE_BG = jnp.expand_dims(bg, axis=0)
@@ -671,11 +671,11 @@ def load_sprites():
     SPRITE_BALL = jnp.expand_dims(ball, axis=0)
 
     # Load digits for scores
-    PLAYER_DIGIT_SPRITES = aj.load_and_pad_digits(
+    PLAYER_DIGIT_SPRITES = jr.load_and_pad_digits(
         os.path.join(MODULE_DIR, "sprites/pong/player_score_{}.npy"),
         num_chars=10,
     )
-    ENEMY_DIGIT_SPRITES = aj.load_and_pad_digits(
+    ENEMY_DIGIT_SPRITES = jr.load_and_pad_digits(
         os.path.join(MODULE_DIR, "sprites/pong/enemy_score_{}.npy"),
         num_chars=10,
     )
@@ -690,7 +690,7 @@ def load_sprites():
     )
 
 
-class PongRenderer(AtraJaxisRenderer):
+class PongRenderer(JAXGameRenderer):
     """JAX-based Pong game renderer, optimized with JIT compilation."""
 
     def __init__(self):
@@ -719,20 +719,20 @@ class PongRenderer(AtraJaxisRenderer):
         raster = jnp.zeros((WIDTH, HEIGHT, 3))
 
         # Render background - (0, 0) is top-left corner
-        frame_bg = aj.get_sprite_frame(self.SPRITE_BG, 0)
-        raster = aj.render_at(raster, 0, 0, frame_bg)
+        frame_bg = jr.get_sprite_frame(self.SPRITE_BG, 0)
+        raster = jr.render_at(raster, 0, 0, frame_bg)
 
         # Render player paddle
-        frame_player = aj.get_sprite_frame(self.SPRITE_PLAYER, 0)
-        raster = aj.render_at(raster, PLAYER_X, state.player_y, frame_player)
+        frame_player = jr.get_sprite_frame(self.SPRITE_PLAYER, 0)
+        raster = jr.render_at(raster, PLAYER_X, state.player_y, frame_player)
 
         # Render enemy paddle
-        frame_enemy = aj.get_sprite_frame(self.SPRITE_ENEMY, 0)
-        raster = aj.render_at(raster, ENEMY_X,state.enemy_y, frame_enemy)
+        frame_enemy = jr.get_sprite_frame(self.SPRITE_ENEMY, 0)
+        raster = jr.render_at(raster, ENEMY_X,state.enemy_y, frame_enemy)
 
         # Render ball
-        frame_ball = aj.get_sprite_frame(self.SPRITE_BALL, 0)
-        raster = aj.render_at(raster, state.ball_x, state.ball_y, frame_ball)
+        frame_ball = jr.get_sprite_frame(self.SPRITE_BALL, 0)
+        raster = jr.render_at(raster, state.ball_x, state.ball_y, frame_ball)
 
         wall_color = jnp.array(WALL_COLOR, dtype=jnp.uint8)
         # Top Wall: Full width (x=0 to WIDTH), y from WALL_TOP_Y to WALL_TOP_Y + WALL_TOP_HEIGHT
@@ -746,8 +746,8 @@ class PongRenderer(AtraJaxisRenderer):
         raster = raster.at[:, bottom_wall_y_start:bottom_wall_y_end, :].set(wall_color)
 
         # 1. Get digit arrays (always 2 digits)
-        player_score_digits = aj.int_to_digits(state.player_score, max_digits=2)
-        enemy_score_digits = aj.int_to_digits(state.enemy_score, max_digits=2)
+        player_score_digits = jr.int_to_digits(state.player_score, max_digits=2)
+        enemy_score_digits = jr.int_to_digits(state.enemy_score, max_digits=2)
 
         # 2. Determine parameters for player score rendering using jax.lax.select
         is_player_single_digit = state.player_score < 10
@@ -759,7 +759,7 @@ class PongRenderer(AtraJaxisRenderer):
                                          120)
 
         # 3. Render player score
-        raster = aj.render_label_selective(raster, player_render_x, 3,
+        raster = jr.render_label_selective(raster, player_render_x, 3,
                                             player_score_digits, self.PLAYER_DIGIT_SPRITES,
                                             player_start_index, player_num_to_render,
                                             spacing=16)
@@ -773,7 +773,7 @@ class PongRenderer(AtraJaxisRenderer):
                                         10)
 
         # 5. Render enemy score
-        raster = aj.render_label_selective(raster, enemy_render_x, 3,
+        raster = jr.render_label_selective(raster, enemy_render_x, 3,
                                            enemy_score_digits, self.ENEMY_DIGIT_SPRITES,
                                            enemy_start_index, enemy_num_to_render,
                                            spacing=16)

@@ -4,10 +4,11 @@ from typing import Tuple, NamedTuple
 import jax
 import jax.numpy as jnp
 import chex
-import jaxatari.rendering.atraJaxis as aj
-import jaxatari.spaces as spaces
 
+import jaxatari.spaces as spaces
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
+from jaxatari.renderers import JAXGameRenderer
+import jaxatari.rendering.jax_rendering_utils as jr
 
 # TODO: surface submarine at 6 divers collected + difficulty 1
 # Game Constants
@@ -203,31 +204,31 @@ class CarryState(NamedTuple):
 def load_sprites():
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
     # Load sprites - no padding needed for background since it's already full size
-    bg1 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/bg/1.npy"))
-    pl_sub1 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/player_sub/1.npy"))
-    pl_sub2 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/player_sub/2.npy"))
-    pl_sub3 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/player_sub/3.npy"))
-    diver1 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/diver/1.npy"))
-    diver2 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/diver/2.npy"))
-    shark1 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/shark/1.npy"))
-    shark2 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/shark/2.npy"))
-    enemy_sub1 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/enemy_sub/1.npy"))
-    enemy_sub2 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/enemy_sub/2.npy"))
-    enemy_sub3 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/enemy_sub/3.npy"))
-    pl_torp = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/player_torp/1.npy"))
-    en_torp = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/enemy_torp/1.npy"))
+    bg1 = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/bg/1.npy"))
+    pl_sub1 = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/player_sub/1.npy"))
+    pl_sub2 = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/player_sub/2.npy"))
+    pl_sub3 = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/player_sub/3.npy"))
+    diver1 = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/diver/1.npy"))
+    diver2 = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/diver/2.npy"))
+    shark1 = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/shark/1.npy"))
+    shark2 = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/shark/2.npy"))
+    enemy_sub1 = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/enemy_sub/1.npy"))
+    enemy_sub2 = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/enemy_sub/2.npy"))
+    enemy_sub3 = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/enemy_sub/3.npy"))
+    pl_torp = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/player_torp/1.npy"))
+    en_torp = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/enemy_torp/1.npy"))
 
     # Pad player submarine sprites to match each other
-    pl_sub_sprites = aj.pad_to_match([pl_sub1, pl_sub2, pl_sub3])
+    pl_sub_sprites = jr.pad_to_match([pl_sub1, pl_sub2, pl_sub3])
 
     # Pad diver sprites to match each other
-    diver_sprites = aj.pad_to_match([diver1, diver2])
+    diver_sprites = jr.pad_to_match([diver1, diver2])
 
     # Pad shark sprites to match each other
-    shark_sprites = aj.pad_to_match([shark1, shark2])
+    shark_sprites = jr.pad_to_match([shark1, shark2])
 
     # Pad enemy submarine sprites to match each other
-    enemy_sub_sprites = aj.pad_to_match([enemy_sub1, enemy_sub2, enemy_sub3])
+    enemy_sub_sprites = jr.pad_to_match([enemy_sub1, enemy_sub2, enemy_sub3])
 
     # Pad player torpedo sprites to match each other
     pl_torp_sprites = [pl_torp]
@@ -272,9 +273,9 @@ def load_sprites():
         ]
     )
 
-    DIGITS = aj.load_and_pad_digits(os.path.join(MODULE_DIR, "./sprites/seaquest/digits/{}.npy"))
-    LIFE_INDICATOR = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/life_indicator/1.npy"))
-    DIVER_INDICATOR = aj.loadFrame(os.path.join(MODULE_DIR, "./sprites/seaquest/diver_indicator/1.npy"))
+    DIGITS = jr.load_and_pad_digits(os.path.join(MODULE_DIR, "./sprites/seaquest/digits/{}.npy"))
+    LIFE_INDICATOR = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/seaquest/life_indicator/1.npy"))
+    DIVER_INDICATOR = jr.loadFrame(os.path.join(MODULE_DIR, "./sprites/seaquest/diver_indicator/1.npy"))
 
     # Player torpedo sprites
     SPRITE_PL_TORP = jnp.repeat(pl_torp_sprites[0][None], 1, axis=0)
@@ -3063,20 +3064,19 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
         # Choose between death animation and normal game step
         return observation, return_state, env_reward, done, info
 
-from jaxatari.renderers import AtraJaxisRenderer
 
-class SeaquestRenderer(AtraJaxisRenderer):
+class SeaquestRenderer(JAXGameRenderer):
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state):
         raster = jnp.zeros((WIDTH, HEIGHT, 3))
 
         # render background
-        frame_bg = aj.get_sprite_frame(SPRITE_BG, 0)
-        raster = aj.render_at(raster, 0, 0, frame_bg)
+        frame_bg = jr.get_sprite_frame(SPRITE_BG, 0)
+        raster = jr.render_at(raster, 0, 0, frame_bg)
 
         # render player submarine
-        frame_pl_sub = aj.get_sprite_frame(SPRITE_PL_SUB, state.step_counter)
-        raster = aj.render_at(
+        frame_pl_sub = jr.get_sprite_frame(SPRITE_PL_SUB, state.step_counter)
+        raster = jr.render_at(
             raster,
             state.player_x,
             state.player_y,
@@ -3085,11 +3085,11 @@ class SeaquestRenderer(AtraJaxisRenderer):
         )
 
         # render player torpedo
-        frame_pl_torp = aj.get_sprite_frame(SPRITE_PL_TORP, state.step_counter)
+        frame_pl_torp = jr.get_sprite_frame(SPRITE_PL_TORP, state.step_counter)
         should_render = state.player_missile_position[0] > 0
         raster = jax.lax.cond(
             should_render,
-            lambda r: aj.render_at(
+            lambda r: jr.render_at(
                 r,
                 state.player_missile_position[0],
                 state.player_missile_position[1],
@@ -3101,14 +3101,14 @@ class SeaquestRenderer(AtraJaxisRenderer):
         )
 
         # render divers
-        frame_diver = aj.get_sprite_frame(SPRITE_DIVER, state.step_counter)
+        frame_diver = jr.get_sprite_frame(SPRITE_DIVER, state.step_counter)
         diver_positions = state.diver_positions
 
         def render_diver(i, raster_base):
             should_render = diver_positions[i][0] > 0
             return jax.lax.cond(
                 should_render,
-                lambda r: aj.render_at(
+                lambda r: jr.render_at(
                     r,
                     diver_positions[i][0],
                     diver_positions[i][1],
@@ -3122,13 +3122,13 @@ class SeaquestRenderer(AtraJaxisRenderer):
         raster = jax.lax.fori_loop(0, MAX_DIVERS, render_diver, raster)
 
         # render sharks
-        frame_shark = aj.get_sprite_frame(SPRITE_SHARK, state.step_counter)
+        frame_shark = jr.get_sprite_frame(SPRITE_SHARK, state.step_counter)
 
         def render_shark(i, raster_base):
             should_render = state.shark_positions[i][0] > 0
             return jax.lax.cond(
                 should_render,
-                lambda r: aj.render_at(
+                lambda r: jr.render_at(
                     r,
                     state.shark_positions[i][0],
                     state.shark_positions[i][1],
@@ -3143,13 +3143,13 @@ class SeaquestRenderer(AtraJaxisRenderer):
         raster = jax.lax.fori_loop(0, MAX_SHARKS, render_shark, raster)
 
         # render enemy subs
-        frame_enemy_sub = aj.get_sprite_frame(SPRITE_ENEMY_SUB, state.step_counter)
+        frame_enemy_sub = jr.get_sprite_frame(SPRITE_ENEMY_SUB, state.step_counter)
 
         def render_enemy_sub(i, raster_base):
             should_render = state.sub_positions[i][0] > 0
             return jax.lax.cond(
                 should_render,
-                lambda r: aj.render_at(
+                lambda r: jr.render_at(
                     r,
                     state.sub_positions[i][0],
                     state.sub_positions[i][1],
@@ -3166,7 +3166,7 @@ class SeaquestRenderer(AtraJaxisRenderer):
             should_render = state.surface_sub_position[0] > 0
             return jax.lax.cond(
                 should_render,
-                lambda r: aj.render_at(
+                lambda r: jr.render_at(
                     r,
                     state.surface_sub_position[0],
                     state.surface_sub_position[1],
@@ -3181,13 +3181,13 @@ class SeaquestRenderer(AtraJaxisRenderer):
             0, MAX_SURFACE_SUBS, render_enemy_surface_sub, raster
         )
 
-        frame_enemy_torp = aj.get_sprite_frame(SPRITE_EN_TORP, state.step_counter)
+        frame_enemy_torp = jr.get_sprite_frame(SPRITE_EN_TORP, state.step_counter)
 
         def render_enemy_torp(i, raster_base):
             should_render = state.enemy_missile_positions[i][0] > 0
             return jax.lax.cond(
                 should_render,
-                lambda r: aj.render_at(
+                lambda r: jr.render_at(
                     r,
                     state.enemy_missile_positions[i][0],
                     state.enemy_missile_positions[i][1],
@@ -3201,17 +3201,17 @@ class SeaquestRenderer(AtraJaxisRenderer):
         raster = jax.lax.fori_loop(0, MAX_ENEMY_MISSILES, render_enemy_torp, raster)
 
         # show the scores
-        score_array = aj.int_to_digits(state.score, max_digits=8)
+        score_array = jr.int_to_digits(state.score, max_digits=8)
         # convert the score to a list of digits
-        raster = aj.render_label(raster, 10, 10, score_array, DIGITS, spacing=7)
-        raster = aj.render_indicator(
+        raster = jr.render_label(raster, 10, 10, score_array, DIGITS, spacing=7)
+        raster = jr.render_indicator(
             raster, 10, 20, state.lives, LIFE_INDICATOR, spacing=10
         )
-        raster = aj.render_indicator(
+        raster = jr.render_indicator(
             raster, 49, 178, state.divers_collected, DIVER_INDICATOR, spacing=10
         )
 
-        raster = aj.render_bar(
+        raster = jr.render_bar(
             raster, 49, 170, state.oxygen, 64, 63, 5, OXYGEN_BAR_COLOR, (0, 0, 0, 0)
         )
 
