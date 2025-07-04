@@ -9,6 +9,7 @@ import sys
 from typing import Tuple
 
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
+from jaxatari.wrappers import JaxatariWrapper
 from jaxatari.renderers import JAXGameRenderer
 
 
@@ -172,5 +173,46 @@ def load_game_environment(game: str) -> Tuple[JaxEnvironment, JAXGameRenderer]:
         raise ImportError(f"No class found in {game_file_path} that inherits from JaxEnvironment")
 
     return game, renderer
+
+def load_game_mod(game: str, mod: str) -> JaxEnvironment:
+    """
+    Dynamically loads a game mod from a .py file.
+    It looks for a class that inherits from JaxEnvironment.
+    """
+    mod_file_path = f"src/jaxatari/games/mods/{game.lower()}_mods.py"
+    if not os.path.exists(mod_file_path):
+        raise FileNotFoundError(f"Mod file not found: {mod_file_path}")
+
+    module_name = os.path.splitext(os.path.basename(mod_file_path))[0]
+
+    # Add the directory of the mod file to sys.path to handle relative imports within the mod file
+    mod_dir = os.path.dirname(os.path.abspath(mod_file_path))
+    if mod_dir not in sys.path:
+        sys.path.insert(0, mod_dir)
+
+    spec = importlib.util.spec_from_file_location(module_name, mod_file_path)
+    if spec is None:
+        raise ImportError(f"Could not load spec for module {module_name} from {mod_file_path}")
+
+    mod_module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod_module)
+    except Exception as e:
+        if mod_dir in sys.path and sys.path[0] == mod_dir:  # Clean up sys.path if we added to it
+            sys.path.pop(0)
+        raise ImportError(f"Could not execute module {module_name}: {e}")
+
+    if mod_dir in sys.path and sys.path[0] == mod_dir:  # Clean up sys.path if we added to it
+        sys.path.pop(0)
+
+    # Find the class that inherits from JaxatariWrapper
+    for name, obj in inspect.getmembers(mod_module):
+        if inspect.isclass(obj) and issubclass(obj, JaxatariWrapper) and obj is not JaxatariWrapper:
+            if name.lower() != mod.lower():
+                continue
+            print(f"Found game mod: {name}")
+            return obj  # return the mod class
+
+    raise ImportError(f"No class found in {mod_file_path} that inherits from JaxatariWrapper")
 
 
