@@ -7,7 +7,7 @@ import chex
 from flax import struct
 import jax
 import jax.numpy as jnp
-from jaxatari.environment import EnvState
+from jaxatari.environment import EnvState, JAXAtariAction as Action
 import jaxatari.spaces as spaces
 import numpy as np
 
@@ -39,7 +39,7 @@ class AtariWrapper(JaxatariWrapper):
         frame_stack_size: The number of frames to stack.
         frame_skip: The number of frames to skip.
     """
-    def __init__(self, env, sticky_actions: bool = True, frame_stack_size: int = 4, frame_skip: int = 4, max_episode_length: int = 10_000, episodic_life: bool = True):
+    def __init__(self, env, sticky_actions: bool = True, frame_stack_size: int = 4, frame_skip: int = 4, max_episode_length: int = 10_000, episodic_life: bool = True, first_fire: bool = True):
         super().__init__(env)
         self._env = env
         self.sticky_actions = sticky_actions
@@ -47,6 +47,7 @@ class AtariWrapper(JaxatariWrapper):
         self.frame_skip = frame_skip
         self.max_episode_length = max_episode_length
         self.episodic_life = episodic_life
+        self.first_fire = first_fire
 
         if not hasattr(env, "lives"):
             self.episodic_life = False
@@ -61,6 +62,9 @@ class AtariWrapper(JaxatariWrapper):
         obs, env_state = self._env.reset(key)
         step = jnp.array(0)
         prev_action = jnp.array(0)
+        if self.first_fire:
+            prev_action = Action.FIRE
+            obs, env_state, _, _, _ = self._env.step(env_state, prev_action)
 
         # Create multiple observations directly
         obs = jax.tree.map(lambda x: jnp.stack([x] * self.frame_stack_size), obs)

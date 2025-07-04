@@ -6,14 +6,14 @@ import jax.numpy as jnp
 import chex
 import pygame
 
-from jaxatari.environment import JaxEnvironment
+from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 import jaxatari.spaces as spaces
 from jaxatari.renderers import JAXGameRenderer
 import jaxatari.rendering.jax_rendering_utils as jr
 
 # Constants for game environment
-WINDOW_WIDTH = 160 * 3
-WINDOW_HEIGHT = 210 * 3
+WINDOW_WIDTH = 160
+WINDOW_HEIGHT = 210
 
 # Colors from the original game
 BACKGROUND_COLOR = (0, 0, 0)  # Black background
@@ -129,24 +129,17 @@ class BreakoutState(NamedTuple):
     wall_resets: chex.Array
     all_blocks_cleared: chex.Array
 
-
-# Actions
-NOOP = 0
-FIRE = 1
-RIGHT = 2
-LEFT = 3
-
 def get_human_action() -> chex.Array:
     """Records keyboard input and returns the corresponding action."""
     keys = pygame.key.get_pressed()
     if keys[pygame.K_a]:
-        return jnp.array(LEFT)
+        return jnp.array(Action.LEFT)
     elif keys[pygame.K_d]:
-        return jnp.array(RIGHT)
+        return jnp.array(Action.RIGHT)
     elif keys[pygame.K_SPACE]:
-        return jnp.array(FIRE)
+        return jnp.array(Action.FIRE)
     else:
-        return jnp.array(NOOP)
+        return jnp.array(Action.NOOP)
 
 @jax.jit
 def player_step(
@@ -156,8 +149,8 @@ def player_step(
     action: chex.Array,
 ) -> Tuple[chex.Array, chex.Array, chex.Array]:
     """Updates the player position based on the action."""
-    left = action == LEFT
-    right = action == RIGHT
+    left = action == Action.LEFT
+    right = action == Action.RIGHT
 
     # Check if the paddle is touching the left or right wall.
     touches_wall = jnp.logical_or(
@@ -660,7 +653,7 @@ class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInf
             state.player_x, state.player_speed, state.acceleration_counter, action
         )
 
-        game_started = jnp.logical_or(state.game_started, action == FIRE)
+        game_started = jnp.logical_or(state.game_started, action == Action.FIRE)
 
         # Update ball, check collisions, etc., as before, but now pass new_player_x
         (ball_x, ball_y, ball_vel_x, ball_vel_y, ball_speed_idx, ball_direction_idx,
@@ -692,7 +685,7 @@ class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInf
         )
 
         # Handle life loss, etc.
-        life_lost = ball_y >= WINDOW_HEIGHT // 3
+        life_lost = ball_y >= WINDOW_HEIGHT
         ball_x = jnp.where(life_lost, new_player_x + 7, ball_x)
         ball_y = jnp.where(life_lost, BALL_START_Y, ball_y)
         ball_speed_idx = jnp.where(life_lost, 0, ball_speed_idx)
@@ -775,7 +768,7 @@ class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInf
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: BreakoutState) -> chex.Array:
-        return state.lives <= 0
+        return jnp.logical_or(state.lives <= 0, jnp.logical_or(state.all_blocks_cleared, state.step_counter >= 5000))
 
     def action_space(self) -> spaces.Discrete:
         """Returns the action space for Breakout.
