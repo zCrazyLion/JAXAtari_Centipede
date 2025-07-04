@@ -93,12 +93,16 @@ class FreewayObservation(NamedTuple):
 
 class FreewayInfo(NamedTuple):
     time: jnp.ndarray
+    all_rewards: jnp.ndarray
 
 
 class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo]):
-    def __init__(self):
+    def __init__(self, reward_funcs: list[callable]=None):
         super().__init__()
         self.config = GameConfig()
+        if reward_funcs is not None:
+            reward_funcs = tuple(reward_funcs)
+        self.reward_funcs = reward_funcs
         self.state = self.reset()
         self.renderer = FreewayRenderer()
 
@@ -249,11 +253,12 @@ class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo]):
             game_over=game_over,
         )
         done = self._get_done(new_state)
-        reward = self._get_reward(state, new_state)
+        env_reward = self._get_reward(state, new_state)
+        all_rewards = self._get_all_reward(state, new_state)
         obs = self._get_observation(new_state)
-        info = self._get_info(new_state)
+        info = self._get_info(new_state, all_rewards)
 
-        return obs, new_state, reward, done, info
+        return obs, new_state, env_reward, done, info
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_observation(self, state: FreewayState):
@@ -283,12 +288,21 @@ class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo]):
         return FreewayObservation(chicken=chicken, car=cars, score=state.score)
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: FreewayState) -> FreewayInfo:
-        return FreewayInfo(time=state.time)
+    def _get_info(self, state: FreewayState, all_rewards: chex.Array = None) -> FreewayInfo:
+        return FreewayInfo(time=state.time, all_rewards=all_rewards)
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_reward(self, previous_state: FreewayState, state: FreewayState):
         return state.score - previous_state.score
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_all_reward(self, previous_state: FreewayState, state: FreewayState):
+        if self.reward_funcs is None:
+            return jnp.zeros(1)
+        rewards = jnp.array(
+            [reward_func(previous_state, state) for reward_func in self.reward_funcs]
+        )
+        return rewards
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: FreewayState) -> bool:

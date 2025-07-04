@@ -72,5 +72,6 @@ class SpeedMode(JaxatariWrapper):
     def step(self, state: FreewayState, action: Union[int, float]) -> Tuple[chex.Array, FreewayState, float, bool, Dict[Any, Any]]:
         new_obs, new_state, reward, done, info = self._env.step(state, action)
         new_state = self.speed_up(state, new_state)
+        return new_obs, new_state, reward, done, info
 
         

@@ -104,6 +104,7 @@ class BreakoutObservation(NamedTuple):
 class BreakoutInfo(NamedTuple):
     time: chex.Array
     wall_resets: chex.Array
+    all_rewards: chex.Array
 
 
 # Game state container
@@ -600,9 +601,12 @@ def check_block_collision(state, ball_x, ball_y, ball_speed_idx, ball_direction_
     )
 
 class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInfo]):
-    def __init__(self):
+    def __init__(self, reward_funcs: list[callable]=None):
         super().__init__()
         self.renderer = BreakoutRenderer()
+        if reward_funcs is not None:
+            reward_funcs = tuple(reward_funcs) 
+        self.reward_funcs = reward_funcs 
 
     @partial(jax.jit, static_argnums=(0,))
     def reset(self, key = None) -> tuple[BreakoutObservation, BreakoutState]:
@@ -641,13 +645,13 @@ class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInf
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: BreakoutState, action: chex.Array) -> Tuple[
         BreakoutObservation, BreakoutState, chex.Array, chex.Array, BreakoutInfo]:
-        prev_score = state.score
         new_state = self._step(state, action)
         obs = self._get_observation(new_state)
-        reward = self._get_reward(state, new_state)
+        env_reward = self._get_reward(state, new_state)
         done = self._get_done(new_state)
-        info = self._get_info(new_state)
-        return obs, new_state, reward, done, info
+        all_rewards = self._get_all_reward(state, new_state)
+        info = self._get_info(new_state, all_rewards)
+        return obs, new_state, env_reward, done, info
 
     @partial(jax.jit, static_argnums=(0,))
     def _step(self, state: BreakoutState, action: chex.Array) -> BreakoutState:
@@ -749,15 +753,25 @@ class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInf
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: BreakoutState) -> BreakoutInfo:
+    def _get_info(self, state: BreakoutState, all_rewards: chex.Array = None) -> BreakoutInfo:
         return BreakoutInfo(
             time=state.step_counter,
-            wall_resets=state.wall_resets
+            wall_resets=state.wall_resets,
+            all_rewards=all_rewards
         )
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_reward(self, previous_state: BreakoutState, current_state: BreakoutState) -> chex.Array:
         return current_state.score - previous_state.score
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_all_reward(self, previous_state: BreakoutState, state: BreakoutState):
+        if self.reward_funcs is None:
+            return jnp.zeros(1)
+        rewards = jnp.array(
+            [reward_func(previous_state, state) for reward_func in self.reward_funcs]
+        )
+        return rewards
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: BreakoutState) -> chex.Array:
