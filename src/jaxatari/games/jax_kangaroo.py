@@ -433,6 +433,16 @@ def player_jump_controller(
         new_landing_base_y,
     )
 
+    # --- Allow jumping down: if the player reaches a platform located exactly
+    # --- 8 pixels below the jump base, treat it as a valid landing base too.
+    new_landing_base_y = jnp.where(
+        is_jumping
+        & ((platform_y_below_player - PLAYER_HEIGHT) == (jump_base_y + 8))
+        & ~jump_start,
+        platform_y_below_player - PLAYER_HEIGHT,
+        new_landing_base_y,
+    )
+
     is_jumping = is_jumping | jump_start
 
     # Update counter if jumping
@@ -441,11 +451,11 @@ def player_jump_controller(
     # Calculate vertical offset based on jump phase
     def offset_for(count):
         conditions = [
-            (count <= 8),
-            (count < 16),
-            (count <= 24),
-            (count <= 32),
-            (count < 41),
+            (count > 0) & (count <= 8),
+            (count > 8) & (count < 16),
+            (count >= 16) & (count <= 24),
+            (count > 24) & (count <= 32),
+            (count > 32) & (count < 40),
         ]
         values = [
             -1,
@@ -457,12 +467,22 @@ def player_jump_controller(
         return jnp.select(conditions, values, default=0)
 
     # check if player is on a new platform and cancel jump if so
-    jump_cancel = (
+    jump_cancel_up = (
         is_jumping
         & (player_y >= new_landing_base_y)
         & (new_landing_base_y < jump_base_y)
         & (jump_counter > 32)
     )
+
+    jump_cancel_down = (
+        is_jumping
+        & ((player_y + 1) == jump_base_y)  # +1 because for some reason the player is 1 pixel below the value I would expect
+        & (new_landing_base_y == (jump_base_y + 8))
+        & (jump_counter >= 40)
+    )
+
+    jump_cancel = jump_cancel_up | jump_cancel_down
+
     jump_counter = jnp.where(jump_cancel, 40, jump_counter)
     jump_base_y = jnp.where(jump_cancel, new_landing_base_y, jump_base_y)
     new_y = jnp.where(jump_cancel, new_landing_base_y, player_y)
@@ -1112,7 +1132,7 @@ def lives_controller(state: KangarooState):
     y_of_platform_below_player = get_y_of_platform_below_player(state)
     player_is_falling = (
         (state.player.y + state.player.height) == state.player.last_stood_on_platform_y
-    ) & (y_of_platform_below_player > state.player.last_stood_on_platform_y)
+    ) & (y_of_platform_below_player > state.player.last_stood_on_platform_y) & (~state.player.is_jumping)
 
     # monkey touch check
 
