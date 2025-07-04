@@ -652,8 +652,9 @@ class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInf
         new_player_x, new_paddle_v, new_acceleration_counter = player_step(
             state.player_x, state.player_speed, state.acceleration_counter, action
         )
-
-        game_started = jnp.logical_or(state.game_started, action == Action.FIRE)
+        #TODO: this is a hack -> always fire
+        game_started = jnp.logical_or(state.game_started, True)
+        # game_started = jnp.logical_or(state.game_started, action == Action.FIRE)
 
         # Update ball, check collisions, etc., as before, but now pass new_player_x
         (ball_x, ball_y, ball_vel_x, ball_vel_y, ball_speed_idx, ball_direction_idx,
@@ -775,10 +776,14 @@ class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInf
         Actions are:
         0: NOOP
         1: FIRE
-        2: RIGHT
-        3: LEFT
+        2: UP
+        3: RIGHT
+        4: LEFT
         """
-        return spaces.Discrete(4)
+        #TODO: in ALE, this is 4: NOOP, FIRE, RIGHT, LEFT
+        # But since actions are currently directly mapped from digits
+        # return Discrete(4) would lead to not being able to use the left action
+        return spaces.Discrete(5)
 
     def observation_space(self) -> spaces.Dict:
         """Returns the observation space for Breakout.
