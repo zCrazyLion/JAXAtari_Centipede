@@ -427,7 +427,7 @@ def player_jump_controller(
     # find a new potential landing_base if player is above a higher platform
     new_landing_base_y = jnp.where(
         is_jumping
-        & ((platform_y_below_player - PLAYER_HEIGHT) < jump_base_y)
+        & ((platform_y_below_player - PLAYER_HEIGHT) == (jump_base_y - 8))
         & ~jump_start,
         platform_y_below_player - PLAYER_HEIGHT,
         new_landing_base_y,
@@ -1035,7 +1035,7 @@ def player_step(state: KangarooState, action: chex.Array):
 
     # For each platform, calculate what y would be if player is positioned on it
     platform_y_values = jnp.where(
-        climbing_transition, new_y, jnp.clip(new_y, 0, platform_ys - new_player_height)
+        climbing_transition | state.player.is_jumping, new_y, jnp.clip(new_y, 0, platform_ys - new_player_height)
     )
 
     # Apply the mask to get only values for platforms that affect the player
