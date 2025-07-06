@@ -98,7 +98,7 @@ def main():
         pygame.display.set_caption(f"JAXAtari Game {args.game}")
         env_render_shape = jitted_render(state).shape[:2]
         window = pygame.display.set_mode(
-            (env_render_shape[0] * UPSCALE_FACTOR, env_render_shape[1] * UPSCALE_FACTOR)
+            (env_render_shape[1] * UPSCALE_FACTOR, env_render_shape[0] * UPSCALE_FACTOR)
         )
         clock = pygame.time.Clock()
 

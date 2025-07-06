@@ -17,27 +17,25 @@ def update_pygame(pygame_screen, raster, SCALING_FACTOR=3, WIDTH=400, HEIGHT=300
 
     Args:
         pygame_screen: The Pygame screen surface.
-        raster: JAX array of shape (Width, Height, 3/4) containing the image data.
+        raster: JAX array of shape (Height, Width, 3/4) containing the image data.
         SCALING_FACTOR: Factor to scale the raster for display.
         WIDTH: Expected width of the input raster (used for scaling calculation).
         HEIGHT: Expected height of the input raster (used for scaling calculation).
     """
     pygame_screen.fill((0, 0, 0))
 
-    # Convert JAX array (W, H, C) to NumPy (W, H, C)
+    # Convert JAX array (H, W, C) to NumPy (H, W, C)
     raster_np = np.array(raster)
     raster_np = raster_np.astype(np.uint8)
 
     # Pygame surface needs (W, H). make_surface expects (W, H, C) correctly.
-    frame_surface = pygame.surfarray.make_surface(raster_np)
+    # Transpose from (H, W, C) to (W, H, C) for pygame
+    frame_surface = pygame.surfarray.make_surface(raster_np.transpose(1, 0, 2))
 
     # Pygame scale expects target (width, height)
-    target_width_px = int(WIDTH * SCALING_FACTOR)
-    target_height_px = int(HEIGHT * SCALING_FACTOR)
-    # Optional: Adjust scaling if raster size differs from constants
-    if raster_np.shape[0] != WIDTH or raster_np.shape[1] != HEIGHT:
-        target_width_px = int(raster_np.shape[0] * SCALING_FACTOR)
-        target_height_px = int(raster_np.shape[1] * SCALING_FACTOR)
+    # Note: raster_np is (H, W, C), so shape[1] is width and shape[0] is height
+    target_width_px = int(raster_np.shape[1] * SCALING_FACTOR)
+    target_height_px = int(raster_np.shape[0] * SCALING_FACTOR)
 
 
     frame_surface_scaled = pygame.transform.scale(
@@ -130,7 +128,11 @@ def load_game_environment(game: str) -> Tuple[JaxEnvironment, AtraJaxisRenderer]
     Dynamically loads a game environment and the renderer from a .py file.
     It looks for a class that inherits from JaxEnvironment.
     """
-    game_file_path = f"src/jaxatari/games/jax_{game.lower()}.py"
+    # Get the project root directory (parent of scripts directory)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    game_file_path = os.path.join(project_root, "src", "jaxatari", "games", f"jax_{game.lower()}.py")
+    
     if not os.path.exists(game_file_path):
         raise FileNotFoundError(f"Game file not found: {game_file_path}")
 
@@ -172,5 +174,4 @@ def load_game_environment(game: str) -> Tuple[JaxEnvironment, AtraJaxisRenderer]
         raise ImportError(f"No class found in {game_file_path} that inherits from JaxEnvironment")
 
     return game, renderer
-
 

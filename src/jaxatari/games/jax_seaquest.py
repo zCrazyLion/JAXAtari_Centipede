@@ -2575,7 +2575,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
         return spaces.Box(
             low=0,
             high=255,
-            shape=(160, 210, 3),
+            shape=(210, 160, 3),
             dtype=jnp.uint8
         )
 
@@ -3085,7 +3085,7 @@ class SeaquestRenderer(AtraJaxisRenderer):
 
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state):
-        raster = jnp.zeros((WIDTH, HEIGHT, 3))
+        raster = aj.create_initial_frame(width=160, height=210)
 
         # render background
         frame_bg = aj.get_sprite_frame(SPRITE_BG, 0)
@@ -3250,6 +3250,6 @@ class SeaquestRenderer(AtraJaxisRenderer):
         bar_width = 8
         # Assuming raster shape is (Height, Width, Channels)
         # Select all rows (:), the first 'bar_width' columns (0:bar_width), and all channels (:)
-        raster = raster.at[0:bar_width, :, :].set(0)
+        raster = raster.at[:, :bar_width, :].set(0)
 
         return raster

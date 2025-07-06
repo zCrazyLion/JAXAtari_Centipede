@@ -622,7 +622,7 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
         return spaces.Box(
             low=0,
             high=255,
-            shape=(160, 210, 3),
+            shape=(210, 160, 3),
             dtype=jnp.uint8
         )
 
@@ -658,11 +658,11 @@ def load_sprites():
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 
     # Load sprites
-    player = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/player.npy"), transpose=True)
-    enemy = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/enemy.npy"), transpose=True)
-    ball = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/ball.npy"), transpose=True)
+    player = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/player.npy"))
+    enemy = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/enemy.npy"))
+    ball = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/ball.npy"))
 
-    bg = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/background.npy"), transpose=True)
+    bg = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/background.npy"))
 
     # Convert all sprites to the expected format (add frame dimension)
     SPRITE_BG = jnp.expand_dims(bg, axis=0)
@@ -716,7 +716,7 @@ class PongRenderer(AtraJaxisRenderer):
         """
         # Create empty raster with CORRECT orientation for atraJaxis framework
         # where width corresponds to the horizontal dimension of the screen
-        raster = jnp.zeros((WIDTH, HEIGHT, 3))
+        raster = aj.create_initial_frame(width=160, height=210)
 
         # Render background - (0, 0) is top-left corner
         frame_bg = aj.get_sprite_frame(self.SPRITE_BG, 0)
@@ -735,16 +735,18 @@ class PongRenderer(AtraJaxisRenderer):
         frame_ball = aj.get_sprite_frame(self.SPRITE_BALL, 0)
         raster = aj.render_at(raster, state.ball_x, state.ball_y, frame_ball)
 
+        # Direct wall rendering with HWC indexing
         wall_color = jnp.array(WALL_COLOR, dtype=jnp.uint8)
-        # Top Wall: Full width (x=0 to WIDTH), y from WALL_TOP_Y to WALL_TOP_Y + WALL_TOP_HEIGHT
+        
+        # Top Wall: Full width, y from WALL_TOP_Y to WALL_TOP_Y + WALL_TOP_HEIGHT
         top_wall_y_start = WALL_TOP_Y
         top_wall_y_end = WALL_TOP_Y + WALL_TOP_HEIGHT
-        raster = raster.at[:, top_wall_y_start:top_wall_y_end, :].set(wall_color)
-
+        raster = raster.at[top_wall_y_start:top_wall_y_end, :, :].set(wall_color)
+        
         # Bottom Wall: Full width, y from WALL_BOTTOM_Y to WALL_BOTTOM_Y + WALL_BOTTOM_HEIGHT
         bottom_wall_y_start = WALL_BOTTOM_Y
         bottom_wall_y_end = WALL_BOTTOM_Y + WALL_BOTTOM_HEIGHT
-        raster = raster.at[:, bottom_wall_y_start:bottom_wall_y_end, :].set(wall_color)
+        raster = raster.at[bottom_wall_y_start:bottom_wall_y_end, :, :].set(wall_color)
 
         # 1. Get digit arrays (always 2 digits)
         player_score_digits = aj.int_to_digits(state.player_score, max_digits=2)

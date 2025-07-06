@@ -416,7 +416,7 @@ class FreewayRenderer(AtraJaxisRenderer):
 
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state):
-        raster = jnp.zeros((160, 210, 3), dtype=jnp.uint8)
+        raster = aj.create_initial_frame(width=160, height=210)
         background = aj.get_sprite_frame(self.sprites['background'], 0)
         raster = aj.render_at(raster, 0, 0, background)
         chicken_idle = aj.get_sprite_frame(self.sprites['player_idle'], 0)
@@ -549,6 +549,6 @@ class FreewayRenderer(AtraJaxisRenderer):
 
         # Force the first 8 columns (x=0 to x=7) to be black (KEEP THIS PART)
         bar_width = 8
-        raster = raster.at[0:bar_width, :, :].set(0)
+        raster = raster.at[:, :bar_width, :].set(0)
 
         return raster
