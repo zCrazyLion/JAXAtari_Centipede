@@ -1693,12 +1693,12 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
     
     def image_space(self) -> spaces.Box:
         """Returns the image space for Kangaroo.
-        The image is a RGB image with shape (160, 210, 3).
+        The image is a RGB image with shape (210, 160, 3).
         """
         return spaces.Box(
             low=0,
             high=255,
-            shape=(160, 210, 3),
+            shape=(210, 160, 3),
             dtype=jnp.uint8
         )
 
@@ -2172,9 +2172,8 @@ class KangarooRenderer(JAXGameRenderer):
         """
 
         # --- Select and Render Background ---
-        # Initialize raster (optional, could directly use background if it covers all)
-        # Starting with zeros allows transparency in dynamic sprites if they use it.
-        raster = jnp.zeros((SCREEN_WIDTH, SCREEN_HEIGHT, 3), dtype=jnp.uint8)
+        # Initialize raster using the consistent function
+        raster = jr.create_initial_frame(width=160, height=210)
 
         # Get the current level index (ensure it's integer and within bounds 0-2)
         level_idx = state.current_level.astype(int)

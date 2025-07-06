@@ -10,15 +10,6 @@ from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 from jaxatari.renderers import JAXGameRenderer
 import jaxatari.rendering.jax_rendering_utils as jr
 
-# TODO: surface submarine at 6 divers collected + difficulty 1
-# Game Constants
-WINDOW_WIDTH = 160 * 3
-WINDOW_HEIGHT = 210 * 3
-
-WIDTH = 160
-HEIGHT = 210
-SCALING_FACTOR = 3
-
 # Colors
 BACKGROUND_COLOR = (0, 0, 139)  # Dark blue for water
 PLAYER_COLOR = (187, 187, 53)  # Yellow for player sub
@@ -2561,12 +2552,12 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
     def image_space(self) -> spaces.Box:
         """Returns the image space for Seaquest.
-        The image is a RGB image with shape (160, 210, 3).
+        The image is a RGB image with shape (210, 160, 3).
         """
         return spaces.Box(
             low=0,
             high=255,
-            shape=(160, 210, 3),
+            shape=(210, 160, 3),
             dtype=jnp.uint8
         )
 
@@ -3068,7 +3059,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 class SeaquestRenderer(JAXGameRenderer):
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state):
-        raster = jnp.zeros((WIDTH, HEIGHT, 3))
+        raster = jr.create_initial_frame(width=160, height=210)
 
         # render background
         frame_bg = jr.get_sprite_frame(SPRITE_BG, 0)
@@ -3219,6 +3210,6 @@ class SeaquestRenderer(JAXGameRenderer):
         bar_width = 8
         # Assuming raster shape is (Height, Width, Channels)
         # Select all rows (:), the first 'bar_width' columns (0:bar_width), and all channels (:)
-        raster = raster.at[0:bar_width, :, :].set(0)
+        raster = raster.at[:, :bar_width, :].set(0)
 
         return raster

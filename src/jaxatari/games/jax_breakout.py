@@ -814,12 +814,12 @@ class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInf
 
     def image_space(self) -> spaces.Box:
         """Returns the image space for Breakout.
-        The image is a RGB image with shape (160, 210, 3).
+        The image is a RGB image with shape (210, 160, 3).
         """
         return spaces.Box(
             low=0,
             high=255,
-            shape=(160, 210, 3),
+            shape=(210, 160, 3),
             dtype=jnp.uint8
         )
 
@@ -856,10 +856,10 @@ class BreakoutRenderer(JAXGameRenderer):
         MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 
         # Load sprites
-        player = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/breakout/player.npy"), transpose=True)
-        ball = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/breakout/ball.npy"), transpose=True)
+        player = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/breakout/player.npy"))
+        ball = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/breakout/ball.npy"))
 
-        bg = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/breakout/background.npy"), transpose=True)
+        bg = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/breakout/background.npy"))
 
         # Convert all sprites to the expected format (add frame dimension)
         SPRITE_BG = jnp.expand_dims(bg, axis=0)
@@ -887,9 +887,10 @@ class BreakoutRenderer(JAXGameRenderer):
         """
         # Helper function to draw a single block on a blank canvas of fixed size.
         def draw_single_block(x, y, color):
-            blank_raster = jnp.zeros((WINDOW_WIDTH, WINDOW_HEIGHT, 3), dtype=jnp.uint8)
-            patch = jnp.full((self.BLOCK_SIZE[0], self.BLOCK_SIZE[1], 3), color, dtype=jnp.uint8)
-            return jax.lax.dynamic_update_slice(blank_raster, patch, (x, y, 0))
+            # Frame shape should be (Height, Width, Channels) = (210, 160, 3)
+            blank_raster = jr.create_initial_frame(width=160, height=210)
+            patch = jnp.full((self.BLOCK_SIZE[1], self.BLOCK_SIZE[0], 3), color, dtype=jnp.uint8)
+            return jax.lax.dynamic_update_slice(blank_raster, patch, (y, x, 0))
 
         # Generate coordinates and colors for ALL possible block positions.
         rows_grid, cols_grid = jnp.meshgrid(
@@ -921,8 +922,9 @@ class BreakoutRenderer(JAXGameRenderer):
         Returns:
             A JAX array representing the rendered frame.
         """
-        # Create empty raster
-        raster = jnp.zeros((WINDOW_WIDTH, WINDOW_HEIGHT, 3))
+        # Create empty raster with correct orientation
+        # Frame shape should be (Height, Width, Channels) = (210, 160, 3)
+        raster = jr.create_initial_frame(width=160, height=210)
 
         # Render background - (0, 0) is top-left corner
         frame_bg = jr.get_sprite_frame(self.SPRITE_BG, 0)
@@ -960,7 +962,7 @@ class BreakoutRenderer(JAXGameRenderer):
 
         # score starts at 36, 5
         # number of lives at 100, 5
-        # number players at 136, 5 (always 1 for us)
+        # number players at 132, 5 (always 1 for us)
 
         # 1. Render score
         raster = jr.render_label_selective(raster, 36, 5,
@@ -975,13 +977,14 @@ class BreakoutRenderer(JAXGameRenderer):
                                             spacing=16)
         
         # 3. Render number of players
-        raster = jr.render_label_selective(raster, 136, 5,
+        raster = jr.render_label_selective(raster, 132, 5,
                                             number_players_digit, self.DIGIT_SPRITES,
                                             0, 1,
                                             spacing=16)
 
         # after y=196 til y=210 render a black rectangle (its blocking the view of the ball)
+        # Frame is (Height, Width, Channels) so we index as [y_range, x_range, :]
         # Force the last 14 rows (y=196 to y=210) to be black
-        raster = raster.at[:, 196:210, :].set(0)
+        raster = raster.at[196:210, :, :].set(0)
 
         return raster

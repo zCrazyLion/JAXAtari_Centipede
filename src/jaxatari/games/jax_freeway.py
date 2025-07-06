@@ -337,12 +337,12 @@ class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo]):
 
     def image_space(self) -> spaces.Box:
         """Returns the image space for Freeway.
-        The image is a RGB image with shape (160, 210, 3).
+        The image is a RGB image with shape (210, 160, 3).
         """
         return spaces.Box(
             low=0,
             high=255,
-            shape=(160, 210, 3),
+            shape=(210, 160, 3),
             dtype=jnp.uint8
         )
     
@@ -429,7 +429,7 @@ class FreewayRenderer(JAXGameRenderer):
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state):
         """Render the game state to a raster image."""
-        raster = jnp.zeros((160, 210, 3), dtype=jnp.uint8)
+        raster = jr.create_initial_frame(width=160, height=210)
 
         # draw the background
         background = jr.get_sprite_frame(self.sprites['background'], 0)
@@ -558,7 +558,8 @@ class FreewayRenderer(JAXGameRenderer):
         )
 
         # Force the first 8 columns (x=0 to x=7) to be black (KEEP THIS PART)
+        # Frame is (Height, Width, Channels) so we index as [y_range, x_range, :]
         bar_width = 8
-        raster = raster.at[0:bar_width, :, :].set(0)
+        raster = raster.at[:, :bar_width, :].set(0)
 
         return raster

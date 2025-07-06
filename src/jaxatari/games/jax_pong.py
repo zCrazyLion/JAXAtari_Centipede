@@ -617,12 +617,12 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
 
     def image_space(self) -> spaces.Box:
         """Returns the image space for Pong.
-        The image is a RGB image with shape (160, 210, 3).
+        The image is a RGB image with shape (210, 160, 3).
         """
         return spaces.Box(
             low=0,
             high=255,
-            shape=(160, 210, 3),
+            shape=(210, 160, 3),
             dtype=jnp.uint8
         )
 
@@ -658,11 +658,11 @@ def load_sprites():
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 
     # Load sprites
-    player = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/player.npy"), transpose=True)
-    enemy = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/enemy.npy"), transpose=True)
-    ball = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/ball.npy"), transpose=True)
+    player = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/player.npy"))
+    enemy = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/enemy.npy"))
+    ball = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/ball.npy"))
 
-    bg = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/background.npy"), transpose=True)
+    bg = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/background.npy"))
 
     # Convert all sprites to the expected format (add frame dimension)
     SPRITE_BG = jnp.expand_dims(bg, axis=0)
@@ -715,8 +715,8 @@ class PongRenderer(JAXGameRenderer):
             A JAX array representing the rendered frame.
         """
         # Create empty raster with CORRECT orientation for atraJaxis framework
-        # where width corresponds to the horizontal dimension of the screen
-        raster = jnp.zeros((WIDTH, HEIGHT, 3))
+        # Frame shape is (Height, Width, Channels) = (210, 160, 3)
+        raster = jr.create_initial_frame(width=160, height=210)
 
         # Render background - (0, 0) is top-left corner
         frame_bg = jr.get_sprite_frame(self.SPRITE_BG, 0)
@@ -728,7 +728,7 @@ class PongRenderer(JAXGameRenderer):
 
         # Render enemy paddle
         frame_enemy = jr.get_sprite_frame(self.SPRITE_ENEMY, 0)
-        raster = jr.render_at(raster, ENEMY_X,state.enemy_y, frame_enemy)
+        raster = jr.render_at(raster, ENEMY_X, state.enemy_y, frame_enemy)
 
         # Render ball
         frame_ball = jr.get_sprite_frame(self.SPRITE_BALL, 0)
@@ -736,14 +736,15 @@ class PongRenderer(JAXGameRenderer):
 
         wall_color = jnp.array(WALL_COLOR, dtype=jnp.uint8)
         # Top Wall: Full width (x=0 to WIDTH), y from WALL_TOP_Y to WALL_TOP_Y + WALL_TOP_HEIGHT
+        # Frame is (Height, Width, Channels) so we index as [y_range, x_range, :]
         top_wall_y_start = WALL_TOP_Y
         top_wall_y_end = WALL_TOP_Y + WALL_TOP_HEIGHT
-        raster = raster.at[:, top_wall_y_start:top_wall_y_end, :].set(wall_color)
+        raster = raster.at[top_wall_y_start:top_wall_y_end, :, :].set(wall_color)
 
         # Bottom Wall: Full width, y from WALL_BOTTOM_Y to WALL_BOTTOM_Y + WALL_BOTTOM_HEIGHT
         bottom_wall_y_start = WALL_BOTTOM_Y
         bottom_wall_y_end = WALL_BOTTOM_Y + WALL_BOTTOM_HEIGHT
-        raster = raster.at[:, bottom_wall_y_start:bottom_wall_y_end, :].set(wall_color)
+        raster = raster.at[bottom_wall_y_start:bottom_wall_y_end, :, :].set(wall_color)
 
         # 1. Get digit arrays (always 2 digits)
         player_score_digits = jr.int_to_digits(state.player_score, max_digits=2)
