@@ -4,10 +4,10 @@ from typing import NamedTuple, Tuple
 import jax.lax
 import jax.numpy as jnp
 import chex
-import jaxatari.spaces as spaces
 
-from jaxatari.renderers import AtraJaxisRenderer
-from jaxatari.rendering import atraJaxis as aj
+import jaxatari.spaces as spaces
+from jaxatari.renderers import JAXGameRenderer
+from jaxatari.rendering import jax_rendering_utils as jr
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 
 # Constants for game environment
@@ -508,7 +508,7 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
         )
 
         done = self._get_done(new_state)
-        env_reward = self._get_env_reward(state, new_state)
+        env_reward = self._get_reward(state, new_state)
         all_rewards = self._get_all_reward(state, new_state)
         info = self._get_info(new_state, all_rewards)
         observation = self._get_observation(new_state)
@@ -617,7 +617,7 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
 
     def image_space(self) -> spaces.Box:
         """Returns the image space for Pong.
-        The image is a RGB image with shape (160, 210, 3).
+        The image is a RGB image with shape (210, 160, 3).
         """
         return spaces.Box(
             low=0,
@@ -627,11 +627,11 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo]):
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: PongState, all_rewards: chex.Array) -> PongInfo:
+    def _get_info(self, state: PongState, all_rewards: chex.Array = None) -> PongInfo:
         return PongInfo(time=state.step_counter, all_rewards=all_rewards)
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_env_reward(self, previous_state: PongState, state: PongState):
+    def _get_reward(self, previous_state: PongState, state: PongState):
         return (state.player_score - state.enemy_score) - (
             previous_state.player_score - previous_state.enemy_score
         )
@@ -658,11 +658,11 @@ def load_sprites():
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 
     # Load sprites
-    player = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/player.npy"))
-    enemy = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/enemy.npy"))
-    ball = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/ball.npy"))
+    player = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/player.npy"))
+    enemy = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/enemy.npy"))
+    ball = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/ball.npy"))
 
-    bg = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/background.npy"))
+    bg = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/background.npy"))
 
     # Convert all sprites to the expected format (add frame dimension)
     SPRITE_BG = jnp.expand_dims(bg, axis=0)
@@ -671,11 +671,11 @@ def load_sprites():
     SPRITE_BALL = jnp.expand_dims(ball, axis=0)
 
     # Load digits for scores
-    PLAYER_DIGIT_SPRITES = aj.load_and_pad_digits(
+    PLAYER_DIGIT_SPRITES = jr.load_and_pad_digits(
         os.path.join(MODULE_DIR, "sprites/pong/player_score_{}.npy"),
         num_chars=10,
     )
-    ENEMY_DIGIT_SPRITES = aj.load_and_pad_digits(
+    ENEMY_DIGIT_SPRITES = jr.load_and_pad_digits(
         os.path.join(MODULE_DIR, "sprites/pong/enemy_score_{}.npy"),
         num_chars=10,
     )
@@ -690,7 +690,7 @@ def load_sprites():
     )
 
 
-class PongRenderer(AtraJaxisRenderer):
+class PongRenderer(JAXGameRenderer):
     """JAX-based Pong game renderer, optimized with JIT compilation."""
 
     def __init__(self):
@@ -715,42 +715,41 @@ class PongRenderer(AtraJaxisRenderer):
             A JAX array representing the rendered frame.
         """
         # Create empty raster with CORRECT orientation for atraJaxis framework
-        # where width corresponds to the horizontal dimension of the screen
-        raster = aj.create_initial_frame(width=160, height=210)
+        # Frame shape is (Height, Width, Channels) = (210, 160, 3)
+        raster = jr.create_initial_frame(width=160, height=210)
 
         # Render background - (0, 0) is top-left corner
-        frame_bg = aj.get_sprite_frame(self.SPRITE_BG, 0)
-        raster = aj.render_at(raster, 0, 0, frame_bg)
+        frame_bg = jr.get_sprite_frame(self.SPRITE_BG, 0)
+        raster = jr.render_at(raster, 0, 0, frame_bg)
 
-        # Render player paddle - IMPORTANT: Swap x and y coordinates
-        # render_at takes (raster, y, x, sprite) but we need to swap them due to transposition
-        frame_player = aj.get_sprite_frame(self.SPRITE_PLAYER, 0)
-        raster = aj.render_at(raster, PLAYER_X, state.player_y, frame_player)
+        # Render player paddle
+        frame_player = jr.get_sprite_frame(self.SPRITE_PLAYER, 0)
+        raster = jr.render_at(raster, PLAYER_X, state.player_y, frame_player)
 
-        # Render enemy paddle - same swap needed
-        frame_enemy = aj.get_sprite_frame(self.SPRITE_ENEMY, 0)
-        raster = aj.render_at(raster, ENEMY_X,state.enemy_y, frame_enemy)
+        # Render enemy paddle
+        frame_enemy = jr.get_sprite_frame(self.SPRITE_ENEMY, 0)
+        raster = jr.render_at(raster, ENEMY_X, state.enemy_y, frame_enemy)
 
-        # Render ball - ball position is (ball_x, ball_y) but needs to be swapped
-        frame_ball = aj.get_sprite_frame(self.SPRITE_BALL, 0)
-        raster = aj.render_at(raster, state.ball_x, state.ball_y, frame_ball)
+        # Render ball
+        frame_ball = jr.get_sprite_frame(self.SPRITE_BALL, 0)
+        raster = jr.render_at(raster, state.ball_x, state.ball_y, frame_ball)
 
         # Direct wall rendering with HWC indexing
         wall_color = jnp.array(WALL_COLOR, dtype=jnp.uint8)
-        
-        # Top Wall: Full width, y from WALL_TOP_Y to WALL_TOP_Y + WALL_TOP_HEIGHT
+        # Top Wall: Full width (x=0 to WIDTH), y from WALL_TOP_Y to WALL_TOP_Y + WALL_TOP_HEIGHT
+        # Frame is (Height, Width, Channels) so we index as [y_range, x_range, :]
         top_wall_y_start = WALL_TOP_Y
         top_wall_y_end = WALL_TOP_Y + WALL_TOP_HEIGHT
         raster = raster.at[top_wall_y_start:top_wall_y_end, :, :].set(wall_color)
-        
+
         # Bottom Wall: Full width, y from WALL_BOTTOM_Y to WALL_BOTTOM_Y + WALL_BOTTOM_HEIGHT
         bottom_wall_y_start = WALL_BOTTOM_Y
         bottom_wall_y_end = WALL_BOTTOM_Y + WALL_BOTTOM_HEIGHT
         raster = raster.at[bottom_wall_y_start:bottom_wall_y_end, :, :].set(wall_color)
 
         # 1. Get digit arrays (always 2 digits)
-        player_score_digits = aj.int_to_digits(state.player_score, max_digits=2)
-        enemy_score_digits = aj.int_to_digits(state.enemy_score, max_digits=2)
+        player_score_digits = jr.int_to_digits(state.player_score, max_digits=2)
+        enemy_score_digits = jr.int_to_digits(state.enemy_score, max_digits=2)
 
         # 2. Determine parameters for player score rendering using jax.lax.select
         is_player_single_digit = state.player_score < 10
@@ -761,8 +760,8 @@ class PongRenderer(AtraJaxisRenderer):
                                          120 + 16 // 2,
                                          120)
 
-        # 3. Render player score using the selective renderer
-        raster = aj.render_label_selective(raster, player_render_x, 3,
+        # 3. Render player score
+        raster = jr.render_label_selective(raster, player_render_x, 3,
                                             player_score_digits, self.PLAYER_DIGIT_SPRITES,
                                             player_start_index, player_num_to_render,
                                             spacing=16)
@@ -776,7 +775,7 @@ class PongRenderer(AtraJaxisRenderer):
                                         10)
 
         # 5. Render enemy score
-        raster = aj.render_label_selective(raster, enemy_render_x, 3,
+        raster = jr.render_label_selective(raster, enemy_render_x, 3,
                                            enemy_score_digits, self.ENEMY_DIGIT_SPRITES,
                                            enemy_start_index, enemy_num_to_render,
                                            spacing=16)
