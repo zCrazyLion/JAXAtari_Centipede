@@ -617,6 +617,7 @@ class PongRenderer(JAXGameRenderer):
         frame_ball = jr.get_sprite_frame(self.SPRITE_BALL, 0)
         raster = jr.render_at(raster, state.ball_x, state.ball_y, frame_ball)
 
+        # Direct wall rendering with HWC indexing
         wall_color = jnp.array(self.consts.WALL_COLOR, dtype=jnp.uint8)
         top_wall_y_start = self.consts.WALL_TOP_Y
         top_wall_y_end = self.consts.WALL_TOP_Y + self.consts.WALL_TOP_HEIGHT

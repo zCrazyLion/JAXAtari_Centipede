@@ -367,7 +367,7 @@ class FreewayRenderer(JAXGameRenderer):
 
     def __init__(self, consts=None):
         super().__init__()
-        self.sprites = self._load_sprites()
+        self.sprites, self.offsets = self._load_sprites()
         self.consts = consts or FreewayConstants()
 
     def _load_sprites(self):
@@ -376,15 +376,13 @@ class FreewayRenderer(JAXGameRenderer):
         sprite_path = os.path.join(MODULE_DIR, "sprites/freeway/")
 
         sprites: Dict[str, Any] = {}
+        offsets: Dict[str, Any] = {}
 
-        # Helper function to load a single sprite frame
         def _load_sprite_frame(name: str) -> Optional[chex.Array]:
             path = os.path.join(sprite_path, f'{name}.npy')
             frame = jr.loadFrame(path)
             return frame.astype(jnp.uint8)
 
-        # --- Load Sprites ---
-        # Backgrounds + Dynamic elements + UI elements
         sprite_names = [
             'background',
             'player_hit', 'player_walk', 'player_idle',
@@ -395,29 +393,31 @@ class FreewayRenderer(JAXGameRenderer):
         for name in sprite_names:
             loaded_sprite = _load_sprite_frame(name)
             if loaded_sprite is not None:
-                 sprites[name] = loaded_sprite
+                sprites[name] = loaded_sprite
 
         # pad the player sprites since they are used interchangably
-        ape_sprites = jr.pad_to_match([sprites['player_hit'], sprites['player_walk'], sprites['player_idle']])
-
-        sprites['player_hit'] = ape_sprites[0]
-        sprites['player_walk'] = ape_sprites[1]
-        sprites['player_idle'] = ape_sprites[2]
+        player_sprites, player_offsets = jr.pad_to_match([
+            sprites['player_hit'], sprites['player_walk'], sprites['player_idle']
+        ])
+        sprites['player_hit'] = player_sprites[0]
+        sprites['player_walk'] = player_sprites[1]
+        sprites['player_idle'] = player_sprites[2]
+        offsets['player_hit'] = player_offsets[0]
+        offsets['player_walk'] = player_offsets[1]
+        offsets['player_idle'] = player_offsets[2]
 
         # --- Load Digit Sprites ---
-        # Score digits
         score_digit_path = os.path.join(sprite_path, 'score_{}.npy')
         digits = jr.load_and_pad_digits(score_digit_path, num_chars=10)
         sprites['score'] = digits
 
-        # expand all sprites similar to the Pong/Seaquest loading
         for key in sprites.keys():
             if isinstance(sprites[key], (list, tuple)):
                 sprites[key] = [jnp.expand_dims(sprite, axis=0) for sprite in sprites[key]]
             else:
                 sprites[key] = jnp.expand_dims(sprites[key], axis=0)
 
-        return sprites
+        return sprites, offsets
 
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state):
@@ -433,7 +433,10 @@ class FreewayRenderer(JAXGameRenderer):
         chicken_idle = jr.get_sprite_frame(self.sprites['player_idle'], 0)
         chicken_walk = jr.get_sprite_frame(self.sprites['player_walk'], 0)
         chicken_hit = jr.get_sprite_frame(self.sprites['player_hit'], 0)
-        raster = jr.render_at(raster, 110, self.consts.bottom_border + self.consts.chicken_height - 1, chicken_idle)
+        chicken_idle_offset = self.offsets['player_idle']
+        chicken_walk_offset = self.offsets['player_walk']
+        chicken_hit_offset = self.offsets['player_hit']
+        raster = jr.render_at(raster, 110, self.consts.bottom_border + self.consts.chicken_height - 1, chicken_idle, flip_offset=chicken_idle_offset)
 
         # select a frame based on the walking frames (0-3 for walk, 4-7 for idle, repeat)
         use_idle = state.walking_frames < 4
@@ -442,16 +445,23 @@ class FreewayRenderer(JAXGameRenderer):
             lambda: chicken_idle,
             lambda: chicken_walk,
         )
-
+        chicken_offset = jax.lax.cond(
+            use_idle,
+            lambda: chicken_idle_offset,
+            lambda: chicken_walk_offset,
+        )
         is_hit = state.cooldown > 0
-
         chicken = jax.lax.cond(
-            jnp.logical_and(is_hit, jnp.logical_or((state.cooldown % 8) < 4, state.cooldown < 30)), # check if the cooldown is either in the alternating 4 frame window or in the stun phase
+            jnp.logical_and(is_hit, jnp.logical_or((state.cooldown % 8) < 4, state.cooldown < 30)),
             lambda: chicken_hit,
             lambda: chicken
         )
-
-        raster = jr.render_at(raster, self.consts.chicken_x, state.chicken_y, chicken)
+        chicken_offset = jax.lax.cond(
+            is_hit,
+            lambda: chicken_hit_offset,
+            lambda: chicken_offset,
+        )
+        raster = jr.render_at(raster, self.consts.chicken_x, state.chicken_y, chicken, flip_offset=chicken_offset)
 
         # render the cars in the correct color (starting from the top: dark red, light green, dark green, light red, blue, brown, light blue, red, green, yellow)
         dark_red = jr.get_sprite_frame(self.sprites['car_dark_red'], 0)
