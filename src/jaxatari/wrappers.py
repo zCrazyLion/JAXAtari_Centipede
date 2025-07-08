@@ -49,8 +49,6 @@ class AtariWrapper(JaxatariWrapper):
         self.episodic_life = episodic_life
         self.first_fire = first_fire
 
-        if not hasattr(env, "lives"):
-            self.episodic_life = False
         self._observation_space = spaces.stack_space(self._env.observation_space(), self.frame_stack_size)
 
     def observation_space(self) -> spaces.Space:
@@ -103,7 +101,10 @@ class AtariWrapper(JaxatariWrapper):
         done = jnp.logical_or(dones.any(), state.step >= self.max_episode_length)
         if self.episodic_life:
             # If the player has lost a life, we consider the episode done
-            done = jnp.logical_or(done, state.env_state.lives > new_env_state.lives)
+            if hasattr(state.env_state, "lives"):
+                done = jnp.logical_or(done, new_env_state.lives < state.env_state.lives)
+            elif hasattr(state.env_state, "lives_lost"):
+                done = jnp.logical_or(done, new_env_state.lives_lost > state.env_state.lives_lost)
 
         def reduce_info(k, v):
             if k == "all_rewards":

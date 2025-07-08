@@ -134,6 +134,11 @@ def load_game_environment(game: str) -> Tuple[JaxEnvironment, JAXGameRenderer]:
     project_root = os.path.dirname(script_dir)
     game_file_path = os.path.join(project_root, "src", "jaxatari", "games", f"jax_{game.lower()}.py")
     
+    # Get the project root directory (parent of scripts directory)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    game_file_path = os.path.join(project_root, "src", "jaxatari", "games", f"jax_{game.lower()}.py")
+    
     if not os.path.exists(game_file_path):
         raise FileNotFoundError(f"Game file not found: {game_file_path}")
 
