@@ -2198,6 +2198,12 @@ class KangarooRenderer(JAXGameRenderer):
         self.background_0 = self.sprites.get('background_0')
         self.background_1 = self.sprites.get('background_1')
         self.background_2 = self.sprites.get('background_2')
+        # ladder constants
+        self.ladder_rung_height = 4  # The height of the solid bar
+        self.ladder_space_height = 4 # The height of the empty space
+        self.ladder_color = jnp.array([162, 98, 33], dtype=jnp.uint8)
+        # platform constants
+        self.platform_color = jnp.array([162, 98, 33], dtype=jnp.uint8)
 
     def _load_sprites(self) -> tuple[Dict[str, Any], Dict[str, Any]]:
         """Loads all necessary sprites from .npy files and stores pivots."""
@@ -2214,13 +2220,13 @@ class KangarooRenderer(JAXGameRenderer):
         # --- Load Sprites ---
         # Backgrounds + Dynamic elements + UI elements
         sprite_names = [
-            'background_0', 'background_1', 'background_2',
+            'background',
             'ape_climb_left', 'ape_climb_right', 'ape_moving', 'ape_standing',
             'bell', 'ringing_bell', 'child_jump', 'child', 'coconut', 'kangaroo',
             'kangaroo_climb', 'kangaroo_dead', 'kangaroo_ducking',
             'kangaroo_jump_high', 'kangaroo_jump', 'kangaroo_lives',
             'kangaroo_walk', 'kangaroo_boxing',
-            'strawberry', 'throwing_ape', 'thrown_coconut', 'time_dash',
+            'strawberry', 'tomato', 'cherry', 'pineapple', 'throwing_ape', 'thrown_coconut', 'time_dash',
         ]
         for name in sprite_names:
             loaded_sprite = _load_sprite_frame(name)
@@ -2266,6 +2272,24 @@ class KangarooRenderer(JAXGameRenderer):
             sprites[key] = bell_sprites[i]
             pad_offsets[key] = bell_pivots[i]
 
+        # pad fruits
+        fruit_sprites, fruit_pivots = jr.pad_to_match([
+            sprites['strawberry'], sprites['tomato'], sprites['cherry'], sprites['pineapple']
+        ])
+        fruit_keys = ['strawberry', 'tomato', 'cherry', 'pineapple']
+        for i, key in enumerate(fruit_keys):
+            sprites[key] = fruit_sprites[i]
+            pad_offsets[key] = fruit_pivots[i]
+
+        # pad child sprites
+        child_sprites, child_pivots = jr.pad_to_match([
+            sprites['child'], sprites['child_jump']
+        ])
+        child_keys = ['child', 'child_jump']
+        for i, key in enumerate(child_keys):
+            sprites[key] = child_sprites[i]
+            pad_offsets[key] = child_pivots[i]
+
         # --- Load Digit Sprites ---
         # Score digits
         score_digit_path = os.path.join(self.sprite_path, 'score_{}.npy')
@@ -2303,38 +2327,135 @@ class KangarooRenderer(JAXGameRenderer):
         # Initialize raster using the consistent function
         raster = jr.create_initial_frame(width=160, height=210)
 
-        # Get the current level index (ensure it's integer and within bounds 0-2)
-        level_idx = state.current_level.astype(int)
-        # Clamp index to be safe, although state should ideally be valid
-        level_idx = jnp.clip(level_idx, 1, 3)
+        background_sprite = self.sprites.get('background')
+        background_sprite = jr.get_sprite_frame(background_sprite, 0)
+        raster = jr.render_at(raster, 0, 0, background_sprite)
 
-        selected_background = jax.lax.switch(
-            level_idx,
-            [
-                lambda: jnp.zeros(self.background_0.shape, dtype=self.background_0.dtype),  # Level 0 (empty)
-                lambda: self.background_0,  # Level 1
-                lambda: self.background_1,  # Level 2
-                lambda: self.background_2,  # Level 3
-            ]
+        # --- Draw the current platforms ---
+
+        def create_single_platform_mask(pos, size, xx, yy):
+            """Generates a boolean mask for one rectangular platform."""
+            should_draw = pos[0] != -1
+
+            def draw_fn():
+                """Calculates and returns the actual platform mask."""
+                x_start, y_start = pos[0], pos[1]
+                width, height = size[0], size[1]
+                return (xx >= x_start) & (xx < x_start + width) & \
+                    (yy >= y_start) & (yy < y_start + height)
+
+            def no_draw_fn():
+                """Returns an empty mask."""
+                return jnp.zeros_like(xx, dtype=bool)
+
+            return jax.lax.cond(should_draw, draw_fn, no_draw_fn)
+
+        platform_positions = state.level.platform_positions
+        platform_sizes = state.level.platform_sizes
+        platform_color = self.platform_color
+
+        # Create coordinate grids once for the entire raster
+        xx, yy = jnp.meshgrid(jnp.arange(SCREEN_WIDTH), jnp.arange(SCREEN_HEIGHT), indexing='xy')
+
+        # Use vmap to create all platform masks in parallel
+        vmap_platform_mask = jax.vmap(
+            create_single_platform_mask,
+            in_axes=(0, 0, None, None)
         )
-        selected_background = jr.get_sprite_frame(selected_background, 0)
+        all_platform_masks = vmap_platform_mask(platform_positions, platform_sizes, xx, yy)
 
-        raster = jr.render_at(raster, 0, 0, selected_background)
+        # Reduce the stack of masks into a single one with a logical OR
+        combined_platform_mask = jnp.logical_or.reduce(all_platform_masks, axis=0)
 
-        # --- Removed Wall Rendering ---
-        # --- Removed Platform Rendering Loop ---
-        # --- Removed Ladder Rendering Loop ---
+        # Apply the combined mask to the raster in one operation
+        raster = jnp.where(combined_platform_mask[..., None], platform_color, raster)
+    
 
-        # --- Draw fruits (Strawberries) ---
-        fruit_sprite = self.sprites.get('strawberry', None)
+        def create_single_ladder_mask(pos, size, xx, yy, rung_height, space_height):
+            """Generates a boolean mask for one ladder using jax.lax.cond."""
+            should_draw = pos[0] != -1
+
+            def draw_fn():
+                """Calculates and returns the full ladder mask."""
+                x_start, y_start = pos[0], pos[1]
+                width, hitbox_height = size[0], size[1]
+                pattern_height = rung_height + space_height
+
+                # Calculate number of rungs and the final visual height
+                num_rungs = jnp.ceil((hitbox_height + space_height) / pattern_height).astype(int)
+                visual_height = (num_rungs * rung_height) + ((num_rungs - 1) * space_height)
+
+                # Create the mask for this ladder
+                area_mask = (xx >= x_start) & (xx < x_start + width) & \
+                            (yy >= y_start) & (yy < y_start + visual_height)
+                relative_y = yy - y_start
+                pattern_mask = (relative_y % pattern_height) < rung_height
+                
+                return area_mask & pattern_mask
+
+            def no_draw_fn():
+                """Returns an empty mask for invalid ladders."""
+                return jnp.zeros_like(xx, dtype=bool)
+
+            # Use lax.cond to choose which function to execute.
+            return jax.lax.cond(should_draw, draw_fn, no_draw_fn)
+
+        # --- Draw the current ladders ---
+        ladder_positions = state.level.ladder_positions
+        ladder_sizes = state.level.ladder_sizes
+
+        # Use vmap to create all ladder masks in parallel
+        vmap_ladder_mask = jax.vmap(
+            create_single_ladder_mask,
+            in_axes=(0, 0, None, None, None, None)
+        )
+        all_masks = vmap_ladder_mask(
+            ladder_positions,
+            ladder_sizes,
+            xx,
+            yy,
+            self.ladder_rung_height,
+            self.ladder_space_height
+        )
+
+        # Reduce the stack of masks into a single mask with a logical OR
+        combined_mask = jnp.logical_or.reduce(all_masks, axis=0)
+
+        # Apply the combined mask to the raster in one operation
+        raster = jnp.where(combined_mask[..., None], self.ladder_color, raster)
+
+        # --- Draw fruits ---
         fruit_positions = state.level.fruit_positions
         fruit_actives = state.level.fruit_actives
 
         def _draw_fruit(i, current_raster):
+            # get the current fruit type using the fruit_stages array
+            fruit_type = state.level.fruit_stages[i].astype(int)
+
+            fruit_sprite = jax.lax.switch(
+                fruit_type,
+                [
+                    lambda: self.sprites.get('strawberry'), # Case 0
+                    lambda: self.sprites.get('tomato'),    # Case 1
+                    lambda: self.sprites.get('cherry'),    # Case 2
+                    lambda: self.sprites.get('pineapple'),  # Case 3
+                ]
+            )
+
+            fruit_pivot = jax.lax.switch(
+                fruit_type,
+                [
+                    lambda: self.pivots.get('strawberry', jnp.array([0.0, 0.0])),
+                    lambda: self.pivots.get('tomato', jnp.array([0.0, 0.0])),
+                    lambda: self.pivots.get('cherry', jnp.array([0.0, 0.0])),
+                    lambda: self.pivots.get('pineapple', jnp.array([0.0, 0.0])),
+                ]
+            )
+
             should_draw = jnp.logical_and(fruit_actives[i], fruit_sprite is not None)
             pos = fruit_positions[i]
             def render_fruit_sprite(raster_to_update):
-                return jr.render_at(raster_to_update, pos[0].astype(int), pos[1].astype(int), jr.get_sprite_frame(fruit_sprite, 0))
+                return jr.render_at(raster_to_update, pos[0].astype(int), pos[1].astype(int), jr.get_sprite_frame(fruit_sprite, 0), flip_offset=fruit_pivot)
             return jax.lax.cond(should_draw, render_fruit_sprite, lambda r: r, current_raster)
 
         num_fruits_to_draw = fruit_positions.shape[0]
@@ -2532,7 +2653,7 @@ class KangarooRenderer(JAXGameRenderer):
         should_draw_child = jnp.logical_and(child_pos[0] != -1, child_sprite is not None)
         child_pivot = self.pivots.get('child', jnp.array([0.0, 0.0]))
         def draw_child_func(current_raster):
-            return jr.render_at(current_raster, child_pos[0].astype(int), child_pos[1].astype(int), jr.get_sprite_frame(child_sprite, 0), child_flip, flip_offset=child_pivot)
+            return jr.render_at(current_raster, child_pos[0].astype(int), child_pos[1].astype(int), jr.get_sprite_frame(child_sprite, 0), flip_horizontal=child_flip, flip_offset=child_pivot)
         raster = jax.lax.cond(should_draw_child, draw_child_func, lambda r: r, raster)
 
         # --- Draw falling coconut ---

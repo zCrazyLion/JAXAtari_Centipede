@@ -158,7 +158,7 @@ def render_at(raster, x, y, sprite_frame,
               flip_vertical=False, 
               flip_offset: jnp.ndarray = jnp.array([0, 0])):
     """
-    Renders a sprite, ensuring content aligns with (x, y) even when flipped.
+    Renders a sprite, when using padded sprites can correct displacing flipping logic using the flip offsets.
 
     Args:
         raster: JAX array (H, W, C) for the target image.
@@ -307,6 +307,8 @@ def _find_content_bbox_np(sprite_frame: np.ndarray) -> tuple[int, int, int, int]
 def pad_to_match(sprites: List[jnp.ndarray]) -> Tuple[List[jnp.ndarray], List[jnp.ndarray]]:
     """
     Pads HWC sprites to a uniform dimension, aligning content to the top-left.
+    The returned sprites are padded to the max dimensions, and the flip_offsets are the amount of padding to the left and top.
+    This makes sure that the padding required by jax is not leading to incorrect flipping.
 
     Args:
         sprites: A list of JAX arrays (H, W, C).
