@@ -6,7 +6,7 @@ import ale_py
 from jaxatari.core import list_available_games
 from jaxatari.environment import JAXAtariAction
 from jaxatari.spaces import Space, Discrete, Box, Dict, Tuple, stack_space
-from jaxatari.wrappers import AtariWrapper, ObjectCentricWrapper, PixelAndObjectCentricWrapper, FlattenObservationWrapper, LogWrapper, MultiRewardLogWrapper
+from jaxatari.wrappers import AtariWrapper
 import gymnasium as gym
 import numpy as np
 
