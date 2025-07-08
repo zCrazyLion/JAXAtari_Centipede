@@ -2,10 +2,22 @@ import jax
 import jax.numpy as jnp
 import pytest
 import jaxatari
+import ale_py
 from jaxatari.core import list_available_games
 from jaxatari.environment import JAXAtariAction
 from jaxatari.spaces import Space, Discrete, Box, Dict, Tuple, stack_space
-from jaxatari.wrappers import AtariWrapper, ObjectCentricWrapper, PixelAndObjectCentricWrapper, FlattenObservationWrapper, LogWrapper, MultiRewardLogWrapper
+from jaxatari.wrappers import AtariWrapper
+import gymnasium as gym
+import numpy as np
+
+# TODO: automate this mapping
+ALE_GAME_MAP = {
+    "pong": "Pong-v5",
+    #"breakout": "Breakout-v5", TODO: commented out because of the action space mismatch
+    "seaquest": "Seaquest-v5",
+    "kangaroo": "Kangaroo-v5",
+    # Add more mappings as needed
+}
 
 
 @pytest.mark.parametrize("game_name", list_available_games())
@@ -397,6 +409,55 @@ def test_game_names_are_valid():
         
         # Check that game name contains only alphanumeric characters and underscores
         assert game_name.replace('_', '').isalnum(), f"Game name '{game_name}' should contain only alphanumeric characters and underscores"
+
+
+def test_jaxatari_vs_ale_image_and_action_space():
+    for jax_name, ale_name in ALE_GAME_MAP.items():
+        # JAXAtari env
+        jax_env = jaxatari.make(jax_name)
+        import jax
+        key = jax.random.PRNGKey(0)
+        jax_obs, jax_state = jax_env.reset(key)
+        jax_frame = jax_env.render(jax_state)
+        assert isinstance(jax_frame, jnp.ndarray)
+
+        # ALE env
+        ale_env = gym.make(f"ALE/{ale_name}", render_mode="rgb_array")
+        ale_obs, _ = ale_env.reset(seed=0)
+        ale_frame = ale_env.render()
+        assert isinstance(ale_frame, np.ndarray)
+
+        # Compare image shapes
+        assert jax_frame.shape == ale_frame.shape, (
+            f"Image shape mismatch for {jax_name}: "
+            f"JAXAtari {jax_frame.shape} vs ALE {ale_frame.shape}"
+        )
+        assert jax_frame.dtype == ale_frame.dtype, (
+            f"Image dtype mismatch for {jax_name}: "
+            f"JAXAtari {jax_frame.dtype} vs ALE {ale_frame.dtype}"
+        )
+
+        # Compare action spaces
+        jax_action_space = jax_env.action_space()
+        ale_action_space = ale_env.action_space
+
+        assert hasattr(jax_action_space, "n") and hasattr(ale_action_space, "n")
+        assert jax_action_space.n == ale_action_space.n, (
+            f"Action space size mismatch for {jax_name}: "
+            f"JAXAtari {jax_action_space.n} vs ALE {ale_action_space.n}"
+        )
+
+        # Optionally, compare action meanings if available
+        if hasattr(ale_env.unwrapped, "get_action_meanings"):
+            ale_meanings = ale_env.unwrapped.get_action_meanings()
+            if hasattr(jax_env, "get_action_meanings"):
+                jax_meanings = jax_env.get_action_meanings()
+                assert jax_meanings == ale_meanings, (
+                    f"Action meanings mismatch for {jax_name}: "
+                    f"JAXAtari {jax_meanings} vs ALE {ale_meanings}"
+                )
+
+        ale_env.close()
 
 
 if __name__ == "__main__":

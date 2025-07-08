@@ -7,7 +7,7 @@ import chex
 from flax import struct
 import jax
 import jax.numpy as jnp
-from jaxatari.environment import EnvState
+from jaxatari.environment import EnvState, JAXAtariAction as Action
 import jaxatari.spaces as spaces
 import numpy as np
 
@@ -39,7 +39,7 @@ class AtariWrapper(JaxatariWrapper):
         frame_stack_size: The number of frames to stack.
         frame_skip: The number of frames to skip.
     """
-    def __init__(self, env, sticky_actions: bool = True, frame_stack_size: int = 4, frame_skip: int = 4, max_episode_length: int = 10_000, episodic_life: bool = True):
+    def __init__(self, env, sticky_actions: bool = True, frame_stack_size: int = 4, frame_skip: int = 4, max_episode_length: int = 10_000, episodic_life: bool = True, first_fire: bool = True):
         super().__init__(env)
         self._env = env
         self.sticky_actions = sticky_actions
@@ -47,6 +47,7 @@ class AtariWrapper(JaxatariWrapper):
         self.frame_skip = frame_skip
         self.max_episode_length = max_episode_length
         self.episodic_life = episodic_life
+        self.first_fire = first_fire
 
         if not hasattr(env, "lives"):
             self.episodic_life = False
@@ -61,6 +62,9 @@ class AtariWrapper(JaxatariWrapper):
         obs, env_state = self._env.reset(key)
         step = jnp.array(0)
         prev_action = jnp.array(0)
+        if self.first_fire:
+            prev_action = Action.FIRE
+            obs, env_state, _, _, _ = self._env.step(env_state, prev_action)
 
         # Create multiple observations directly
         obs = jax.tree.map(lambda x: jnp.stack([x] * self.frame_stack_size), obs)
@@ -125,69 +129,6 @@ class AtariWrapper(JaxatariWrapper):
         new_obs, new_state = jax.lax.cond(done, _reset_fn, _step_fn, operand=None)
 
         return new_obs, new_state, reward, done, info_dict
-
-
-class ObjectCentricWrapper(JaxatariWrapper):
-    """
-    Wrapper for Atari environments that returns stacked object-centric observations.
-    The output observation is a 2D array of shape (frame_stack_size, num_features).
-    Apply this wrapper after the AtariWrapper!
-    """
-
-    def __init__(self, env):
-        super().__init__(env)
-        assert isinstance(env, AtariWrapper), "ObjectCentricWrapper must be applied after AtariWrapper"
-
-        # First, get the space for a SINGLE, UNSTACKED frame from the base env.
-        single_frame_space = self._env._env.observation_space()
-
-        # Calculate the bounds and size for a single flattened frame.
-        lows, highs = [], []
-        single_frame_flat_size = 0
-        for leaf_space in jax.tree.leaves(single_frame_space):
-            if isinstance(leaf_space, spaces.Box):
-                low_arr = np.broadcast_to(leaf_space.low, leaf_space.shape)
-                high_arr = np.broadcast_to(leaf_space.high, leaf_space.shape)
-                lows.append(low_arr.flatten())
-                highs.append(high_arr.flatten())
-                single_frame_flat_size += np.prod(leaf_space.shape)
-
-        single_frame_lows = np.concatenate(lows)
-        single_frame_highs = np.concatenate(highs)
-
-        # create the 2D Box space
-        self._observation_space = spaces.Box(
-            low=single_frame_lows,
-            high=single_frame_highs,
-            shape=(self._env.frame_stack_size, int(single_frame_flat_size)),
-            dtype=single_frame_lows.dtype
-        )
-    
-    def observation_space(self) -> spaces.Box:
-        """Returns a Box space for the flattened observation."""
-        return self._observation_space
-
-    @functools.partial(jax.jit, static_argnums=(0,))
-    def reset(
-        self, key: chex.PRNGKey
-    ) -> Tuple[chex.Array, EnvState]:
-        obs, state = self._env.reset(key)
-        # Flatten each frame in the stack
-        flat_obs = jax.vmap(self._env.obs_to_flat_array)(obs)
-        return flat_obs, state
-
-    @functools.partial(jax.jit, static_argnums=(0,))
-    def step(
-        self,
-        state: AtariState,
-        action: Union[int, float],
-    ) -> Tuple[chex.Array, EnvState, float, bool, Any]:
-        obs, state, reward, done, info = self._env.step(state, action)
-        # Flatten each frame in the stack
-        flat_obs = jax.vmap(self._env.obs_to_flat_array)(obs)
-        return flat_obs, state, reward, done, info
-
-
 
 class ObjectCentricWrapper(JaxatariWrapper):
     """
