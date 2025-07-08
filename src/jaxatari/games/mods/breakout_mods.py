@@ -1,42 +1,36 @@
 import functools
-from typing import Any, Dict, Tuple, Union
-
-
-import chex
 import jax
-import jax.numpy as jnp
-from jaxatari.games.jax_breakout import BreakoutState
 
 from jaxatari.wrappers import JaxatariWrapper
 
-class LeftDrift(JaxatariWrapper):
-    """Drift the ball and paddles to the left"""
+class SpeedMode(JaxatariWrapper):
+    """Increase speed to maximum at all time steps."""
     def __init__(self, env):
         super().__init__(env)
-        self.WALL_SIDE_WIDTH = 8
-        self.BALL_SIZE = (2, 4)  # Width, Height of ball
+        self._env = env
+        # Overrides get_ball_velocity from env
+        self._env.get_ball_velocity = self.get_ball_velocity.__get__(self._env, self._env.__class__) 
 
     @functools.partial(jax.jit, static_argnums=(0,))
-    def left_drift(self, prev_state: BreakoutState, state: BreakoutState) -> BreakoutState:
-        side_collision = jnp.logical_or(
-            state.ball_x <= self.WALL_SIDE_WIDTH+10, # left
-            state.ball_x >= 170 - self.WALL_SIDE_WIDTH - self.BALL_SIZE[0]  # right
-        )
-        in_bounds_x = jnp.logical_not(side_collision)
+    def get_ball_velocity(self, speed_idx, direction_idx, step_counter):
+        """Returns the ball's velocity based on the speed and direction indices."""
+        # Overrides the default function from the env
+        direction = self._env.consts.BALL_DIRECTIONS[direction_idx]
+        speed = 3
+        return speed * direction[0], speed * direction[1]
 
-        new_ball_x = jnp.where(
-            in_bounds_x,
-            state.ball_x-1,
-            state.ball_x,
-        )
-        new_state = state._replace(
-            ball_x = new_ball_x,
-        )
-        return new_state
+class SmallPaddle(JaxatariWrapper):
+    """Always use a small paddle."""
+    def __init__(self, env):
+        super().__init__(env)
+        self._env = env
+        self._env.consts.PLAYER_SIZE = (4, 4)
+        self._env.consts.PLAYER_SIZE_SMALL = (4, 4)
 
-    @functools.partial(jax.jit, static_argnums=(0,))
-    def step(self, state: BreakoutState, action: Union[int, float]) -> Tuple[chex.Array, BreakoutState, float, bool, Dict[Any, Any]]:
-        new_obs, new_state, reward, done, info = self._env.step(state, action)
-        new_state = self.left_drift(state, new_state)
-
-        return new_obs, new_state, reward, done, info
+class BigPaddle(JaxatariWrapper):
+    """Always use a bigger paddle."""
+    def __init__(self, env):
+        super().__init__(env)
+        self._env = env
+        self._env.consts.PLAYER_SIZE = (40, 4)
+        self._env.consts.PLAYER_SIZE_SMALL = (40, 4)
