@@ -89,10 +89,11 @@ class FreewayInfo(NamedTuple):
     all_rewards: jnp.ndarray
 
 
-class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo]):
-    def __init__(self, reward_funcs: list[callable]=None):
-        super().__init__()
-        self.consts = FreewayConstants()
+class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo, FreewayConstants]):
+    def __init__(self, consts: FreewayConstants = None, reward_funcs: list[callable]=None):
+        if consts is None:
+            consts = FreewayConstants()
+        super().__init__(consts)
         if reward_funcs is not None:
             reward_funcs = tuple(reward_funcs)
         self.reward_funcs = reward_funcs
@@ -365,10 +366,10 @@ class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo]):
 
 class FreewayRenderer(JAXGameRenderer):
 
-    def __init__(self, consts=None):
+    def __init__(self, consts: FreewayConstants = None):
         super().__init__()
-        self.sprites, self.offsets = self._load_sprites()
         self.consts = consts or FreewayConstants()
+        self.sprites, self.offsets = self._load_sprites()
 
     def _load_sprites(self):
         """Load all sprites required for Freeway rendering."""

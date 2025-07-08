@@ -106,11 +106,10 @@ class BreakoutState(NamedTuple):
     wall_resets: chex.Array
     all_blocks_cleared: chex.Array
 
-class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInfo]):
-    def __init__(self, reward_funcs: list[callable]=None):
-        super().__init__()
-        
-        self.consts = BreakoutConstants()
+class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInfo, BreakoutConstants]):
+    def __init__(self, consts: BreakoutConstants = None, reward_funcs: list[callable]=None):
+        consts = consts or BreakoutConstants()
+        super().__init__(consts)
         self.renderer = BreakoutRenderer(self.consts)
         if reward_funcs is not None:
             reward_funcs = tuple(reward_funcs) 
@@ -821,7 +820,7 @@ class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInf
     
 
 class BreakoutRenderer(JAXGameRenderer):
-    def __init__(self, consts=None):
+    def __init__(self, consts: BreakoutConstants = None):
         super().__init__()
         self.consts = consts or BreakoutConstants()
         self.SPRITE_BG, self.SPRITE_PLAYER, self.SPRITE_BALL, self.DIGIT_SPRITES = self.load_sprites()
