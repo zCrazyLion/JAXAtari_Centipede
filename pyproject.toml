@@ -32,7 +32,7 @@ dev = [
 ]
 gh_ci = [
   "pygame==2.5.0",
-  "gymnasium[other]==1.2.0",
+  "opencv-python-headless",
   "pytest",
   "pytest-sugar",
   "pytest-github-actions-annotate-failures",
