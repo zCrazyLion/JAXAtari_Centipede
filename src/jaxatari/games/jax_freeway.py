@@ -11,10 +11,7 @@ import jaxatari.spaces as spaces
 from jaxatari.renderers import JAXGameRenderer
 import jaxatari.rendering.jax_rendering_utils as jr
 
-@dataclass
-class GameConfig:
-    """Game configuration parameters"""
-
+class FreewayConstants(NamedTuple):
     screen_width: int = 160
     screen_height: int = 210
     chicken_width: int = 6
@@ -29,41 +26,37 @@ class GameConfig:
     top_border: int = 15
     top_path: int = 8
     bottom_border: int = 180
-
-    def __post_init__(self):
-        if self.car_speeds is None:
-            # Upper 5 lanes move left (-), lower 5 lanes move right (+)
-            # Value at i is the frequency in which car at lane i moves one pixel
-            self.car_update = [
-                -5,  # Lane 0
-                -4,  # Lane 1
-                -3,  # Lane 2
-                -2,  # Lane 3
-                -1,  # Lane 4
-                1,  # Lane 5
-                2,  # Lane 6
-                3,  # Lane 7
-                4,  # Lane 8
-                5,  # Lane 9
-            ]
-        if self.lane_borders is None:
-            # Upper 5 lanes move left (-), lower 5 lanes move right (+)
-            # Value at i is the frequency in which car at lane i moves one pixel
-            self.lane_borders = [
-                self.top_border + self.top_path,  # Lane 0
-                1 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 1
-                2 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 2
-                3 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 3
-                4 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 4
-                5 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 5
-                6 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 6
-                7 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 7
-                8 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 8
-                9 * self.lane_spacing + (self.top_border + self.top_path),  # Lane 10
-                10 * self.lane_spacing
-                + (self.top_border + self.top_path)
-                + 2,  # Lane 10
-            ]
+    # Upper 5 lanes move left (-), lower 5 lanes move right (+)
+    # Value at i is the frequency in which car at lane i moves one pixel
+    car_update = [
+        -5,  # Lane 0
+        -4,  # Lane 1
+        -3,  # Lane 2
+        -2,  # Lane 3
+        -1,  # Lane 4
+        1,  # Lane 5
+        2,  # Lane 6
+        3,  # Lane 7
+        4,  # Lane 8
+        5,  # Lane 9
+    ]
+    # Upper 5 lanes move left (-), lower 5 lanes move right (+)
+    # Value at i is the frequency in which car at lane i moves one pixel
+    lane_borders = [
+        top_border + top_path,  # Lane 0
+        1 * lane_spacing + (top_border + top_path),  # Lane 1
+        2 * lane_spacing + (top_border + top_path),  # Lane 2
+        3 * lane_spacing + (top_border + top_path),  # Lane 3
+        4 * lane_spacing + (top_border + top_path),  # Lane 4
+        5 * lane_spacing + (top_border + top_path),  # Lane 5
+        6 * lane_spacing + (top_border + top_path),  # Lane 6
+        7 * lane_spacing + (top_border + top_path),  # Lane 7
+        8 * lane_spacing + (top_border + top_path),  # Lane 8
+        9 * lane_spacing + (top_border + top_path),  # Lane 10
+        10 * lane_spacing
+        + (top_border + top_path)
+        + 2,  # Lane 10
+    ]
 
 
 class FreewayState(NamedTuple):
@@ -99,7 +92,7 @@ class FreewayInfo(NamedTuple):
 class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo]):
     def __init__(self, reward_funcs: list[callable]=None):
         super().__init__()
-        self.config = GameConfig()
+        self.consts = FreewayConstants()
         if reward_funcs is not None:
             reward_funcs = tuple(reward_funcs)
         self.reward_funcs = reward_funcs
@@ -109,19 +102,19 @@ class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo]):
     def reset(self, key: jax.random.PRNGKey = None) -> Tuple[FreewayObservation, FreewayState]:
         """Initialize a new game state"""
         # Start chicken at bottom
-        chicken_y = self.config.bottom_border + self.config.chicken_height - 1
+        chicken_y = self.consts.bottom_border + self.consts.chicken_height - 1
         # Initialize one car per lane
         cars = []
-        for lane in range(self.config.num_lanes):
+        for lane in range(self.consts.num_lanes):
             lane_y = (
-                self.config.lane_borders[lane]
-                + int(self.config.lane_spacing / 2)
-                - int(self.config.car_height / 2)
+                self.consts.lane_borders[lane]
+                + int(self.consts.lane_spacing / 2)
+                - int(self.consts.car_height / 2)
             )
             # Upper 5 lanes start from right, lower 5 lanes start from left
             if lane < 5:
                 x = (
-                    self.config.screen_width - self.config.car_width + 0
+                    self.consts.screen_width - self.consts.car_width + 0
                 )  # Start from right
             else:
                 x = 0  # Start from left
@@ -163,31 +156,31 @@ class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo]):
 
         new_y = jnp.clip(
             state.chicken_y + dy.astype(jnp.int32),
-            self.config.top_border,
-            self.config.bottom_border + self.config.chicken_height - 1,
+            self.consts.top_border,
+            self.consts.bottom_border + self.consts.chicken_height - 1,
         ).astype(jnp.int32)
 
         # Update car positions
         new_cars = state.cars
-        for lane in range(self.config.num_lanes):
+        for lane in range(self.consts.num_lanes):
             # Update x position based on lane speed
             dir = (
-                self.config.car_update[lane] / jnp.abs(self.config.car_update[lane])
+                self.consts.car_update[lane] / jnp.abs(self.consts.car_update[lane])
             ).astype(jnp.int32)
             new_x = jax.lax.cond(
-                jnp.equal(jnp.mod(state.time, self.config.car_update[lane]), 0),
+                jnp.equal(jnp.mod(state.time, self.consts.car_update[lane]), 0),
                 lambda: state.cars[lane, 0] + dir,
                 lambda: state.cars[lane, 0],
             )
 
             # Wrap around screen
             new_x = jnp.where(
-                self.config.car_update[lane] > 0,
+                self.consts.car_update[lane] > 0,
                 jnp.where(
-                    new_x > self.config.screen_width, -self.config.car_width, new_x
+                    new_x > self.consts.screen_width, -self.consts.car_width, new_x
                 ),
                 jnp.where(
-                    new_x < -self.config.car_width, self.config.screen_width, new_x
+                    new_x < -self.consts.car_width, self.consts.screen_width, new_x
                 ),
             ).astype(jnp.int32)
 
@@ -197,12 +190,12 @@ class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo]):
         def check_collision(car_pos):
             car_x, car_y = car_pos
             return jnp.logical_and(
-                self.config.chicken_x < car_x + self.config.car_width,
+                self.consts.chicken_x < car_x + self.consts.car_width,
                 jnp.logical_and(
-                    self.config.chicken_x + self.config.chicken_width > car_x,
+                    self.consts.chicken_x + self.consts.chicken_width > car_x,
                     jnp.logical_and(
-                        state.chicken_y - self.config.chicken_height < car_y,
-                        state.chicken_y > car_y - self.config.car_height,
+                        state.chicken_y - self.consts.chicken_height < car_y,
+                        state.chicken_y > car_y - self.consts.car_height,
                     ),
                 ),
             )
@@ -223,13 +216,13 @@ class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo]):
 
         # Update score if chicken reaches top
         new_score = jnp.where(
-            new_y <= self.config.top_border, state.score + 1, state.score
+            new_y <= self.consts.top_border, state.score + 1, state.score
         ).astype(jnp.int32)
 
         # Reset chicken position if scored
         new_y = jnp.where(
-            new_y <= self.config.top_border,
-            self.config.bottom_border + self.config.chicken_height - 1,
+            new_y <= self.consts.top_border,
+            self.consts.bottom_border + self.consts.chicken_height - 1,
             new_y,
         ).astype(jnp.int32)
 
@@ -264,23 +257,23 @@ class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo]):
     def _get_observation(self, state: FreewayState):
         # create chicken
         chicken = EntityPosition(
-            x=jnp.array(self.config.chicken_x, dtype=jnp.int32),
+            x=jnp.array(self.consts.chicken_x, dtype=jnp.int32),
             y=state.chicken_y,
-            width=jnp.array(self.config.chicken_width, dtype=jnp.int32),
-            height=jnp.array(self.config.chicken_height, dtype=jnp.int32),
+            width=jnp.array(self.consts.chicken_width, dtype=jnp.int32),
+            height=jnp.array(self.consts.chicken_height, dtype=jnp.int32),
         )
 
         # create cars
-        cars = jnp.zeros((self.config.num_lanes, 4), dtype=jnp.int32)
-        for i in range(self.config.num_lanes):
+        cars = jnp.zeros((self.consts.num_lanes, 4), dtype=jnp.int32)
+        for i in range(self.consts.num_lanes):
             car_pos = state.cars.at[i].get()
             cars = cars.at[i].set(
                 jnp.array(
                     [
                         car_pos.at[0].get(),  # x position
                         car_pos.at[1].get(),  # y position
-                        self.config.car_width,  # width
-                        self.config.car_height,  # height
+                        self.consts.car_width,  # width
+                        self.consts.car_height,  # height
                     ],
                     dtype=jnp.int32
                 )
@@ -372,10 +365,10 @@ class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo]):
 
 class FreewayRenderer(JAXGameRenderer):
 
-    def __init__(self):
+    def __init__(self, consts=None):
         super().__init__()
         self.sprites, self.offsets = self._load_sprites()
-        self.game_config = GameConfig()
+        self.consts = consts or FreewayConstants()
 
     def _load_sprites(self):
         """Load all sprites required for Freeway rendering."""
@@ -436,14 +429,14 @@ class FreewayRenderer(JAXGameRenderer):
 
         raster = jr.render_at(raster,0, 0, background)
 
-        # draw fixed 2nd chicken at x=110 and y=self.config.bottom_border + self.config.chicken_height - 1
+        # draw fixed 2nd chicken at x=110 and y=self.consts.bottom_border + self.consts.chicken_height - 1
         chicken_idle = jr.get_sprite_frame(self.sprites['player_idle'], 0)
         chicken_walk = jr.get_sprite_frame(self.sprites['player_walk'], 0)
         chicken_hit = jr.get_sprite_frame(self.sprites['player_hit'], 0)
         chicken_idle_offset = self.offsets['player_idle']
         chicken_walk_offset = self.offsets['player_walk']
         chicken_hit_offset = self.offsets['player_hit']
-        raster = jr.render_at(raster, 110, self.game_config.bottom_border + self.game_config.chicken_height - 1, chicken_idle, flip_offset=chicken_idle_offset)
+        raster = jr.render_at(raster, 110, self.consts.bottom_border + self.consts.chicken_height - 1, chicken_idle, flip_offset=chicken_idle_offset)
 
         # select a frame based on the walking frames (0-3 for walk, 4-7 for idle, repeat)
         use_idle = state.walking_frames < 4
@@ -468,7 +461,7 @@ class FreewayRenderer(JAXGameRenderer):
             lambda: chicken_hit_offset,
             lambda: chicken_offset,
         )
-        raster = jr.render_at(raster, self.game_config.chicken_x, state.chicken_y, chicken, flip_offset=chicken_offset)
+        raster = jr.render_at(raster, self.consts.chicken_x, state.chicken_y, chicken, flip_offset=chicken_offset)
 
         # render the cars in the correct color (starting from the top: dark red, light green, dark green, light red, blue, brown, light blue, red, green, yellow)
         dark_red = jr.get_sprite_frame(self.sprites['car_dark_red'], 0)
