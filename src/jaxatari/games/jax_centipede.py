@@ -9,76 +9,75 @@ import jax
 import jax.numpy as jnp
 import chex
 import pygame
-import jaxatari.rendering.atraJaxis as aj
+import jaxatari.rendering.jax_rendering_utils as jru
 import time
 from functools import partial
 from typing import NamedTuple, Tuple
 
 from jaxatari import spaces
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action, EnvState, EnvObs
-from jaxatari.games.jax_seaquest import SeaquestObservation, LIFE_INDICATOR
-from jaxatari.renderers import AtraJaxisRenderer
-from jaxatari.rendering.atraJaxis import render_indicator
+from jaxatari.renderers import JAXGameRenderer
 
-# -------- Game constants --------
-WIDTH = 160
-HEIGHT = 210
-SCALING_FACTOR = 6
+class CentipedeConstants:
+    # -------- Game constants --------
+    WIDTH = 160
+    HEIGHT = 210
+    SCALING_FACTOR = 6
 
-## -------- Player constants --------
-PLAYER_START_X = 76
-PLAYER_START_Y = 190 - 18
-PLAYER_BOUNDS = (16, 140), (150, 172) # TODO: Check if correct
+    ## -------- Player constants --------
+    PLAYER_START_X = 76
+    PLAYER_START_Y = 190 - 18
+    PLAYER_BOUNDS = (16, 140), (150, 172) # TODO: Check if correct
 
-PLAYER_SIZE = (4, 9)
+    PLAYER_SIZE = (4, 9)
 
-MAX_VELOCITY_X = 6 # Default: 6 | Maximum speed in x direction (pixels per frame)
-ACCELERATION_X = 0.2 # Default: 0.2 | How fast player accelerates
-FRICTION_X = 1 # Default: 1 | 1 = 100% -> player stops immediately, 0 = 0% -> player does not stop, 0.5 = 50 % -> player loses 50% of its velocity every frame
-MAX_VELOCITY_Y = 2.5 # Default: 2.5 | Maximum speed in y direction (pixels per frame)
+    MAX_VELOCITY_X = 6 # Default: 6 | Maximum speed in x direction (pixels per frame)
+    ACCELERATION_X = 0.2 # Default: 0.2 | How fast player accelerates
+    FRICTION_X = 1 # Default: 1 | 1 = 100% -> player stops immediately, 0 = 0% -> player does not stop, 0.5 = 50 % -> player loses 50% of its velocity every frame
+    MAX_VELOCITY_Y = 2.5 # Default: 2.5 | Maximum speed in y direction (pixels per frame)
 
-## -------- Player missile constants --------
-PLAYER_MISSILE_SPEED = 10
+    ## -------- Player missile constants --------
+    PLAYER_MISSILE_SPEED = 10
 
-PLAYER_MISSILE_SIZE = (0, 8) # (0, 8) because of collision logic from missile
+    PLAYER_MISSILE_SIZE = (0, 8) # (0, 8) because of collision logic from missile
 
-## -------- Starting Pattern (X -> placed, O -> not placed) --------
-MUSHROOM_STARTING_PATTERN = [
-        "OOOOOOOOOOOOOOOO",
-        "OOOOOOOOXOOOOXOO",
-        "OOOOOOOOOXOOOOXO",
-        "OOOOOOOOOOXXOOOO",
-        "OOOXOOOOOOOOOOOO",
-        "OXOOOOOOOOOOOOOO",
-        "OOOOOOOXOOOOOOOO",
-        "OOOOOOXOOOOOOOXO",
-        "OOOXXOOOOXOOOOOO",
-        "OOOOOOOXOOOOOOOO",
-        "OOOOOOOOOOOOXOOO",
-        "OOOOXOOOOOOOOOOO",
-        "OOOOOOOOOOOOOXOO",
-        "OOOOOOOOOOOXOOOX",
-        "OOOOOOOOOOOOOOXO",
-        "OOOOXOOXOOOOOOOO",
-        "OXOOOXOOOOOOOOOO",
-        "OOOOXOOOOOOOOOOX",
-        "OOOOOOOOOOOOOOOO",
-    ]
+    ## -------- Starting Pattern (X -> placed, O -> not placed) --------
+    MUSHROOM_STARTING_PATTERN = [
+            "OOOOOOOOOOOOOOOO",
+            "OOOOOOOOXOOOOXOO",
+            "OOOOOOOOOXOOOOXO",
+            "OOOOOOOOOOXXOOOO",
+            "OOOXOOOOOOOOOOOO",
+            "OXOOOOOOOOOOOOOO",
+            "OOOOOOOXOOOOOOOO",
+            "OOOOOOXOOOOOOOXO",
+            "OOOXXOOOOXOOOOOO",
+            "OOOOOOOXOOOOOOOO",
+            "OOOOOOOOOOOOXOOO",
+            "OOOOXOOOOOOOOOOO",
+            "OOOOOOOOOOOOOXOO",
+            "OOOOOOOOOOOXOOOX",
+            "OOOOOOOOOOOOOOXO",
+            "OOOOXOOXOOOOOOOO",
+            "OXOOOXOOOOOOOOOO",
+            "OOOOXOOOOOOOOOOX",
+            "OOOOOOOOOOOOOOOO",
+        ]
 
-## -------- Mushroom constants --------
-MAX_MUSHROOMS = 304             # Default 304 (19*16) | Maximum number of mushrooms that can appear at the same time
-MUSHROOM_NUMBER_OF_ROWS = 19    # Default 19 | Number of rows -> Determines value of MAX_MUSHROOMS
-MUSHROOM_NUMBER_OF_COLS = 16    # Default 16 | Number of mushrooms per row -> Determines value of MAX_MUSHROOMS
-MUSHROOM_X_SPACING = 8      #
-MUSHROOM_Y_SPACING = 9
-MUSHROOM_COLUMN_START_EVEN = 20
-MUSHROOM_COLUMN_START_ODD = 16
-MUSHROOM_SIZE = (4, 3)
-MUSHROOM_HITBOX_Y_OFFSET = 6
+    ## -------- Mushroom constants --------
+    MAX_MUSHROOMS = 304             # Default 304 (19*16) | Maximum number of mushrooms that can appear at the same time
+    MUSHROOM_NUMBER_OF_ROWS = 19    # Default 19 | Number of rows -> Determines value of MAX_MUSHROOMS
+    MUSHROOM_NUMBER_OF_COLS = 16    # Default 16 | Number of mushrooms per row -> Determines value of MAX_MUSHROOMS
+    MUSHROOM_X_SPACING = 8      #
+    MUSHROOM_Y_SPACING = 9
+    MUSHROOM_COLUMN_START_EVEN = 20
+    MUSHROOM_COLUMN_START_ODD = 16
+    MUSHROOM_SIZE = (4, 3)
+    MUSHROOM_HITBOX_Y_OFFSET = 6
 
-## -------- Centipede constants --------
-MAX_SEGMENTS = 9
-SEGMENT_SIZE = (4, 6)
+    ## -------- Centipede constants --------
+    MAX_SEGMENTS = 9
+    SEGMENT_SIZE = (4, 6)
 
 # -------- States --------
 class PlayerMissileState(NamedTuple):
@@ -139,18 +138,18 @@ class CentipedeInfo(NamedTuple):
 def load_sprites():
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-    player = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/player/player.npy"))
-    player_missile = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/player_missile/player_missile.npy"))
-    mushroom = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/mushrooms/mushroom.npy"))
-    centipede = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/centipede/segment.npy"))
-    spider1 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/1.npy"))
-    spider2 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/2.npy"))
-    spider3 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/3.npy"))
-    spider4 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/4.npy"))
-    flea1 = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/flea/1.npy"))
-    bottom_border = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/ui/bottom_border.npy"))
+    player = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/player/player.npy"))
+    player_missile = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/player_missile/player_missile.npy"))
+    mushroom = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/mushrooms/mushroom.npy"))
+    centipede = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/centipede/segment.npy"))
+    spider1 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/1.npy"))
+    spider2 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/2.npy"))
+    spider3 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/3.npy"))
+    spider4 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/4.npy"))
+    flea1 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/flea/1.npy"))
+    bottom_border = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/ui/bottom_border.npy"))
 
-    spider_sprites = aj.pad_to_match([spider1, spider2, spider3, spider4])
+    spider_sprites, _ = jru.pad_to_match([spider1, spider2, spider3, spider4])
 
     SPRITE_PLAYER = jnp.expand_dims(player, 0)
     SPRITE_PLAYER_MISSILE = jnp.expand_dims(player_missile, 0)
@@ -171,11 +170,11 @@ def load_sprites():
     SPRITE_BOTTOM_BORDER = jnp.expand_dims(bottom_border, 0)
     SPRITE_MUSHROOM = jnp.expand_dims(mushroom, 0)
 
-    DIGITS = aj.load_and_pad_digits(os.path.join(MODULE_DIR, "sprites/centipede/big_numbers/{}.npy"))
-    LIFE_INDICATOR = aj.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/ui/wand.npy"))
+    DIGITS = jru.load_and_pad_digits(os.path.join(MODULE_DIR, "sprites/centipede/big_numbers/{}.npy"))
+    LIFE_INDICATOR = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/ui/wand.npy"))
 
     # Debug
-    frame_player = aj.get_sprite_frame(SPRITE_PLAYER, 0)
+    frame_player = jru.get_sprite_frame(SPRITE_PLAYER, 0)
     #jax.debug.print("{x}, {y}", x=frame_player, y=(frame_player.shape[0], frame_player.shape[1], frame_player.shape[2]))
 
     return (
@@ -204,249 +203,10 @@ def load_sprites():
 
 # -------- Game Logic --------
 
-@jax.jit
-def check_collision_single(pos1, size1, pos2, size2):
-    """Check collision between two single entities"""
-    # Calculate edges for rectangle 1
-    rect1_left = pos1[0]
-    rect1_right = pos1[0] + size1[0]
-    rect1_top = pos1[1]
-    rect1_bottom = pos1[1] + size1[1]
-
-    # Calculate edges for rectangle 2
-    rect2_left = pos2[0]
-    rect2_right = pos2[0] + size2[0]
-    rect2_top = pos2[1]
-    rect2_bottom = pos2[1] + size2[1]
-
-    # Check overlap
-    horizontal_overlap = jnp.logical_and(
-        rect1_left < rect2_right,
-        rect1_right > rect2_left
-    )
-
-    vertical_overlap = jnp.logical_and(
-        rect1_top < rect2_bottom,
-        rect1_bottom > rect2_top
-    )
-
-    return jnp.logical_and(horizontal_overlap, vertical_overlap)
-
-@jax.jit
-def check_missile_collision_with_mushrooms(
-    missile_pos_x: chex.Array,
-    missile_pos_y: chex.Array,
-    missile_is_alive: chex.Array,
-    mushroom_positions: chex.Array
-) -> tuple[chex.Array, chex.Array]:
-    def check_single_mushroom(i, carry):
-        is_alive, mushrooms = carry
-
-        def no_hit():
-            return is_alive, mushrooms
-
-        def check_hit():
-            mushroom = mushrooms[i]
-            mush_pos = mushroom[:2]
-            mush_hp = mushroom[3]
-
-            collision = check_collision_single(
-                pos1=jnp.array([missile_pos_x, missile_pos_y + MUSHROOM_HITBOX_Y_OFFSET]),
-                size1=PLAYER_MISSILE_SIZE,
-                pos2=mush_pos,
-                size2=MUSHROOM_SIZE
-            )
-
-            def on_hit():
-                new_hp = mush_hp - 1
-                updated_mushroom_positions = mushrooms.at[i, 3].set(new_hp)
-                return False, updated_mushroom_positions
-
-            def check_hp():
-                return jax.lax.cond(mush_hp > 0, on_hit, lambda: (is_alive, mushrooms))
-
-            return jax.lax.cond(collision, check_hp, lambda: (is_alive, mushrooms))
-
-        return jax.lax.cond(is_alive, check_hit, no_hit)
-
-    init_carry = (missile_is_alive, mushroom_positions)
-    missile_active, updated_mushrooms = jax.lax.fori_loop(
-        0, 304, check_single_mushroom, init_carry
-    )
-
-    return missile_active, updated_mushrooms
-
-## -------- Mushroom Spawn Logic --------
-@jax.jit
-def initialize_mushroom_positions() -> chex.Array:
-    # Create row and column indices
-    row_indices = jnp.repeat(jnp.arange(MUSHROOM_NUMBER_OF_ROWS), MUSHROOM_NUMBER_OF_COLS)
-    col_indices = jnp.tile(jnp.arange(MUSHROOM_NUMBER_OF_COLS), MUSHROOM_NUMBER_OF_ROWS)
-
-    # Compute row parity
-    row_is_even = row_indices % 2 == 0
-    column_start = jnp.where(row_is_even, MUSHROOM_COLUMN_START_EVEN, MUSHROOM_COLUMN_START_ODD)
-    x = column_start + MUSHROOM_X_SPACING * col_indices
-    x = x.astype(jnp.int32)
-
-    y = (row_indices * MUSHROOM_Y_SPACING + 7).astype(jnp.int32)
-
-    # Build full pattern as array
-    pattern_array = jnp.array([
-        [1 if c.upper() == 'X' else 0 for c in row.ljust(MUSHROOM_NUMBER_OF_COLS, 'O')]
-        for row in MUSHROOM_STARTING_PATTERN
-    ])
-    pattern_array = jnp.pad(
-        pattern_array,
-        ((0, max(0, MUSHROOM_NUMBER_OF_ROWS - pattern_array.shape[0])), (0, 0)),
-        constant_values=0
-    )
-
-    lives = pattern_array[row_indices, col_indices] * 3  # 3 lives if visible, 0 if not
-    is_poisoned = jnp.zeros_like(lives)
-
-    return jnp.stack([x, y, is_poisoned, lives], axis=1)
-
-@jax.jit
-def spawn_centipede(wave: jnp.ndarray) -> chex.Array:
-    base_x = 79
-    base_y = 5
-    initial_positions = jnp.zeros((MAX_SEGMENTS, 4))
-
-    def spawn_segment(i, segments: jnp.ndarray):
-        is_head = i == 0
-        return segments.at[i].set(
-            jnp.where(
-                is_head,
-                jnp.array([base_x + 4*i, base_y, 1, 11]),
-                jnp.array([base_x + 4*i, base_y, 1, 1]),
-            )
-        )
-
-    centipede = jax.lax.fori_loop(0, MAX_SEGMENTS, spawn_segment, initial_positions)
-    jax.debug.print("{}", centipede)
-    return centipede
-
-@jax.jit
-def player_step(
-        state: CentipedeState, action: chex.Array
-) -> tuple[chex.Array, chex.Array, chex.Array]:
-    up = jnp.isin(action, jnp.array([
-        Action.UP,
-        Action.UPRIGHT,
-        Action.UPLEFT,
-        Action.UPFIRE,
-        Action.UPRIGHTFIRE,
-        Action.UPLEFTFIRE
-    ]))
-    down = jnp.isin(action, jnp.array([
-        Action.DOWN,
-        Action.DOWNRIGHT,
-        Action.DOWNLEFT,
-        Action.DOWNFIRE,
-        Action.DOWNRIGHTFIRE,
-        Action.DOWNLEFTFIRE
-    ]))
-    left = jnp.isin(action, jnp.array([
-        Action.LEFT,
-        Action.UPLEFT,
-        Action.DOWNLEFT,
-        Action.LEFTFIRE,
-        Action.UPLEFTFIRE,
-        Action.DOWNLEFTFIRE
-    ]))
-    right = jnp.isin(action, jnp.array([
-        Action.RIGHT,
-        Action.UPRIGHT,
-        Action.DOWNRIGHT,
-        Action.RIGHTFIRE,
-        Action.UPRIGHTFIRE,
-        Action.DOWNRIGHTFIRE
-    ]))
-
-    # x acceleration
-    accel_x = jnp.where(right, ACCELERATION_X, jnp.where(left, -ACCELERATION_X, 0.0))  # Compute acceleration based on input
-
-    # x velocity
-    velocity_x = state.player_velocity_x  # Get current x velocity
-
-    moving_left_right_input = jnp.logical_and(right, (velocity_x < 0)) # If currently moving to the left and right input is detected
-    moving_right_left_input = jnp.logical_and(left, (velocity_x > 0)) # If currently moving to the right and left input is detected
-
-    direction_change = jnp.where(jnp.logical_or(moving_left_right_input, moving_right_left_input),True,False) # Detect direction change and reset velocity if needed
-    velocity_x = jnp.where(direction_change, 0.0, velocity_x)  # Reset velocity on direction change
-    velocity_x = velocity_x + accel_x  # Update velocity with acceleration
-    velocity_x = jnp.where(jnp.logical_not(jnp.logical_or(left, right)), velocity_x * (1.0 - FRICTION_X), velocity_x)  # Slow down if no input
-    velocity_x = jnp.clip(velocity_x, -MAX_VELOCITY_X, MAX_VELOCITY_X)  # Clamp velocity within limits
-
-    # Global x position
-    new_player_x = state.player_x + velocity_x  # Compute next x position
-    velocity_x = jnp.where(new_player_x <= PLAYER_BOUNDS[0][0], 0.0, velocity_x)  # Stop at left bound
-    player_x = jnp.clip(state.player_x + velocity_x, PLAYER_BOUNDS[0][0], PLAYER_BOUNDS[0][1])  # Final x position
-
-    # Calculate new y position
-    delta_y = jnp.where(up, -MAX_VELOCITY_Y, jnp.where(down, MAX_VELOCITY_Y, 0))
-    player_y = jnp.clip(state.player_y + delta_y, PLAYER_BOUNDS[1][0], PLAYER_BOUNDS[1][1])
-
-    return player_x, player_y, velocity_x
-
-
-def player_missile_step(
-        state: CentipedeState, action: chex.Array
-) -> PlayerMissileState:
-
-    fire = jnp.isin(action, jnp.array([
-        Action.FIRE,
-        Action.UPFIRE,
-        Action.RIGHTFIRE,
-        Action.LEFTFIRE,
-        Action.DOWNFIRE,
-        Action.UPRIGHTFIRE,
-        Action.UPLEFTFIRE,
-        Action.DOWNRIGHTFIRE,
-        Action.DOWNLEFTFIRE
-    ]))
-
-    collision_with_mushrooms = True # TODO: Implement
-    kill_missile = jnp.logical_and(state.player_missile.y < 0, collision_with_mushrooms)
-    spawn = jnp.logical_and(jnp.logical_not(state.player_missile.is_alive), fire)
-
-    # New is_alive-status
-    new_is_alive = jnp.where(
-        spawn,  # on spawn
-        True,
-        jnp.where(kill_missile, False, state.player_missile.is_alive)  # on kill or keep
-    )
-    '''
-    for i in range(0, 304, 50):
-        jax.debug.print("Mushroom positions {i}–{j}: {chunk}",
-                        i=i,
-                        j=i + 50,
-                        chunk=state.mushroom_positions[i:i + 50])
-    '''
-    # Base x
-    base_x = jnp.where(spawn, state.player_x + 1, state.player_missile.x) # player x on spawn or keep x
-    # Base y
-    base_y = jnp.where(spawn, state.player_y + 5, state.player_missile.y) # player y on spawn or keey y
-
-    # move only when alive
-    new_y = jnp.where(
-        spawn,
-        state.player_y + 5 - PLAYER_MISSILE_SPEED,
-        jnp.where(new_is_alive, base_y - PLAYER_MISSILE_SPEED, 0.0)
-    )
-    new_x = jnp.where(
-        new_is_alive,
-        base_x,
-        0.0
-    )
-
-    return PlayerMissileState(x=new_x, y=new_y, is_alive=new_is_alive)
-
-
-class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, CentipedeInfo]):
-    def __init__(self, reward_funcs: list[callable] =None):
-        super().__init__()
+class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, CentipedeInfo, CentipedeConstants]):
+    def __init__(self, consts: CentipedeConstants = None, reward_funcs: list[callable] =None):
+        consts = consts or CentipedeConstants()
+        super().__init__(consts)
         if reward_funcs is not None:
             reward_funcs = tuple(reward_funcs)
         self.reward_funcs = reward_funcs
@@ -525,11 +285,12 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     @partial(jax.jit, static_argnums=(0, ))
     def _get_observation(self, state: CentipedeState) -> CentipedeObservation:
         # TODO: fill
-        player = EntityPosition(
+        player = PlayerEntity(
             x=state.player_x,
             y=state.player_y,
-            width=jnp.array(PLAYER_SIZE[0]),
-            height=jnp.array(PLAYER_SIZE[1]),
+            o=state.player_velocity_x,
+            width=jnp.array(self.consts.PLAYER_SIZE[0]),
+            height=jnp.array(self.consts.PLAYER_SIZE[1]),
             active=jnp.array(1),
         )
 
@@ -570,15 +331,252 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return state.lives < 0
 
     @partial(jax.jit, static_argnums=(0, ))
+    def check_collision_single(self, pos1, size1, pos2, size2):
+        """Check collision between two single entities"""
+        # Calculate edges for rectangle 1
+        rect1_left = pos1[0]
+        rect1_right = pos1[0] + size1[0]
+        rect1_top = pos1[1]
+        rect1_bottom = pos1[1] + size1[1]
+
+        # Calculate edges for rectangle 2
+        rect2_left = pos2[0]
+        rect2_right = pos2[0] + size2[0]
+        rect2_top = pos2[1]
+        rect2_bottom = pos2[1] + size2[1]
+
+        # Check overlap
+        horizontal_overlap = jnp.logical_and(
+            rect1_left < rect2_right,
+            rect1_right > rect2_left
+        )
+
+        vertical_overlap = jnp.logical_and(
+            rect1_top < rect2_bottom,
+            rect1_bottom > rect2_top
+        )
+
+        return jnp.logical_and(horizontal_overlap, vertical_overlap)
+
+    @partial(jax.jit, static_argnums=(0, ))
+    def check_missile_collision_with_mushrooms(
+        self,
+        missile_pos_x: chex.Array,
+        missile_pos_y: chex.Array,
+        missile_is_alive: chex.Array,
+        mushroom_positions: chex.Array
+    ) -> tuple[chex.Array, chex.Array]:
+        def check_single_mushroom(is_alive, mushroom):
+
+            def no_hit():
+                return is_alive, mushroom
+
+            def check_hit():
+                mush_pos = mushroom[:2]
+                mush_hp = mushroom[3]
+
+                collision = self.check_collision_single(
+                    pos1=jnp.array([missile_pos_x, missile_pos_y + self.consts.MUSHROOM_HITBOX_Y_OFFSET]),
+                    size1=self.consts.PLAYER_MISSILE_SIZE,
+                    pos2=mush_pos,
+                    size2=self.consts.MUSHROOM_SIZE
+                )
+
+                def on_hit():
+                    new_hp = mush_hp - 1
+                    updated_mushroom_position = mushroom.at[3].set(new_hp)
+                    return False, updated_mushroom_position
+
+                def check_hp():
+                    return jax.lax.cond(mush_hp > 0, on_hit, lambda: (is_alive, mushroom))
+
+                return jax.lax.cond(collision, check_hp, lambda: (is_alive, mushroom))
+
+            return jax.lax.cond(is_alive, check_hit, no_hit)
+
+        missile_active, updated_mushrooms = jax.vmap(
+            lambda m: check_single_mushroom(missile_is_alive, m)
+        )(mushroom_positions)
+
+        return jnp.invert(jnp.any(jnp.invert(missile_active))), updated_mushrooms
+
+    ## -------- Mushroom Spawn Logic --------
+    @partial(jax.jit, static_argnums=(0, ))
+    def initialize_mushroom_positions(self) -> chex.Array:
+        # Create row and column indices
+        row_indices = jnp.repeat(jnp.arange(self.consts.MUSHROOM_NUMBER_OF_ROWS), self.consts.MUSHROOM_NUMBER_OF_COLS)
+        col_indices = jnp.tile(jnp.arange(self.consts.MUSHROOM_NUMBER_OF_COLS), self.consts.MUSHROOM_NUMBER_OF_ROWS)
+
+        # Compute row parity
+        row_is_even = row_indices % 2 == 0
+        column_start = jnp.where(row_is_even, self.consts.MUSHROOM_COLUMN_START_EVEN, self.consts.MUSHROOM_COLUMN_START_ODD)
+        x = column_start + self.consts.MUSHROOM_X_SPACING * col_indices
+        x = x.astype(jnp.int32)
+
+        y = (row_indices * self.consts.MUSHROOM_Y_SPACING + 7).astype(jnp.int32)
+
+        # Build full pattern as array
+        pattern_array = jnp.array([
+            [1 if c.upper() == 'X' else 0 for c in row.ljust(self.consts.MUSHROOM_NUMBER_OF_COLS, 'O')]
+            for row in self.consts.MUSHROOM_STARTING_PATTERN
+        ])
+        pattern_array = jnp.pad(
+            pattern_array,
+            ((0, max(0, self.consts.MUSHROOM_NUMBER_OF_ROWS - pattern_array.shape[0])), (0, 0)),
+            constant_values=0
+        )
+
+        lives = pattern_array[row_indices, col_indices] * 3  # 3 lives if visible, 0 if not
+        is_poisoned = jnp.zeros_like(lives)
+
+        return jnp.stack([x, y, is_poisoned, lives], axis=1)
+
+    @partial(jax.jit, static_argnums=(0, ))
+    def spawn_centipede(self, wave: jnp.ndarray) -> chex.Array:
+        base_x = 79
+        base_y = 5
+        initial_positions = jnp.zeros((self.consts.MAX_SEGMENTS, 4))
+
+        def spawn_segment(i, segments: jnp.ndarray):
+            is_head = i == 0
+            return segments.at[i].set(
+                jnp.where(
+                    is_head,
+                    jnp.array([base_x + 4*i, base_y, 1, 11]),
+                    jnp.array([base_x + 4*i, base_y, 1, 1]),
+                )
+            )
+
+        centipede = jax.lax.fori_loop(0, self.consts.MAX_SEGMENTS, spawn_segment, initial_positions)
+        jax.debug.print("{}", centipede)
+        return centipede
+
+    @partial(jax.jit, static_argnums=(0, ))
+    def player_step(
+            self, state: CentipedeState, action: chex.Array
+    ) -> tuple[chex.Array, chex.Array, chex.Array]:
+        up = jnp.isin(action, jnp.array([
+            Action.UP,
+            Action.UPRIGHT,
+            Action.UPLEFT,
+            Action.UPFIRE,
+            Action.UPRIGHTFIRE,
+            Action.UPLEFTFIRE
+        ]))
+        down = jnp.isin(action, jnp.array([
+            Action.DOWN,
+            Action.DOWNRIGHT,
+            Action.DOWNLEFT,
+            Action.DOWNFIRE,
+            Action.DOWNRIGHTFIRE,
+            Action.DOWNLEFTFIRE
+        ]))
+        left = jnp.isin(action, jnp.array([
+            Action.LEFT,
+            Action.UPLEFT,
+            Action.DOWNLEFT,
+            Action.LEFTFIRE,
+            Action.UPLEFTFIRE,
+            Action.DOWNLEFTFIRE
+        ]))
+        right = jnp.isin(action, jnp.array([
+            Action.RIGHT,
+            Action.UPRIGHT,
+            Action.DOWNRIGHT,
+            Action.RIGHTFIRE,
+            Action.UPRIGHTFIRE,
+            Action.DOWNRIGHTFIRE
+        ]))
+
+        # x acceleration
+        accel_x = jnp.where(right, self.consts.ACCELERATION_X, jnp.where(left, -self.consts.ACCELERATION_X, 0.0))  # Compute acceleration based on input
+
+        # x velocity
+        velocity_x = state.player_velocity_x  # Get current x velocity
+
+        moving_left_right_input = jnp.logical_and(right, (velocity_x < 0)) # If currently moving to the left and right input is detected
+        moving_right_left_input = jnp.logical_and(left, (velocity_x > 0)) # If currently moving to the right and left input is detected
+
+        direction_change = jnp.where(jnp.logical_or(moving_left_right_input, moving_right_left_input),True,False) # Detect direction change and reset velocity if needed
+        velocity_x = jnp.where(direction_change, 0.0, velocity_x)  # Reset velocity on direction change
+        velocity_x = velocity_x + accel_x  # Update velocity with acceleration
+        velocity_x = jnp.where(jnp.logical_not(jnp.logical_or(left, right)), velocity_x * (1.0 - self.consts.FRICTION_X), velocity_x)  # Slow down if no input
+        velocity_x = jnp.clip(velocity_x, -self.consts.MAX_VELOCITY_X, self.consts.MAX_VELOCITY_X)  # Clamp velocity within limits
+
+        # Global x position
+        new_player_x = state.player_x + velocity_x  # Compute next x position
+        velocity_x = jnp.where(new_player_x <= self.consts.PLAYER_BOUNDS[0][0], 0.0, velocity_x)  # Stop at left bound
+        player_x = jnp.clip(state.player_x + velocity_x, self.consts.PLAYER_BOUNDS[0][0], self.consts.PLAYER_BOUNDS[0][1])  # Final x position
+
+        # Calculate new y position
+        delta_y = jnp.where(up, -self.consts.MAX_VELOCITY_Y, jnp.where(down, self.consts.MAX_VELOCITY_Y, 0))
+        player_y = jnp.clip(state.player_y + delta_y, self.consts.PLAYER_BOUNDS[1][0], self.consts.PLAYER_BOUNDS[1][1])
+
+        return player_x, player_y, velocity_x
+
+
+    def player_missile_step(
+            self, state: CentipedeState, action: chex.Array
+    ) -> PlayerMissileState:
+
+        fire = jnp.isin(action, jnp.array([
+            Action.FIRE,
+            Action.UPFIRE,
+            Action.RIGHTFIRE,
+            Action.LEFTFIRE,
+            Action.DOWNFIRE,
+            Action.UPRIGHTFIRE,
+            Action.UPLEFTFIRE,
+            Action.DOWNRIGHTFIRE,
+            Action.DOWNLEFTFIRE
+        ]))
+
+        collision_with_mushrooms = True # TODO: Implement
+        kill_missile = jnp.logical_and(state.player_missile.y < 0, collision_with_mushrooms)
+        spawn = jnp.logical_and(jnp.logical_not(state.player_missile.is_alive), fire)
+
+        # New is_alive-status
+        new_is_alive = jnp.where(
+            spawn,  # on spawn
+            True,
+            jnp.where(kill_missile, False, state.player_missile.is_alive)  # on kill or keep
+        )
+        '''
+        for i in range(0, 304, 50):
+            jax.debug.print("Mushroom positions {i}–{j}: {chunk}",
+                            i=i,
+                            j=i + 50,
+                            chunk=state.mushroom_positions[i:i + 50])
+        '''
+        # Base x
+        base_x = jnp.where(spawn, state.player_x + 1, state.player_missile.x) # player x on spawn or keep x
+        # Base y
+        base_y = jnp.where(spawn, state.player_y + 5, state.player_missile.y) # player y on spawn or keey y
+
+        # move only when alive
+        new_y = jnp.where(
+            spawn,
+            state.player_y + 5 - self.consts.PLAYER_MISSILE_SPEED,
+            jnp.where(new_is_alive, base_y - self.consts.PLAYER_MISSILE_SPEED, 0.0)
+        )
+        new_x = jnp.where(
+            new_is_alive,
+            base_x,
+            0.0
+        )
+
+        return PlayerMissileState(x=new_x, y=new_y, is_alive=new_is_alive)
+
+    @partial(jax.jit, static_argnums=(0, ))
     def reset(self, key: jax.random.PRNGKey = jax.random.PRNGKey(time.time_ns() % (2**32))) -> tuple[CentipedeObservation, CentipedeState]:
         """Initialize game state"""
         reset_state = CentipedeState( # TODO: fill
-            player_x=jnp.array(PLAYER_START_X),
-            player_y=jnp.array(PLAYER_START_Y),
+            player_x=jnp.array(self.consts.PLAYER_START_X),
+            player_y=jnp.array(self.consts.PLAYER_START_Y),
             player_velocity_x=jnp.array(0),
             player_missile=PlayerMissileState(x=jnp.array(0), y=jnp.array(0), is_alive=jnp.array(False)),
-            mushroom_positions=initialize_mushroom_positions(),
-            centipede_position=spawn_centipede(wave=jnp.array(0)),
+            mushroom_positions=self.initialize_mushroom_positions(),
+            centipede_position=self.spawn_centipede(wave=jnp.array(0)),
             score=jnp.array(0),
             lives=jnp.array(3),
             step_counter=jnp.array(0),
@@ -595,11 +593,11 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     ) -> tuple[CentipedeObservation, CentipedeState, float, bool, CentipedeInfo]:
         # TODO: fill
 
-        new_player_x, new_player_y, new_velocity_x = player_step(state, action)
+        new_player_x, new_player_y, new_velocity_x = self.player_step(state, action)
 
-        new_player_missile_state = player_missile_step(state, action)
+        new_player_missile_state = self.player_missile_step(state, action)
 
-        missile_active, updated_mushrooms = check_missile_collision_with_mushrooms(
+        missile_active, updated_mushrooms = self.check_missile_collision_with_mushrooms(
             new_player_missile_state.x,
             new_player_missile_state.y,
             new_player_missile_state.is_alive,
@@ -623,10 +621,14 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         return obs, return_state, 0.0, False, info
 
-class CentipedeRenderer(AtraJaxisRenderer):
+class CentipedeRenderer(JAXGameRenderer):
+    def __init__(self, consts: CentipedeConstants = None):
+        super().__init__()
+        self.consts = consts or CentipedeConstants()
+
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state: CentipedeState):
-        raster = jnp.zeros((WIDTH, HEIGHT, 3))
+        raster = jnp.zeros((self.consts.HEIGHT, self.consts.WIDTH, 3))
 
         def recolor_sprite(  # TODO: recolor sprites only when colors change (new wave)
                 sprite: jnp.ndarray,
@@ -667,14 +669,14 @@ class CentipedeRenderer(AtraJaxisRenderer):
                 return recolored_sprite
 
         ### -------- Render mushrooms --------
-        frame_mushroom = aj.get_sprite_frame(SPRITE_MUSHROOM, 0)
+        frame_mushroom = jru.get_sprite_frame(SPRITE_MUSHROOM, 0)
         frame_mushroom = recolor_sprite(frame_mushroom, jnp.array([92, 186, 92]))
 
         def render_mushrooms(i, raster_base):
             should_render = state.mushroom_positions[i][3] > 0
             return jax.lax.cond(
                 should_render,
-                lambda r: aj.render_at(
+                lambda r: jru.render_at(
                     r,
                     state.mushroom_positions[i][0],
                     state.mushroom_positions[i][1],
@@ -684,17 +686,17 @@ class CentipedeRenderer(AtraJaxisRenderer):
                 raster_base,
             )
 
-        raster = jax.lax.fori_loop(0, MAX_MUSHROOMS, render_mushrooms, raster)
+        raster = jax.lax.fori_loop(0, self.consts.MAX_MUSHROOMS, render_mushrooms, raster)
 
         ### -------- Render centipede --------
-        frame_centipede = aj.get_sprite_frame(SPRITE_CENTIPEDE, 0)
+        frame_centipede = jru.get_sprite_frame(SPRITE_CENTIPEDE, 0)
         frame_centipede = recolor_sprite(frame_centipede, jnp.array([92, 186, 92]))
 
         def render_centipede_segment(i, raster_base):
             should_render = state.centipede_position[i][2] != 0
             return jax.lax.cond(
                 should_render,
-                lambda r: aj.render_at(
+                lambda r: jru.render_at(
                     r,
                     state.centipede_position[i][0],
                     state.centipede_position[i][1],
@@ -704,12 +706,12 @@ class CentipedeRenderer(AtraJaxisRenderer):
                 raster_base
             )
 
-        raster = jax.lax.fori_loop(0, MAX_SEGMENTS, render_centipede_segment, raster)
+        raster = jax.lax.fori_loop(0, self.consts.MAX_SEGMENTS, render_centipede_segment, raster)
 
         ### -------- Render player --------
-        frame_player = aj.get_sprite_frame(SPRITE_PLAYER, 0)
+        frame_player = jru.get_sprite_frame(SPRITE_PLAYER, 0)
         frame_player = recolor_sprite(frame_player, jnp.array([92, 186, 92]))
-        raster = aj.render_at(
+        raster = jru.render_at(
             raster,
             state.player_x,
             state.player_y,
@@ -717,11 +719,11 @@ class CentipedeRenderer(AtraJaxisRenderer):
         )
 
         ### -------- Render player missile --------
-        frame_player_missile = aj.get_sprite_frame(SPRITE_PLAYER_MISSILE, 0)
+        frame_player_missile = jru.get_sprite_frame(SPRITE_PLAYER_MISSILE, 0)
         frame_player_missile = recolor_sprite(frame_player_missile, jnp.array([92, 186, 92]))
         raster = jnp.where(
             state.player_missile.is_alive,
-            aj.render_at(
+            jru.render_at(
                 raster,
                 state.player_missile.x,
                 state.player_missile.y,
@@ -731,9 +733,9 @@ class CentipedeRenderer(AtraJaxisRenderer):
         )
 
         ### -------- Render bottom border --------
-        frame_bottom_border = aj.get_sprite_frame(SPRITE_BOTTOM_BORDER, 0)
+        frame_bottom_border = jru.get_sprite_frame(SPRITE_BOTTOM_BORDER, 0)
         frame_bottom_border = recolor_sprite(frame_bottom_border, jnp.array([92, 186, 92]))
-        raster = aj.render_at(
+        raster = jru.render_at(
             raster,
             16,
             183,
@@ -741,14 +743,14 @@ class CentipedeRenderer(AtraJaxisRenderer):
         )
 
         ### -------- Render score -------- TODO: make colorable, dynamic digit count
-        score_array = aj.int_to_digits(state.score, max_digits=6)
+        score_array = jru.int_to_digits(state.score, max_digits=6)
         # first_nonzero = jnp.argmax(score_array != 0)
         # _, score_array = jnp.split(score_array, first_nonzero - 1)
-        raster = aj.render_label(raster, 100, 187, score_array, DIGITS, spacing=8)
+        raster = jru.render_label(raster, 100, 187, score_array, DIGITS, spacing=8)
 
         ### -------- Render live indicator --------
         life_indicator = recolor_sprite(LIFE_INDICATOR, jnp.array([92, 186, 92]))
-        raster = render_indicator(raster, 16, 187, state.lives - 1, life_indicator, spacing=8)
+        raster = jru.render_indicator(raster, 16, 187, state.lives - 1, life_indicator, spacing=8)
 
         return raster
 
