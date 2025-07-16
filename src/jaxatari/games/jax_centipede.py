@@ -752,8 +752,10 @@ class CentipedeRenderer(AtraJaxisRenderer):
 
         return raster
 
+"""
+
 def get_human_action() -> chex.Array:
-    """Get human action from keyboard with support for diagonal movement and combined fire"""
+    Get human action from keyboard with support for diagonal movement and combined fire
     keys = pygame.key.get_pressed()
     up = keys[pygame.K_UP] or keys[pygame.K_w]
     down = keys[pygame.K_DOWN] or keys[pygame.K_s]
@@ -859,3 +861,5 @@ if __name__ == "__main__":
         clock.tick(60)
 
     pygame.quit()
+    
+"""
