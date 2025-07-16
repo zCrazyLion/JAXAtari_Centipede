@@ -57,7 +57,9 @@ class AtariWrapper(JaxatariWrapper):
 
     @functools.partial(jax.jit, static_argnums=(0,))
     def reset(self, key: chex.PRNGKey) -> Tuple[chex.Array, EnvState]:
-        obs, env_state = self._env.reset(key)
+        # split key into one key for the env and one for the wrapper
+        env_key, wrapper_key = jax.random.split(key)
+        obs, env_state = self._env.reset(env_key)
         step = jnp.array(0)
         prev_action = jnp.array(0)
         if self.first_fire:
@@ -67,7 +69,7 @@ class AtariWrapper(JaxatariWrapper):
         # Create multiple observations directly
         obs = jax.tree.map(lambda x: jnp.stack([x] * self.frame_stack_size), obs)
 
-        return obs, AtariState(env_state, key, step, prev_action, obs)
+        return obs, AtariState(env_state, wrapper_key, step, prev_action, obs)
 
     @functools.partial(jax.jit, static_argnums=(0,))
     def step(self, state: AtariState, action: Union[int, float]) -> Tuple[Tuple[chex.Array, chex.Array], AtariState, float, bool, Dict[Any, Any]]:
