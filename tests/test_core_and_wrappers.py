@@ -5,6 +5,7 @@ import pytest
 import jaxatari
 from jaxatari.environment import EnvInfo, EnvObs, EnvState
 from jaxatari.wrappers import (
+    NormalizeObservationWrapper,
     ObjectCentricWrapper,
     PixelObsWrapper,
     AtariWrapper,
@@ -543,6 +544,181 @@ def test_flatten_observation_wrapper_space_structure():
             obs_leaf
         ), f"Observation leaf with shape {obs_leaf.shape} not contained in space with shape {space_leaf.shape}"
 
+
+def test_normalize_observation_wrapper():
+    """Tests that NormalizeObservationWrapper correctly normalizes observations for various base wrappers."""
+    key = jax.random.PRNGKey(0)
+
+    # Define the base environment stack that all tests will use
+    base_env_fn = lambda: AtariWrapper(jaxatari.make("pong"), frame_stack_size=4, first_fire=True)
+
+    # Define configurations to test. Each is a tuple of: (WrapperFunction, description)
+    configs = [
+        (PixelObsWrapper, "PixelObs"),
+        (ObjectCentricWrapper, "ObjectCentric"),
+        (PixelAndObjectCentricWrapper, "PixelAndObjectCentric"),
+        (lambda env: FlattenObservationWrapper(PixelObsWrapper(env)), "Flattened PixelObs"),
+        (lambda env: FlattenObservationWrapper(ObjectCentricWrapper(env)), "Flattened ObjectCentric"),
+        (lambda env: FlattenObservationWrapper(PixelAndObjectCentricWrapper(env)), "Flattened PixelAndObjectCentric"),
+    ]
+
+    for wrapper_fn, desc in configs:
+        for to_neg_one in [False, True]:
+            with_neg_one_str = "to [-1, 1]" if to_neg_one else "to [0, 1]"
+            test_name = f"Config: {desc} {with_neg_one_str}"
+
+            # --- Setup Env ---
+            unwrapped_env = wrapper_fn(base_env_fn())
+            env = NormalizeObservationWrapper(unwrapped_env, to_neg_one=to_neg_one)
+
+            # --- Test Space ---
+            space = env.observation_space()
+            expected_low = -1.0 if to_neg_one else 0.0
+
+            def check_space_leaf(s):
+                assert isinstance(s, spaces.Box), f"[{test_name}] Leaf space should be Box, but got {type(s)}"
+                assert s.dtype == jnp.float32, f"[{test_name}] Dtype should be float32, got {s.dtype}"
+                assert jnp.all(s.low == expected_low), f"[{test_name}] Space low bound is incorrect"
+                assert jnp.all(s.high == 1.0), f"[{test_name}] Space high bound is incorrect"
+
+            jax.tree.map(check_space_leaf, space, is_leaf=lambda x: isinstance(x, spaces.Box))
+
+            # --- Test Observation ---
+            obs, state = env.reset(key)
+            # Use a non-NOOP action to ensure the game state changes
+            obs_step, _, _, _, _ = env.step(state, 2)
+
+            def check_obs_leaf(o):
+                # Check if observation is within the defined bounds
+                assert jnp.all(o >= expected_low - 1e-6), f"[{test_name}] Obs values are below lower bound"
+                assert jnp.all(o <= 1.0 + 1e-6), f"[{test_name}] Obs values are above upper bound"
+                # Check that normalization did something (i.e., not all values are constant)
+                # The std dev should be greater than zero for any meaningful game frame.
+                assert jnp.std(o) > 1e-6, f"[{test_name}] Std of observation is zero, normalization might have failed"
+
+            jax.tree.map(check_obs_leaf, obs)
+            jax.tree.map(check_obs_leaf, obs_step)
+
+            # --- Test Containment ---
+            assert space.contains(obs), f"[{test_name}] Reset observation is not contained in space"
+            assert space.contains(obs_step), f"[{test_name}] Step observation is not contained in space"
+
+
+def test_atari_wrapper_features_and_pixel_preprocessing():
+    """Tests max-pooling, resizing, and grayscaling features."""
+    key = jax.random.PRNGKey(0)
+    
+    # --- Test 1: AtariWrapper Max-Pooling and Sticky Actions ---
+    class FakeEnv:
+        def __init__(self):
+            self.state = 0
+            self._observation_space = spaces.Dict({"features": spaces.Box(low=0, high=255, shape=(2,2), dtype=jnp.uint8)})
+        
+        def observation_space(self) -> spaces.Space:
+            return self._observation_space
+
+        def reset(self, key):
+            self.state = 0
+            obs = jax.tree.map(lambda s: jnp.zeros(s.shape, s.dtype), self._observation_space)
+            return obs, self.state
+        
+        def step(self, state, action):
+            state += 1
+            obs = jax.tree.map(lambda s: (jnp.ones(s.shape, s.dtype) * state), self._observation_space)
+            return obs, state, 1.0, False, {"all_rewards": jnp.array([1.0])}
+        
+        def render(self, state):
+             return jnp.zeros((210, 160, 3), dtype=jnp.uint8)
+
+    base_env = AtariWrapper(FakeEnv(), frame_skip=4, max_pooling=True, first_fire=False, episodic_life=False, sticky_actions=True)
+    _, state = base_env.reset(key)
+    obs, state, _, _, _ = base_env.step(state, 0)
+    
+    expected_max_pooled_frame = jnp.ones((2,2), dtype=jnp.uint8) * 4
+    
+    assert jnp.array_equal(obs.spaces['features'][-1], expected_max_pooled_frame)
+
+    # --- Test 2: PixelObsWrapper Preprocessing ---
+    RESIZE_SHAPE = (84, 84)
+    STACK_SIZE = 4
+    atari_env = AtariWrapper(jaxatari.make("pong"), frame_stack_size=STACK_SIZE)
+    pixel_env = PixelObsWrapper(atari_env, do_pixel_resize=True, pixel_resize_shape=RESIZE_SHAPE, grayscale=True)
+    
+    space = pixel_env.observation_space()
+    expected_shape = (STACK_SIZE, RESIZE_SHAPE[0], RESIZE_SHAPE[1], 1)
+    assert space.shape == expected_shape
+    assert space.dtype == jnp.uint8
+    
+    obs, state = pixel_env.reset(key)
+    assert obs.shape == expected_shape
+
+    # --- Test 3: PixelAndObjectCentricWrapper Preprocessing ---
+    atari_env_2 = AtariWrapper(jaxatari.make("pong"), frame_stack_size=STACK_SIZE)
+    mixed_env = PixelAndObjectCentricWrapper(atari_env_2, do_pixel_resize=True, pixel_resize_shape=RESIZE_SHAPE, grayscale=True)
+
+    pix_space, obj_space = mixed_env.observation_space().spaces
+    assert pix_space.shape == expected_shape
+    
+    (pix_obs, obj_obs), state = mixed_env.reset(key)
+    assert pix_obs.shape == expected_shape
+    assert obj_obs.ndim == 2
+
+
+def test_vmap_and_jit_compatibility():
+    """
+    Sanity check to ensure a fully-featured environment is compatible with
+    both vmap (for parallelization) and jit (for compilation).
+    """
+    num_envs = 4
+    key = jax.random.PRNGKey(42)
+
+    def make_env():
+        env = jaxatari.make("pong")
+        env = AtariWrapper(
+            env,
+            sticky_actions=True,
+            noop_reset=30,
+            max_pooling=True,
+            clip_reward=True,
+            episodic_life=True,
+            first_fire=True,
+        )
+        env = PixelAndObjectCentricWrapper(
+            env,
+            do_pixel_resize=True,
+            grayscale=True,
+            pixel_resize_shape=(84, 84)
+        )
+        env = NormalizeObservationWrapper(env, to_neg_one=True)
+        return env
+
+    env = make_env()
+    vmapped_reset = jax.vmap(env.reset)
+    vmapped_step = jax.vmap(env.step)
+    jit_vmapped_step = jax.jit(vmapped_step)
+
+    keys = jax.random.split(key, num_envs)
+    obs, states = vmapped_reset(keys)
+    
+    pix_obs, obj_obs = obs
+    assert pix_obs.shape[0] == num_envs
+    assert obj_obs.shape[0] == num_envs
+    
+    # FIX: Access the state through the full nested path
+    assert states.atari_state.env_state.ball_y.shape[0] == num_envs
+
+    action_keys = jax.random.split(keys[0], num_envs)
+    actions = jax.vmap(env.action_space().sample)(action_keys)
+    assert actions.shape == (num_envs,)
+
+    new_obs, new_states, rewards, dones, infos = jit_vmapped_step(states, actions)
+    
+    new_pix_obs, new_obj_obs = new_obs
+    assert new_pix_obs.shape[0] == num_envs
+    assert new_obj_obs.shape[0] == num_envs
+    assert new_states.atari_state.env_state.ball_y.shape[0] == num_envs
+    assert rewards.shape == (num_envs,)
+    assert dones.shape == (num_envs,)
 
 if __name__ == "__main__":
     pytest.main([__file__]) 
