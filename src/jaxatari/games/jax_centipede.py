@@ -36,10 +36,10 @@ class CentipedeConstants:
     FRICTION_X = 1 # Default: 1 | 1 = 100% -> player stops immediately, 0 = 0% -> player does not stop, 0.5 = 50 % -> player loses 50% of its velocity every frame
     MAX_VELOCITY_Y = 2.5 # Default: 2.5 | Maximum speed in y direction (pixels per frame)
 
-    ## -------- Player missile constants --------
-    PLAYER_MISSILE_SPEED = 10
+    ## -------- Player spell constants --------
+    PLAYER_SPELL_SPEED = 10
 
-    PLAYER_MISSILE_SIZE = (0, 8) # (0, 8) because of collision logic from missile
+    PLAYER_SPELL_SIZE = (0, 8) # (0, 8) because of collision logic from spell
 
     ## -------- Starting Pattern (X -> placed, O -> not placed) --------
     MUSHROOM_STARTING_PATTERN = [
@@ -78,18 +78,19 @@ class CentipedeConstants:
     ## -------- Centipede constants --------
     MAX_SEGMENTS = 9
     SEGMENT_SIZE = (4, 6)
-
-# -------- States --------
-class PlayerMissileState(NamedTuple):
+"""
+# -------- States -------- 
+class PlayerSpellState(NamedTuple):
     x: jnp.ndarray
     y: jnp.ndarray
     is_alive: jnp.ndarray
+    """
 
 class CentipedeState(NamedTuple):
     player_x: chex.Array
     player_y: chex.Array
     player_velocity_x: chex.Array
-    player_missile: PlayerMissileState
+    player_spell: chex.Array  # (1, 3) array for player spell: x, y, is_alive
     mushroom_positions: chex.Array # (304, 5) array for mushroom positions -> mushroom_positions need 5 entries per mushroom: 1. x value 2. y value 3. is shown 4. lives (1, 2 or 3) 5. is poisoned -> there are also 304 mushrooms in total
     centipede_position: chex.Array # (9, 4) must contain position, direction and status(head)
     # spider_position: chex.Array # (1, 3) array for spider (x, y, direction)
@@ -139,7 +140,7 @@ def load_sprites():
     MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 
     player = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/player/player.npy"))
-    player_missile = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/player_missile/player_missile.npy"))
+    player_spell = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/player_spell/player_spell.npy"))
     mushroom = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/mushrooms/mushroom.npy"))
     centipede = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/centipede/segment.npy"))
     spider1 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/1.npy"))
@@ -152,7 +153,7 @@ def load_sprites():
     spider_sprites, _ = jru.pad_to_match([spider1, spider2, spider3, spider4])
 
     SPRITE_PLAYER = jnp.expand_dims(player, 0)
-    SPRITE_PLAYER_MISSILE = jnp.expand_dims(player_missile, 0)
+    SPRITE_PLAYER_spell = jnp.expand_dims(player_spell, 0)
 
     SPRITE_CENTIPEDE = jnp.expand_dims(centipede, 0)
     SPRITE_FLEA = jnp.expand_dims(flea1, 0)
@@ -179,7 +180,7 @@ def load_sprites():
 
     return (
         SPRITE_PLAYER,
-        SPRITE_PLAYER_MISSILE,
+        SPRITE_PLAYER_spell,
         SPRITE_MUSHROOM,
         SPRITE_CENTIPEDE,
         SPRITE_SPIDER,
@@ -191,7 +192,7 @@ def load_sprites():
 
 (
     SPRITE_PLAYER,
-    SPRITE_PLAYER_MISSILE,
+    SPRITE_PLAYER_spell,
     SPRITE_MUSHROOM,
     SPRITE_CENTIPEDE,
     SPRITE_SPIDER,
@@ -359,11 +360,11 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return jnp.logical_and(horizontal_overlap, vertical_overlap)
 
     @partial(jax.jit, static_argnums=(0, ))
-    def check_missile_collision_with_mushrooms(
+    def check_spell_collision_with_mushrooms(
         self,
-        missile_pos_x: chex.Array,
-        missile_pos_y: chex.Array,
-        missile_is_alive: chex.Array,
+        spell_pos_x: chex.Array,
+        spell_pos_y: chex.Array,
+        spell_is_alive: chex.Array,
         mushroom_positions: chex.Array
     ) -> tuple[chex.Array, chex.Array]:
         def check_single_mushroom(is_alive, mushroom):
@@ -376,8 +377,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 mush_hp = mushroom[3]
 
                 collision = self.check_collision_single(
-                    pos1=jnp.array([missile_pos_x, missile_pos_y + self.consts.MUSHROOM_HITBOX_Y_OFFSET]),
-                    size1=self.consts.PLAYER_MISSILE_SIZE,
+                    pos1=jnp.array([spell_pos_x, spell_pos_y + self.consts.MUSHROOM_HITBOX_Y_OFFSET]),
+                    size1=self.consts.PLAYER_SPELL_SIZE,
                     pos2=mush_pos,
                     size2=self.consts.MUSHROOM_SIZE
                 )
@@ -392,13 +393,14 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
                 return jax.lax.cond(collision, check_hp, lambda: (is_alive, mushroom))
 
-            return jax.lax.cond(is_alive, check_hit, no_hit)
+            return jax.lax.cond(is_alive != 0, check_hit, no_hit)
 
-        missile_active, updated_mushrooms = jax.vmap(
-            lambda m: check_single_mushroom(missile_is_alive, m)
+        spell_active, updated_mushrooms = jax.vmap(
+            lambda m: check_single_mushroom(spell_is_alive, m)
         )(mushroom_positions)
 
-        return jnp.invert(jnp.any(jnp.invert(missile_active))), updated_mushrooms
+        spell_active = jnp.invert(jnp.any(jnp.invert(spell_active)))
+        return jnp.where(spell_active, 1, 0), updated_mushrooms
 
     ## -------- Mushroom Spawn Logic --------
     @partial(jax.jit, static_argnums=(0, ))
@@ -515,9 +517,9 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return player_x, player_y, velocity_x
 
 
-    def player_missile_step(
+    def player_spell_step(
             self, state: CentipedeState, action: chex.Array
-    ) -> PlayerMissileState:
+    ) -> jnp.array:
 
         fire = jnp.isin(action, jnp.array([
             Action.FIRE,
@@ -532,14 +534,14 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         ]))
 
         collision_with_mushrooms = True # TODO: Implement
-        kill_missile = jnp.logical_and(state.player_missile.y < 0, collision_with_mushrooms)
-        spawn = jnp.logical_and(jnp.logical_not(state.player_missile.is_alive), fire)
+        kill_spell = jnp.logical_and(state.player_spell[1] < 0, collision_with_mushrooms)
+        spawn = jnp.logical_and(jnp.logical_not(state.player_spell[2] != 0), fire)
 
         # New is_alive-status
         new_is_alive = jnp.where(
             spawn,  # on spawn
             True,
-            jnp.where(kill_missile, False, state.player_missile.is_alive)  # on kill or keep
+            jnp.where(kill_spell, False, state.player_spell[2] != 0)  # on kill or keep
         )
         '''
         for i in range(0, 304, 50):
@@ -549,15 +551,15 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                             chunk=state.mushroom_positions[i:i + 50])
         '''
         # Base x
-        base_x = jnp.where(spawn, state.player_x + 1, state.player_missile.x) # player x on spawn or keep x
+        base_x = jnp.where(spawn, state.player_x + 1, state.player_spell[0]) # player x on spawn or keep x
         # Base y
-        base_y = jnp.where(spawn, state.player_y + 5, state.player_missile.y) # player y on spawn or keey y
+        base_y = jnp.where(spawn, state.player_y + 5, state.player_spell[1]) # player y on spawn or keey y
 
         # move only when alive
         new_y = jnp.where(
             spawn,
-            state.player_y + 5 - self.consts.PLAYER_MISSILE_SPEED,
-            jnp.where(new_is_alive, base_y - self.consts.PLAYER_MISSILE_SPEED, 0.0)
+            state.player_y + 5 - self.consts.PLAYER_SPELL_SPEED,
+            jnp.where(new_is_alive, base_y - self.consts.PLAYER_SPELL_SPEED, 0.0)
         )
         new_x = jnp.where(
             new_is_alive,
@@ -565,7 +567,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             0.0
         )
 
-        return PlayerMissileState(x=new_x, y=new_y, is_alive=new_is_alive)
+        return jnp.array([new_x, new_y, new_is_alive])
 
     @partial(jax.jit, static_argnums=(0, ))
     def reset(self, key: jax.random.PRNGKey = jax.random.PRNGKey(time.time_ns() % (2**32))) -> tuple[CentipedeObservation, CentipedeState]:
@@ -574,7 +576,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             player_x=jnp.array(self.consts.PLAYER_START_X),
             player_y=jnp.array(self.consts.PLAYER_START_Y),
             player_velocity_x=jnp.array(0),
-            player_missile=PlayerMissileState(x=jnp.array(0), y=jnp.array(0), is_alive=jnp.array(False)),
+            player_spell=jnp.zeros(3),
             mushroom_positions=self.initialize_mushroom_positions(),
             centipede_position=self.spawn_centipede(wave=jnp.array(0)),
             score=jnp.array(0),
@@ -595,22 +597,22 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         new_player_x, new_player_y, new_velocity_x = self.player_step(state, action)
 
-        new_player_missile_state = self.player_missile_step(state, action)
+        new_player_spell_state = self.player_spell_step(state, action)
 
-        missile_active, updated_mushrooms = self.check_missile_collision_with_mushrooms(
-            new_player_missile_state.x,
-            new_player_missile_state.y,
-            new_player_missile_state.is_alive,
+        spell_active, updated_mushrooms = self.check_spell_collision_with_mushrooms(
+            new_player_spell_state[0],
+            new_player_spell_state[1],
+            new_player_spell_state[2] != 0,
             state.mushroom_positions,
         )
 
-        new_player_missile_state = new_player_missile_state._replace(is_alive=missile_active)
+        new_player_spell_state = new_player_spell_state.at[2].set(spell_active) #_replace(is_alive=spell_active)
 
         return_state = state._replace(
             player_x=new_player_x,
             player_y=new_player_y,
             player_velocity_x=new_velocity_x,
-            player_missile=new_player_missile_state,
+            player_spell=new_player_spell_state,
             mushroom_positions=updated_mushrooms,
             step_counter=state.step_counter + 1
         )
@@ -718,16 +720,16 @@ class CentipedeRenderer(JAXGameRenderer):
             frame_player,
         )
 
-        ### -------- Render player missile --------
-        frame_player_missile = jru.get_sprite_frame(SPRITE_PLAYER_MISSILE, 0)
-        frame_player_missile = recolor_sprite(frame_player_missile, jnp.array([92, 186, 92]))
+        ### -------- Render player spell --------
+        frame_player_spell = jru.get_sprite_frame(SPRITE_PLAYER_spell, 0)
+        frame_player_spell = recolor_sprite(frame_player_spell, jnp.array([92, 186, 92]))
         raster = jnp.where(
-            state.player_missile.is_alive,
+            state.player_spell[2] != 0,
             jru.render_at(
                 raster,
-                state.player_missile.x,
-                state.player_missile.y,
-                frame_player_missile,
+                state.player_spell[0],
+                state.player_spell[1],
+                frame_player_spell,
             ),
         raster
         )
