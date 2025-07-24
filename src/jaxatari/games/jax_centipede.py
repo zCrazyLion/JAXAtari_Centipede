@@ -92,7 +92,7 @@ class CentipedeState(NamedTuple):
     player_velocity_x: chex.Array
     player_spell: chex.Array  # (1, 3) array for player spell: x, y, is_alive
     mushroom_positions: chex.Array # (304, 5) array for mushroom positions -> mushroom_positions need 5 entries per mushroom: 1. x value 2. y value 3. is shown 4. lives (1, 2 or 3) 5. is poisoned -> there are also 304 mushrooms in total
-    centipede_position: chex.Array # (9, 4) must contain position, direction and status(head)
+    centipede_position: chex.Array # (9, 4) must contain position, direction and status(head): x, y, speed, is_head, (upward_direction)
     # spider_position: chex.Array # (1, 3) array for spider (x, y, direction)
     # flea_position: chex.Array # (1, 3) array for flea, 2 lives, speed doubles after 1 hit
     # scorpion_position: chex.Array # (1, ?) array for scorpion, only moves from right to left?: (x, y)
@@ -370,8 +370,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             moving_left = segment[2] < 0
 
             def step_horizontal():
-                speed = jnp.mod(jnp.abs(segment[2]), 10) * 0.5  # is 10 higher when head
-                new_x = segment[0] + jnp.where(moving_left, speed * -1, speed)
+                speed = segment[2] * 0.5
+                new_x = segment[0] + speed
                 return jnp.array([new_x, segment[1],segment[2], segment[3]])
 
             def step_vertical():
@@ -407,10 +407,11 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
 
     @partial(jax.jit, static_argnums=(0, ))
-    def check_spell_mushroom_collision(
+    def check_spell_mushroom_collision( # TODO: add score handling
         self,
         spell_state: jnp.ndarray,
         mushroom_positions: jnp.ndarray,
+        score: jnp.ndarray,
     ) -> tuple[chex.Array, chex.Array]:
         spell_pos_x = spell_state[0]
         spell_pos_y = spell_state[1]
@@ -449,6 +450,49 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         spell_active = jnp.invert(jnp.any(jnp.invert(spell_active)))
         return spell_state.at[2].set(jnp.where(spell_active, 1, 0)), updated_mushrooms
+
+    @partial(jax.jit, static_argnums=(0,))
+    def check_centipede_spell_collision( # TODO: add score handling
+        self,
+        spell_state: jnp.ndarray,
+        centipede_position: jnp.ndarray,
+        mushroom_positions: jnp.ndarray,
+        score: jnp.ndarray,
+    ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        spell_active = spell_state[2] != 0
+
+        def no_hit():
+            return jnp.repeat(spell_active, 9), centipede_position, jnp.repeat(score, 9)
+
+        def check_single_segment(is_alive, seg):
+
+            seg_pos = seg[:2]
+
+            collision = self.check_collision_single(
+                pos1=jnp.array([spell_state[0], spell_state[1]]),
+                size1=self.consts.PLAYER_SPELL_SIZE,
+                pos2=seg_pos,
+                size2=self.consts.MUSHROOM_SIZE,
+            )
+
+            def on_hit(): # TODO: spawn mushroom
+                return False, jnp.zeros_like(seg), score + jnp.where(seg[3] == 2, 100, 10)
+
+            return jax.lax.cond(collision, on_hit, lambda: (is_alive, seg, score))
+
+        check = jax.vmap(lambda s: check_single_segment(spell_active, s), in_axes=0)
+
+        (
+            spell_active,
+            new_centipede_position,
+            new_score
+         ) = jax.lax.cond(spell_active != 0, lambda: check(centipede_position), no_hit)
+        spell_active = jnp.invert(jnp.any(jnp.invert(spell_active)))
+
+        new_score = jnp.max(new_score)
+
+        return spell_state.at[2].set(jnp.where(spell_active, 1, 0)), new_centipede_position, mushroom_positions, new_score
+
 
     ## -------- Mushroom Spawn Logic --------
     @partial(jax.jit, static_argnums=(0, ))
@@ -492,7 +536,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             return segments.at[i].set(
                 jnp.where(
                     is_head,
-                    jnp.array([base_x + 4*i, base_y, -11, 1]),
+                    jnp.array([base_x + 4*i, base_y, -1, 2]),
                     jnp.array([base_x + 4*i, base_y, -1, 1]),
                 )
             )
@@ -650,9 +694,22 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         new_player_spell_state, updated_mushrooms = self.check_spell_mushroom_collision(
             new_player_spell_state,
             state.mushroom_positions,
+            state.score,
         )
 
-        new_centipede_position = self.centipede_step(state.centipede_position, state.mushroom_positions)
+        (
+            new_player_spell_state,
+            new_centipede_position,
+            updated_mushrooms,
+            new_score
+        ) = self.check_centipede_spell_collision(
+            new_player_spell_state,
+            state.centipede_position,
+            updated_mushrooms,
+            state.score
+        )
+
+        new_centipede_position = self.centipede_step(new_centipede_position, state.mushroom_positions)
 
         return_state = state._replace(
             player_x=new_player_x,
@@ -661,6 +718,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             player_spell=new_player_spell_state,
             mushroom_positions=updated_mushrooms,
             centipede_position=new_centipede_position,
+            score=new_score,
             step_counter=state.step_counter + 1
         )
 
@@ -743,7 +801,7 @@ class CentipedeRenderer(JAXGameRenderer):
         frame_centipede = recolor_sprite(frame_centipede, jnp.array([92, 186, 92]))
 
         def render_centipede_segment(i, raster_base):
-            should_render = state.centipede_position[i][2] != 0
+            should_render = state.centipede_position[i][3] != 0
             return jax.lax.cond(
                 should_render,
                 lambda r: jru.render_at(
