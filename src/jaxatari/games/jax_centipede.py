@@ -359,16 +359,64 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         return jnp.logical_and(horizontal_overlap, vertical_overlap)
 
-    @partial(jax.jit, static_argnums=(0, ))
-    def check_spell_collision_with_mushrooms(
+    @partial(jax.jit, static_argnums=(0,)) # TODO: fix glitching through diagonally placed mushrooms
+    def centipede_step(
         self,
-        spell_pos_x: chex.Array,
-        spell_pos_y: chex.Array,
-        spell_is_alive: chex.Array,
-        mushroom_positions: chex.Array
-    ) -> tuple[chex.Array, chex.Array]:
-        def check_single_mushroom(is_alive, mushroom):
+        centipede_state: jnp.ndarray,
+        mushrooms_positions: jnp.ndarray,
+    ) -> jnp.ndarray:
 
+        def move_segment(segment):
+            moving_left = segment[2] < 0
+
+            def step_horizontal():
+                speed = jnp.mod(jnp.abs(segment[2]), 10) * 0.5  # is 10 higher when head
+                new_x = segment[0] + jnp.where(moving_left, speed * -1, speed)
+                return jnp.array([new_x, segment[1],segment[2], segment[3]])
+
+            def step_vertical():
+                moving_down = True  # TODO: change to movement of bottom of screen
+                y_dif = jnp.array(jnp.where(moving_down, self.consts.MUSHROOM_Y_SPACING, -self.consts.MUSHROOM_Y_SPACING))
+                return jnp.array([segment[0], segment[1] + y_dif, -segment[2], segment[3]])
+
+            def check_mushroom_collision(mushroom):
+                collision = self.check_collision_single(
+                    pos1=jnp.array([segment[0], segment[1]]),
+                    size1=self.consts.SEGMENT_SIZE,
+                    pos2=mushroom[:2],
+                    size2=self.consts.MUSHROOM_SIZE
+                )
+
+                return jnp.where(mushroom[3] > 0, collision, False)
+
+            collision = jax.vmap(check_mushroom_collision)(mushrooms_positions)
+            collision = jnp.any(collision)
+
+            move_down = jnp.logical_or(
+                collision,
+                jnp.logical_or(
+                    jnp.logical_and(jnp.less_equal(segment[0], self.consts.PLAYER_BOUNDS[0][0]), moving_left),
+                    jnp.logical_and(jnp.greater_equal(segment[0], self.consts.PLAYER_BOUNDS[0][1]), jnp.invert(moving_left))
+                )
+            )
+
+            return jax.lax.cond(move_down, step_vertical, step_horizontal)
+
+        new_state = jax.vmap(move_segment)(centipede_state)
+        return new_state
+
+
+    @partial(jax.jit, static_argnums=(0, ))
+    def check_spell_mushroom_collision(
+        self,
+        spell_state: jnp.ndarray,
+        mushroom_positions: jnp.ndarray,
+    ) -> tuple[chex.Array, chex.Array]:
+        spell_pos_x = spell_state[0]
+        spell_pos_y = spell_state[1]
+        spell_is_alive = spell_state[2] != 0
+
+        def check_single_mushroom(is_alive, mushroom):
             def no_hit():
                 return is_alive, mushroom
 
@@ -400,7 +448,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         )(mushroom_positions)
 
         spell_active = jnp.invert(jnp.any(jnp.invert(spell_active)))
-        return jnp.where(spell_active, 1, 0), updated_mushrooms
+        return spell_state.at[2].set(jnp.where(spell_active, 1, 0)), updated_mushrooms
 
     ## -------- Mushroom Spawn Logic --------
     @partial(jax.jit, static_argnums=(0, ))
@@ -434,7 +482,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return jnp.stack([x, y, is_poisoned, lives], axis=1)
 
     @partial(jax.jit, static_argnums=(0, ))
-    def spawn_centipede(self, wave: jnp.ndarray) -> chex.Array:
+    def initialize_centipede_positions(self, wave: jnp.ndarray) -> chex.Array:
         base_x = 79
         base_y = 5
         initial_positions = jnp.zeros((self.consts.MAX_SEGMENTS, 4))
@@ -444,8 +492,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             return segments.at[i].set(
                 jnp.where(
                     is_head,
-                    jnp.array([base_x + 4*i, base_y, 1, 11]),
-                    jnp.array([base_x + 4*i, base_y, 1, 1]),
+                    jnp.array([base_x + 4*i, base_y, -11, 1]),
+                    jnp.array([base_x + 4*i, base_y, -1, 1]),
                 )
             )
 
@@ -578,7 +626,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             player_velocity_x=jnp.array(0),
             player_spell=jnp.zeros(3),
             mushroom_positions=self.initialize_mushroom_positions(),
-            centipede_position=self.spawn_centipede(wave=jnp.array(0)),
+            centipede_position=self.initialize_centipede_positions(wave=jnp.array(0)),
             score=jnp.array(0),
             lives=jnp.array(3),
             step_counter=jnp.array(0),
@@ -599,14 +647,12 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         new_player_spell_state = self.player_spell_step(state, action)
 
-        spell_active, updated_mushrooms = self.check_spell_collision_with_mushrooms(
-            new_player_spell_state[0],
-            new_player_spell_state[1],
-            new_player_spell_state[2] != 0,
+        new_player_spell_state, updated_mushrooms = self.check_spell_mushroom_collision(
+            new_player_spell_state,
             state.mushroom_positions,
         )
 
-        new_player_spell_state = new_player_spell_state.at[2].set(spell_active) #_replace(is_alive=spell_active)
+        new_centipede_position = self.centipede_step(state.centipede_position, state.mushroom_positions)
 
         return_state = state._replace(
             player_x=new_player_x,
@@ -614,6 +660,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             player_velocity_x=new_velocity_x,
             player_spell=new_player_spell_state,
             mushroom_positions=updated_mushrooms,
+            centipede_position=new_centipede_position,
             step_counter=state.step_counter + 1
         )
 
@@ -622,6 +669,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         info = self._get_info(return_state, all_rewards)
 
         return obs, return_state, 0.0, False, info
+
 
 class CentipedeRenderer(JAXGameRenderer):
     def __init__(self, consts: CentipedeConstants = None):
