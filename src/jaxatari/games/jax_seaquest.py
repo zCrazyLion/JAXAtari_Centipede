@@ -2499,25 +2499,38 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
         return self.renderer.render(state)
 
     def flatten_entity_position(self, entity: EntityPosition) -> jnp.ndarray:
-        return jnp.concatenate([jnp.array([entity.x]), jnp.array([entity.y]), jnp.array([entity.width]), jnp.array([entity.height]), jnp.array([entity.active])])
+        return jnp.concatenate([
+            jnp.array([entity.x], dtype=jnp.int32), 
+            jnp.array([entity.y], dtype=jnp.int32), 
+            jnp.array([entity.width], dtype=jnp.int32), 
+            jnp.array([entity.height], dtype=jnp.int32), 
+            jnp.array([entity.active], dtype=jnp.int32)
+        ])
 
     def flatten_player_entity(self, entity: PlayerEntity) -> jnp.ndarray:
-        return jnp.concatenate([jnp.array([entity.x]), jnp.array([entity.y]), jnp.array([entity.o]), jnp.array([entity.width]), jnp.array([entity.height]), jnp.array([entity.active])])
+        return jnp.concatenate([
+            jnp.array([entity.x], dtype=jnp.int32), 
+            jnp.array([entity.y], dtype=jnp.int32), 
+            jnp.array([entity.o], dtype=jnp.int32), 
+            jnp.array([entity.width], dtype=jnp.int32), 
+            jnp.array([entity.height], dtype=jnp.int32), 
+            jnp.array([entity.active], dtype=jnp.int32)
+        ])
 
     @partial(jax.jit, static_argnums=(0,))
     def obs_to_flat_array(self, obs: SeaquestObservation) -> jnp.ndarray:
         return jnp.concatenate([
             self.flatten_player_entity(obs.player),
-            obs.sharks.flatten(),
-            obs.submarines.flatten(),
-            obs.divers.flatten(),
-            obs.enemy_missiles.flatten(),
+            obs.sharks.flatten().astype(jnp.int32),
+            obs.submarines.flatten().astype(jnp.int32),
+            obs.divers.flatten().astype(jnp.int32),
+            obs.enemy_missiles.flatten().astype(jnp.int32),
             self.flatten_entity_position(obs.surface_submarine),
             self.flatten_entity_position(obs.player_missile),
-            obs.collected_divers.flatten(),
-            obs.player_score.flatten(),
-            obs.lives.flatten(),
-            obs.oxygen_level.flatten(),
+            obs.collected_divers.flatten().astype(jnp.int32),
+            obs.player_score.flatten().astype(jnp.int32),
+            obs.lives.flatten().astype(jnp.int32),
+            obs.oxygen_level.flatten().astype(jnp.int32),
         ])
 
 

@@ -1593,28 +1593,28 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
                 "player_y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
                 "player_o": spaces.Box(low=-1, high=1, shape=(), dtype=jnp.int32),
                 "platform_positions": spaces.Box(
-                    low=0, high=160, shape=(20, 2), dtype=jnp.int32
+                    low=-1, high=210, shape=(20, 2), dtype=jnp.int32
                 ),
                 "ladder_positions": spaces.Box(
-                    low=0, high=160, shape=(20, 2), dtype=jnp.int32
+                    low=-1, high=210, shape=(20, 2), dtype=jnp.int32
                 ),
                 "fruit_positions": spaces.Box(
-                    low=0, high=160, shape=(3, 2), dtype=jnp.int32
+                    low=-1, high=160, shape=(3, 2), dtype=jnp.int32
                 ),
                 "bell_position": spaces.Box(
-                    low=0, high=160, shape=(2,), dtype=jnp.int32
+                    low=-1, high=160, shape=(2,), dtype=jnp.int32
                 ),
                 "child_position": spaces.Box(
                     low=0, high=160, shape=(2,), dtype=jnp.int32
                 ),
                 "falling_coco_position": spaces.Box(
-                    low=0, high=160, shape=(2,), dtype=jnp.int32
+                    low=-1, high=160, shape=(2,), dtype=jnp.int32
                 ),
                 "monkey_positions": spaces.Box(
-                    low=0, high=160, shape=(4, 2), dtype=jnp.int32
+                    low=-1, high=160, shape=(4, 2), dtype=jnp.int32
                 ),
                 "coco_positions": spaces.Box(
-                    low=0, high=160, shape=(4, 2), dtype=jnp.int32
+                    low=-1, high=160, shape=(4, 2), dtype=jnp.int32
                 ),
             }
         )
@@ -1926,7 +1926,7 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
             fruit_mask, state.level.fruit_positions, jnp.array([-1, -1])
         )
 
-        bell_mask = state.level.bell_position[jnp.newaxis, :]
+        bell_mask = jnp.any(state.level.bell_position != jnp.array([-1, -1]))
         bell_position = jnp.where(
             bell_mask, state.level.bell_position, jnp.array([-1, -1])
         )
