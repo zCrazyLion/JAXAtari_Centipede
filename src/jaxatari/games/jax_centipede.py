@@ -412,14 +412,14 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         spell_state: jnp.ndarray,
         mushroom_positions: jnp.ndarray,
         score: jnp.ndarray,
-    ) -> tuple[chex.Array, chex.Array]:
+    ) -> tuple[chex.Array, chex.Array, chex.Array]:
         spell_pos_x = spell_state[0]
         spell_pos_y = spell_state[1]
         spell_is_alive = spell_state[2] != 0
 
-        def check_single_mushroom(is_alive, mushroom):
+        def check_single_mushroom(is_alive, mushroom, score):
             def no_hit():
-                return is_alive, mushroom
+                return is_alive, mushroom, score
 
             def check_hit():
                 mush_pos = mushroom[:2]
@@ -435,21 +435,22 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 def on_hit():
                     new_hp = mush_hp - 1
                     updated_mushroom_position = mushroom.at[3].set(new_hp)
-                    return False, updated_mushroom_position
+                    new_score = jnp.where(new_hp == 0, score + 1, score) # TODO: add case mushroom poisoned
+                    return False, updated_mushroom_position, new_score
 
                 def check_hp():
-                    return jax.lax.cond(mush_hp > 0, on_hit, lambda: (is_alive, mushroom))
+                    return jax.lax.cond(mush_hp > 0, on_hit, lambda: (is_alive, mushroom, score))
 
-                return jax.lax.cond(collision, check_hp, lambda: (is_alive, mushroom))
+                return jax.lax.cond(collision, check_hp, lambda: (is_alive, mushroom, score))
 
             return jax.lax.cond(is_alive != 0, check_hit, no_hit)
 
-        spell_active, updated_mushrooms = jax.vmap(
-            lambda m: check_single_mushroom(spell_is_alive, m)
+        spell_active, updated_mushrooms, updated_score = jax.vmap(
+            lambda m: check_single_mushroom(spell_is_alive, m, score)
         )(mushroom_positions)
 
         spell_active = jnp.invert(jnp.any(jnp.invert(spell_active)))
-        return spell_state.at[2].set(jnp.where(spell_active, 1, 0)), updated_mushrooms
+        return spell_state.at[2].set(jnp.where(spell_active, 1, 0)), updated_mushrooms, jnp.max(updated_score)
 
     @partial(jax.jit, static_argnums=(0,))
     def check_centipede_spell_collision( # TODO: add score handling
@@ -691,7 +692,11 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         new_player_spell_state = self.player_spell_step(state, action)
 
-        new_player_spell_state, updated_mushrooms = self.check_spell_mushroom_collision(
+        (
+            new_player_spell_state,
+            updated_mushrooms,
+            new_score
+        ) = self.check_spell_mushroom_collision(
             new_player_spell_state,
             state.mushroom_positions,
             state.score,
@@ -706,7 +711,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             new_player_spell_state,
             state.centipede_position,
             updated_mushrooms,
-            state.score
+            new_score
         )
 
         new_centipede_position = self.centipede_step(new_centipede_position, state.mushroom_positions)
