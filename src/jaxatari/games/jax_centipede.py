@@ -9,6 +9,8 @@ import jax
 import jax.numpy as jnp
 import chex
 import pygame
+from torch.onnx.symbolic_opset9 import convert_element_type
+
 import jaxatari.rendering.jax_rendering_utils as jru
 import time
 from functools import partial
@@ -463,10 +465,11 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         spell_active = spell_state[2] != 0
 
         def no_hit():
-            return jnp.repeat(spell_active, 9), centipede_position, jnp.repeat(score, 9)
+            return spell_active, centipede_position, False, score
 
-        def check_single_segment(is_alive, seg):
-
+        def check_single_segment(i, carry):
+            spell_active, centipede_position, prev_col, score = carry
+            seg = centipede_position[i]
             seg_pos = seg[:2]
 
             collision = self.check_collision_single(
@@ -476,23 +479,44 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 size2=self.consts.MUSHROOM_SIZE,
             )
 
-            def on_hit(): # TODO: spawn mushroom
-                return False, jnp.zeros_like(seg), score + jnp.where(seg[3] == 2, 100, 10)
+            seg = jnp.where(
+                jnp.logical_and(prev_col, jnp.not_equal(seg, 0)),
+                seg.at[3].set(2),
+                seg
+            )
 
-            return jax.lax.cond(collision, on_hit, lambda: (is_alive, seg, score))
+            def on_hit():  # TODO: spawn mushroom
+                return (
+                    False,
+                    centipede_position.at[i].set(jnp.zeros_like(seg)),
+                    True,
+                    score + jnp.where(seg[3] == 2, 100, 10)
+                )
 
-        check = jax.vmap(lambda s: check_single_segment(spell_active, s), in_axes=0)
+            return jax.lax.cond(collision, on_hit, lambda: (spell_active, centipede_position.at[i].set(seg), False, score))
+
+        init_carry = (spell_active, centipede_position, False, score)
+        check = jax.lax.fori_loop(
+            0,
+            centipede_position.shape[0],
+            check_single_segment,
+            init_carry,
+        )
 
         (
             spell_active,
             new_centipede_position,
+            _,
             new_score
-         ) = jax.lax.cond(spell_active != 0, lambda: check(centipede_position), no_hit)
-        spell_active = jnp.invert(jnp.any(jnp.invert(spell_active)))
+        ) = jax.lax.cond(
+            spell_active,
+            lambda: check,
+            no_hit
+        )
+        #spell_active = jnp.invert(spell_active)
 
-        new_score = jnp.max(new_score)
-
-        return spell_state.at[2].set(jnp.where(spell_active, 1, 0)), new_centipede_position, mushroom_positions, new_score
+        return spell_state.at[2].set(
+            jnp.where(spell_active, 1, 0)), new_centipede_position, mushroom_positions, new_score
 
 
     ## -------- Mushroom Spawn Logic --------
