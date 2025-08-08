@@ -23,6 +23,7 @@ from jaxatari.wrappers import (
     MultiRewardLogWrapper,
 )
 import jaxatari.spaces as spaces
+from conftest import load_game_environment, WRAPPER_RECIPES
 
 # Add flax import for serialization tests
 try:
@@ -33,93 +34,7 @@ except ImportError:
 
 
 # ==============================================================================
-# 1. DYNAMIC ENVIRONMENT LOADER
-# ==============================================================================
-
-def load_game_environment(game_name: str) -> JaxEnvironment:
-    """
-    Dynamically loads a game environment from a .py file.
-    It looks for a class that inherits from JaxEnvironment.
-    """
-    # Robustly find the project root from the test file's location
-    test_file_dir = Path(__file__).parent.resolve()
-    project_root = test_file_dir.parent # Assumes /project/tests/
-    
-    # Updated path logic to use Pathlib for better cross-platform compatibility
-    game_file_path = project_root / "src" / "jaxatari" / "games" / f"jax_{game_name.lower()}.py"
-
-    if not game_file_path.is_file():
-        raise FileNotFoundError(f"Game file not found: {game_file_path}")
-
-    module_name = game_file_path.stem
-    spec = importlib.util.spec_from_file_location(module_name, game_file_path)
-    if spec is None:
-        raise ImportError(f"Could not load spec for module {module_name} from {game_file_path}")
-
-    game_module = importlib.util.module_from_spec(spec)
-    # Add parent directory to sys.path to handle relative imports inside the game module
-    sys.path.insert(0, str(game_file_path.parent))
-    try:
-        spec.loader.exec_module(game_module)
-    finally:
-        # Always clean up sys.path
-        sys.path.pop(0)
-
-    # Find and instantiate the class that inherits from JaxEnvironment
-    for name, obj in inspect.getmembers(game_module):
-        if inspect.isclass(obj) and issubclass(obj, JaxEnvironment) and obj is not JaxEnvironment:
-            return obj()  # Instantiate and return the environment
-
-    raise ImportError(f"No class inheriting from JaxEnvironment found in {game_file_path}")
-
-
-# ==============================================================================
-# 2. PYTEST CONFIGURATION AND FIXTURES
-# ==============================================================================
-
-@pytest.fixture(scope="session")
-def game_name(request):
-    """Fixture to retrieve the game name from the command line."""
-    return request.config.getoption("--game-name")
-
-@pytest.fixture(scope="session")
-def raw_env(game_name):
-    """
-    Provides a single, raw, unwrapped instance of the specified game environment.
-    This is session-scoped to avoid reloading the module for every test.
-    """
-    # TODO: might have to rewrite this depending on the format of the path in the github pipeline 
-    return load_game_environment(game_name)
-
-# Define the wrapper combinations to test against.
-WRAPPER_RECIPES = {
-    "Atari": lambda env: AtariWrapper(env),
-    "Pixel": lambda env: PixelObsWrapper(AtariWrapper(env)),
-    "ObjectCentric": lambda env: ObjectCentricWrapper(AtariWrapper(env)),
-    "PixelAndObjectCentric": lambda env: PixelAndObjectCentricWrapper(AtariWrapper(env)),
-    "FlattenedObjectCentric": lambda env: FlattenObservationWrapper(ObjectCentricWrapper(AtariWrapper(env))),
-    "NormalizedPixel": lambda env: NormalizeObservationWrapper(PixelObsWrapper(AtariWrapper(env))),
-    "LoggedFlattenedPixelAndObject": lambda env: LogWrapper(
-        FlattenObservationWrapper(PixelAndObjectCentricWrapper(AtariWrapper(env)))
-    ),
-    "MultiRewardLogged": lambda env: MultiRewardLogWrapper(
-        PixelAndObjectCentricWrapper(AtariWrapper(env))
-    ),
-}
-
-@pytest.fixture(params=WRAPPER_RECIPES.values(), ids=WRAPPER_RECIPES.keys())
-def wrapped_env(game_name, request):
-    """
-    Parameterized fixture. For each wrapper recipe, it creates a fresh instance
-    of the raw environment and then wraps it. This ensures test isolation.
-    """
-    wrapper_recipe = request.param
-    fresh_raw_env = load_game_environment(game_name) # Load fresh instance for each wrapper
-    return wrapper_recipe(fresh_raw_env)
-
-
-# ==============================================================================
-# 3. HELPER FUNCTIONS
+# HELPER FUNCTIONS
 # ==============================================================================
 
 def get_object_centric_obs_size(space: spaces.Dict) -> int:
@@ -145,7 +60,7 @@ def deep_asdict(obj: any) -> any:
 
 
 # ==============================================================================
-# 4. COMPREHENSIVE TEST SUITE
+# INTEGRATION TEST SUITE
 # ==============================================================================
 
 class TestBasicAPI:
@@ -315,6 +230,58 @@ class TestBasicAPI:
         assert step_count > 0, "Should have taken at least one step"
         assert step_count <= max_steps, "Should not exceed max steps"
         assert isinstance(total_reward, float), "Total reward should be float"
+
+
+    ''' TODO: rewrite this and then reintroduce the test
+    def test_jaxatari_vs_ale_image_and_action_space():
+        for jax_name, ale_name in ALE_GAME_MAP.items():
+            # JAXAtari env
+            jax_env = jaxatari.make(jax_name)
+            import jax
+            key = jax.random.PRNGKey(0)
+            jax_obs, jax_state = jax_env.reset(key)
+            jax_frame = jax_env.render(jax_state)
+            assert isinstance(jax_frame, jnp.ndarray)
+
+            # ALE env
+            ale_env = gym.make(f"ALE/{ale_name}", render_mode="rgb_array")
+            ale_obs, _ = ale_env.reset(seed=0)
+            ale_frame = ale_env.render()
+            assert isinstance(ale_frame, np.ndarray)
+
+            # Compare image shapes
+            assert jax_frame.shape == ale_frame.shape, (
+                f"Image shape mismatch for {jax_name}: "
+                f"JAXAtari {jax_frame.shape} vs ALE {ale_frame.shape}"
+            )
+            assert jax_frame.dtype == ale_frame.dtype, (
+                f"Image dtype mismatch for {jax_name}: "
+                f"JAXAtari {jax_frame.dtype} vs ALE {ale_frame.dtype}"
+            )
+
+            # Compare action spaces
+            jax_action_space = jax_env.action_space()
+            ale_action_space = ale_env.action_space
+
+            assert hasattr(jax_action_space, "n") and hasattr(ale_action_space, "n")
+            assert jax_action_space.n == ale_action_space.n, (
+                f"Action space size mismatch for {jax_name}: "
+                f"JAXAtari {jax_action_space.n} vs ALE {ale_action_space.n}"
+            )
+
+            # Optionally, compare action meanings if available
+            if hasattr(ale_env.unwrapped, "get_action_meanings"):
+                ale_meanings = ale_env.unwrapped.get_action_meanings()
+                if hasattr(jax_env, "get_action_meanings"):
+                    jax_meanings = jax_env.get_action_meanings()
+                    assert jax_meanings == ale_meanings, (
+                        f"Action meanings mismatch for {jax_name}: "
+                        f"JAXAtari {jax_meanings} vs ALE {ale_meanings}"
+                    )
+
+            ale_env.close()
+    '''
+
 
 
 class TestWrapperCompatibility:
@@ -507,29 +474,41 @@ class TestWrapperCompatibility:
 
 
 class TestJaxTransforms:
-    """A stress test for JIT and VMAP compatibility on a fully-featured environment stack."""
+    """A stress test for JIT and VMAP compatibility on wrapped environments."""
 
-    @pytest.fixture(scope="class")
-    def fully_featured_env(self, game_name):
-        """Creates a complex stack of wrappers for robust testing."""
-        env = load_game_environment(game_name)
-        env = AtariWrapper(
-            env, sticky_actions=True, noop_reset=10, clip_reward=True
-        )
-        env = PixelAndObjectCentricWrapper(
-            env, do_pixel_resize=True, grayscale=True, pixel_resize_shape=(84, 84)
-        )
-        env = NormalizeObservationWrapper(env, to_neg_one=True)
-        env = LogWrapper(env)
-        return env
+    def _check_batch_dimension_recursive(self, obj, expected_batch_size, context_name):
+        """
+        Recursively check that all jnp.ndarray objects in a nested structure have the correct batch dimension.
+        
+        Args:
+            obj: The object to check (can be jnp.ndarray, NamedTuple, tuple, list, dict, etc.)
+            expected_batch_size: The expected batch size (first dimension)
+            context_name: Context for error messages
+        """
+        if hasattr(obj, 'shape'):
+            # Direct jnp.ndarray
+            assert obj.shape[0] == expected_batch_size, f"{context_name} should have batch dimension {expected_batch_size}, got {obj.shape[0]}"
+        elif hasattr(obj, '_asdict'):
+            # NamedTuple - recursively check all fields
+            for field_name, field_value in obj._asdict().items():
+                self._check_batch_dimension_recursive(field_value, expected_batch_size, f"{context_name}.{field_name}")
+        elif isinstance(obj, (tuple, list)):
+            # Tuple or list - recursively check all elements
+            for i, item in enumerate(obj):
+                self._check_batch_dimension_recursive(item, expected_batch_size, f"{context_name}[{i}]")
+        elif isinstance(obj, dict):
+            # Dict - recursively check all values
+            for key, value in obj.items():
+                self._check_batch_dimension_recursive(value, expected_batch_size, f"{context_name}.{key}")
+        # For other types (primitives, etc.), we don't need to check anything
 
-    def test_jit_compilation(self, fully_featured_env):
+    def test_jit_compilation(self, wrapped_env):
         """Should test that a full step can be JIT-compiled without error."""
         key = jax.random.PRNGKey(0)
         
         # JIT the reset and step functions
-        jitted_reset = jax.jit(fully_featured_env.reset)
-        jitted_step = jax.jit(fully_featured_env.step)
+        jitted_reset = jax.jit(wrapped_env.reset)
+        jitted_step = jax.jit(wrapped_env.step)
         
         # Test JIT reset
         obs, state = jitted_reset(key)
@@ -537,7 +516,7 @@ class TestJaxTransforms:
         assert state is not None, "JIT reset state should not be None"
         
         # Test JIT step
-        action_space = fully_featured_env.action_space()
+        action_space = wrapped_env.action_space()
         action = action_space.sample(key)
         obs, state, reward, done, info = jitted_step(state, action)
         assert obs is not None, "JIT step observation should not be None"
@@ -546,26 +525,21 @@ class TestJaxTransforms:
         assert isinstance(done, (bool, jnp.ndarray)), "JIT step done should be bool or jnp.ndarray"
         assert info is not None, "JIT step info should not be None"
 
-    def test_vmap_parallelization(self, fully_featured_env):
+    def test_vmap_parallelization(self, wrapped_env):
         """Should test that the environment can be vectorized across a batch using vmap."""
         num_envs = 4
         key = jax.random.PRNGKey(42)
         
         # Vmap reset and step functions
-        vmapped_reset = jax.vmap(fully_featured_env.reset)
-        vmapped_step = jax.vmap(fully_featured_env.step)
+        vmapped_reset = jax.vmap(wrapped_env.reset)
+        vmapped_step = jax.vmap(wrapped_env.step)
         
         # Test vmap reset
         keys = jax.random.split(key, num_envs)
         obs, states = vmapped_reset(keys)
         
         # Check batch dimensions
-        if isinstance(obs, tuple):
-            # For tuple observations (like PixelAndObjectCentricWrapper)
-            for obs_part in obs:
-                assert obs_part.shape[0] == num_envs, f"Observation part should have batch dimension {num_envs}"
-        else:
-            assert obs.shape[0] == num_envs, f"Observation should have batch dimension {num_envs}"
+        self._check_batch_dimension_recursive(obs, num_envs, "Observation")
         
         # Check state batch dimension
         state_leaves = jax.tree.leaves(states)
@@ -574,17 +548,13 @@ class TestJaxTransforms:
         
         # Test vmap step
         action_keys = jax.random.split(keys[0], num_envs)
-        actions = jax.vmap(fully_featured_env.action_space().sample)(action_keys)
+        actions = jax.vmap(wrapped_env.action_space().sample)(action_keys)
         assert actions.shape == (num_envs,), f"Actions should have shape ({num_envs},)"
         
         new_obs, new_states, rewards, dones, infos = vmapped_step(states, actions)
         
         # Check batch dimensions for step results
-        if isinstance(new_obs, tuple):
-            for obs_part in new_obs:
-                assert obs_part.shape[0] == num_envs, f"Step observation part should have batch dimension {num_envs}"
-        else:
-            assert new_obs.shape[0] == num_envs, f"Step observation should have batch dimension {num_envs}"
+        self._check_batch_dimension_recursive(new_obs, num_envs, "Step observation")
         
         new_state_leaves = jax.tree.leaves(new_states)
         for leaf in new_state_leaves:
@@ -593,38 +563,30 @@ class TestJaxTransforms:
         assert rewards.shape == (num_envs,), f"Rewards should have shape ({num_envs},)"
         assert dones.shape == (num_envs,), f"Dones should have shape ({num_envs},)"
 
-    def test_jit_vmap_combination(self, fully_featured_env):
+    def test_jit_vmap_combination(self, wrapped_env):
         """Test that JIT and vmap can be combined."""
         num_envs = 4
         key = jax.random.PRNGKey(42)
         
         # Combine JIT and vmap
-        jit_vmapped_reset = jax.jit(jax.vmap(fully_featured_env.reset))
-        jit_vmapped_step = jax.jit(jax.vmap(fully_featured_env.step))
+        jit_vmapped_reset = jax.jit(jax.vmap(wrapped_env.reset))
+        jit_vmapped_step = jax.jit(jax.vmap(wrapped_env.step))
         
         # Test combined reset
         keys = jax.random.split(key, num_envs)
         obs, states = jit_vmapped_reset(keys)
         
         # Check batch dimensions
-        if isinstance(obs, tuple):
-            for obs_part in obs:
-                assert obs_part.shape[0] == num_envs, f"JIT+vmap observation part should have batch dimension {num_envs}"
-        else:
-            assert obs.shape[0] == num_envs, f"JIT+vmap observation should have batch dimension {num_envs}"
+        self._check_batch_dimension_recursive(obs, num_envs, "JIT+vmap observation")
         
         # Test combined step
         action_keys = jax.random.split(keys[0], num_envs)
-        actions = jax.vmap(fully_featured_env.action_space().sample)(action_keys)
+        actions = jax.vmap(wrapped_env.action_space().sample)(action_keys)
         
         new_obs, new_states, rewards, dones, infos = jit_vmapped_step(states, actions)
         
         # Check batch dimensions
-        if isinstance(new_obs, tuple):
-            for obs_part in new_obs:
-                assert obs_part.shape[0] == num_envs, f"JIT+vmap step observation part should have batch dimension {num_envs}"
-        else:
-            assert new_obs.shape[0] == num_envs, f"JIT+vmap step observation should have batch dimension {num_envs}"
+        self._check_batch_dimension_recursive(new_obs, num_envs, "JIT+vmap step observation")
         
         assert rewards.shape == (num_envs,), f"JIT+vmap rewards should have shape ({num_envs},)"
         assert dones.shape == (num_envs,), f"JIT+vmap dones should have shape ({num_envs},)"
@@ -825,7 +787,7 @@ class TestAdvancedWrapperFeatures:
         obs, state_sticky, reward, done, info = env_sticky.step(state_sticky, 2)  # UP action
         assert state_sticky.prev_action == 2, "Sticky actions should update prev_action"
         
-        # Test episodic_life feature (this is harder to test without knowing game state)
+        # Test episodic_life feature
         # We'll just verify the wrapper accepts the parameter
         env_episodic = AtariWrapper(raw_env, episodic_life=True)
         _, state_episodic = env_episodic.reset(key)
