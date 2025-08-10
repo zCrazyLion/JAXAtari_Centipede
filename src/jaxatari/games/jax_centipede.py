@@ -9,7 +9,6 @@ import jax
 import jax.numpy as jnp
 import chex
 import pygame
-from torch.onnx.symbolic_opset9 import convert_element_type
 
 import jaxatari.rendering.jax_rendering_utils as jru
 import time
@@ -260,7 +259,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return spaces.Discrete(len(self.action_set))
 
     def observation_space(self) -> spaces.Dict:
-        """Returns the observation space for Seaquest.
+        """Returns the observation space for Centipede.
                 The observation contains:
         """
         return spaces.Dict({
@@ -275,7 +274,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         })
 
     def image_space(self) -> spaces.Box:
-        """Returns the image space for Seaquest.
+        """Returns the image space for Centipede.
         The image is a RGB image with shape (160, 210, 3).
         """
         return spaces.Box(
@@ -368,13 +367,38 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         mushrooms_positions: jnp.ndarray,
     ) -> jnp.ndarray:
 
-        def move_segment(segment):
+        def should_turn_around(i, carry):
+            groups, same_group = carry
+            this_seg = centipede_state[i]
+            next_seg = centipede_state[i + 1]
+
+            is_head = jnp.where(this_seg[4] == 2, True, False)
+
+            def head_case():
+                def same_group_head():
+                    return groups.at[i].set(1), True
+
+                def dif_group():
+                    return groups, False
+
+                dist = jnp.linalg.norm(this_seg[:2] - next_seg[:2])
+                return jax.lax.cond(jnp.less_equal(dist, 10), same_group_head, dif_group)
+
+            def same_group_tail():
+                return groups, True
+
+            return jax.lax.cond(is_head, head_case, same_group_tail)
+
+        init_carry = jnp.zeros_like(centipede_state[:, 0], dtype=jnp.int32), False
+        turn_around, _ = jax.lax.fori_loop(0, centipede_state.shape[0] - 1, should_turn_around, init_carry)
+
+        def move_segment(segment, turn_around):
             moving_left = segment[2] < 0
 
             def step_horizontal():
                 speed = segment[2] * 0.5
                 new_x = segment[0] + speed
-                return jnp.array([new_x, segment[1],segment[2], segment[3], segment[4]])
+                return jnp.array([new_x, segment[1],segment[2], segment[3], segment[4]]), jnp.array(0)
 
             def step_vertical():
                 moving_down = jnp.greater(segment[3], 0)
@@ -385,14 +409,21 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                     -segment[3],
                     segment[3]
                 )
+                new_status = jnp.where(segment[4] == 1.5, 2, segment[4])    # Change to head if moved vertically
 
                 return jnp.array([
                     segment[0],
                     new_y,
                     -segment[2],
                     new_horizontal_direction,
-                    segment[4]
-                ])
+                    new_status,
+                ]), jnp.array(0)
+
+            def step_turn_around():
+                new_speed = -segment[2]
+                speed = new_speed * 0.5
+                new_x = segment[0] + speed
+                return jnp.array([new_x, segment[1], new_speed, segment[3], segment[4]]), jnp.array(1)
 
             def check_mushroom_collision(mushroom):
                 collision = self.check_collision_single(
@@ -414,11 +445,20 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                     jnp.logical_and(jnp.greater_equal(segment[0], self.consts.PLAYER_BOUNDS[0][1]), jnp.invert(moving_left))
                 )
             )
+            return jax.lax.cond(
+                move_down,
+                lambda: jax.lax.cond(jnp.logical_and(jnp.greater_equal(segment[1], 176), turn_around == 1),
+                                     step_turn_around,
+                                     step_vertical),
+                step_horizontal)
 
-            return jax.lax.cond(move_down, step_vertical, step_horizontal)
+        new_state, segment_split = jax.vmap(move_segment)(centipede_state, turn_around)
 
-        new_state = jax.vmap(move_segment)(centipede_state)
-        return new_state
+        segment_split = jnp.roll(segment_split, 1)
+        def set_new_status(seg, split):     # change value of split following segment so this can be set as head later
+            return jnp.where(split == 1, seg.at[4].set(1.5), seg)
+
+        return jax.vmap(set_new_status)(new_state, segment_split)
 
 
     @partial(jax.jit, static_argnums=(0, ))
@@ -468,7 +508,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return spell_state.at[2].set(jnp.where(spell_active, 1, 0)), updated_mushrooms, jnp.max(updated_score)
 
     @partial(jax.jit, static_argnums=(0,))
-    def check_centipede_spell_collision(
+    def check_centipede_spell_collision( #  TODO: change back to vmap (see move_segment)
         self,
         spell_state: jnp.ndarray,
         centipede_position: jnp.ndarray,
