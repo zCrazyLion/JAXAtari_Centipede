@@ -38,7 +38,7 @@ class CentipedeConstants:
     MAX_VELOCITY_Y = 2.5 # Default: 2.5 | Maximum speed in y direction (pixels per frame)
 
     ## -------- Player spell constants --------
-    PLAYER_SPELL_SPEED = 5
+    PLAYER_SPELL_SPEED = 9
 
     PLAYER_SPELL_SIZE = (0, 8) # (0, 8) because of collision logic of spell
 
@@ -768,7 +768,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         )
         new_y = jnp.where(
             spawn,
-            state.player_y + 1,
+            state.player_y - 9,
             jnp.where(new_is_alive, state.player_spell[1] - self.consts.PLAYER_SPELL_SPEED, 0.0)
         )
 
