@@ -538,7 +538,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             return (
                 jnp.repeat(spell_active, centipede_position.shape[0]),
                 centipede_position,
-                jnp.repeat(score, centipede_position.shape[0]),
+                jnp.repeat(0, centipede_position.shape[0]),
                 jnp.repeat(0, centipede_position.shape[0]),
                 jnp.repeat(-1, centipede_position.shape[0])
             )
@@ -584,12 +584,12 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 return (
                     False,
                     jnp.zeros_like(seg),
-                    score + jnp.where(seg[4] == 2, 100, 10),
+                    jnp.where(seg[4] == 2, 100, 10),
                     jnp.array(1),
                     jnp.array(idx, dtype=jnp.int32)
                 )
 
-            return jax.lax.cond(collision, on_hit, lambda: (is_alive, seg, score, jnp.array(0), jnp.array(-1)))
+            return jax.lax.cond(collision, on_hit, lambda: (is_alive, seg, 0, jnp.array(0), jnp.array(-1)))
 
         check = jax.vmap(lambda s: check_single_segment(spell_active, s), in_axes=0)
 
@@ -602,7 +602,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         ) = jax.lax.cond(spell_active != 0, lambda: check(centipede_position), no_hit)
         spell_active = jnp.invert(jnp.any(jnp.invert(spell_active)))
 
-        new_score = jnp.max(new_score)
+        new_score = jnp.sum(new_score)
         new_heads = jnp.roll(segment_hit, 1)
         mush_idx = jnp.max(mush_idx)
         new_mushroom_positions = jnp.where(
@@ -618,7 +618,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             spell_state.at[2].set(jnp.where(spell_active, 1, 0)),
             jax.vmap(set_new_status)(new_centipede_position, new_heads),
             new_mushroom_positions,
-            new_score
+            score + new_score
         )
 
     ## -------- Mushroom Spawn Logic --------
