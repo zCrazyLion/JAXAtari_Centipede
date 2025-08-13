@@ -744,7 +744,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
         return base_pattern
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1, 2, 3))
+    @partial(jax.jit, static_argnums=(0,))
     def update_enemy_spawns(
         self,
         spawn_state: SpawnState,
@@ -1114,7 +1114,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
         return final_state, final_shark_positions, final_sub_positions, final_rng
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1, 2, 3, 4))
+    @partial(jax.jit, static_argnums=(0,))
     def step_enemy_movement(
         self,
         spawn_state: SpawnState,
@@ -1318,7 +1318,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
         return new_shark_positions, new_sub_positions, new_spawn_state, rng
     
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1, 2, 3, 4))
+    @partial(jax.jit, static_argnums=(0,))
     def spawn_divers(
         self,
         spawn_state: SpawnState,
@@ -1400,7 +1400,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
         return new_diver_positions, spawn_state._replace(diver_array=new_diver_array)
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1, 2, 3, 4, 5))
+    @partial(jax.jit, static_argnums=(0,))
     def step_diver_movement(
         self,
         diver_positions: chex.Array,
@@ -1746,7 +1746,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
         return final_positions, final_collected, updated_spawn_state, rng
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1, 2, 3, 4, 5))
+    @partial(jax.jit, static_argnums=(0,))
     def spawn_step(
         self,
         state,
@@ -1834,7 +1834,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
         return jnp.where(should_spawn, temp1, temp2)
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1, 2))
+    @partial(jax.jit, static_argnums=(0,))
     def enemy_missiles_step(
         self, curr_sub_positions, curr_enemy_missile_positions, step_counter, difficulty
     ) -> chex.Array:
@@ -1948,7 +1948,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
         return new_missile_positions
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1, 2, 3))
+    @partial(jax.jit, static_argnums=(0,))
     def player_missile_step(
         self, state: SeaquestState, curr_player_x, curr_player_y, action: chex.Array
     ) -> chex.Array:
@@ -2004,7 +2004,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
         return new_missile
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1, 2, 3))
+    @partial(jax.jit, static_argnums=(0,))
     def update_oxygen(self, state, player_x, player_y, player_missile_position):
         """Update oxygen levels and handle surfacing mechanics with proper surfacing detection"""
         PLAYER_BREATHING_Y = [47, 52]  # Range where oxygen neither increases nor decreases
@@ -2129,7 +2129,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
             new_difficulty,
         )
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
+    @partial(jax.jit, static_argnums=(0,))
     def player_step(
         self, state: SeaquestState, action: chex.Array
     ) -> tuple[chex.Array, chex.Array, chex.Array]:
@@ -2217,7 +2217,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
         return player_x, player_y, player_direction
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
+    @partial(jax.jit, static_argnums=(0,))
     def calculate_kill_points(self, successful_rescues: chex.Array) -> chex.Array:
         """Calculate the points awarded for killing a shark or submarine. Sharks and submarines are worth 20 points.
         The points are increased by 10 for each successful rescue with a maximum of 90."""
@@ -2257,7 +2257,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
         self.obs_size = 6 + 12 * 5 + 12 * 5 + 4 * 5 + 4 * 5 + 5 + 5 + 4
         self.renderer = SeaquestRenderer(self.consts)
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
+    @partial(jax.jit, static_argnums=(0,))
     def render(self, state: SeaquestState) -> jnp.ndarray:
         """Render the game state to a raster image."""
         return self.renderer.render(state)
@@ -2281,7 +2281,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
             jnp.array([entity.active], dtype=jnp.int32)
         ])
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
+    @partial(jax.jit, static_argnums=(0,))
     def obs_to_flat_array(self, obs: SeaquestObservation) -> jnp.ndarray:
         return jnp.concatenate([
             self.flatten_player_entity(obs.player),
@@ -2360,7 +2360,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
             dtype=jnp.uint8
         )
 
-    @partial(jax.jit, static_argnums=(0, ), donate_argnums=(1,))
+    @partial(jax.jit, static_argnums=(0, ))
     def _get_observation(self, state: SeaquestState) -> SeaquestObservation:
         # Create player (already scalar, no need for vectorization)
         player = PlayerEntity(
@@ -2439,7 +2439,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
             oxygen_level=state.oxygen,
         )
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
+    @partial(jax.jit, static_argnums=(0,))
     def _get_info(self, state: SeaquestState, all_rewards: jnp.ndarray) -> SeaquestInfo:
         return SeaquestInfo(
             successful_rescues=state.successful_rescues,
@@ -2448,22 +2448,22 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
             all_rewards=all_rewards,
         )
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
+    @partial(jax.jit, static_argnums=(0,))
     def _get_env_reward(self, previous_state: SeaquestState, state: SeaquestState):
         return state.score - previous_state.score
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
+    @partial(jax.jit, static_argnums=(0,))
     def _get_all_rewards(self, previous_state: SeaquestState, state: SeaquestState) -> jnp.ndarray:
         if self.reward_funcs is None:
             return jnp.zeros(1)
         rewards = jnp.array([reward_func(previous_state, state) for reward_func in self.reward_funcs])
         return rewards
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
+    @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: SeaquestState) -> bool:
         return state.lives < 0
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
+    @partial(jax.jit, static_argnums=(0,))
     def reset(self, key: jax.random.PRNGKey = jax.random.PRNGKey(42)) -> Tuple[SeaquestObservation, SeaquestState]:
         """Initialize game state"""
         reset_state = SeaquestState(
@@ -2491,7 +2491,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
         initial_obs = self._get_observation(reset_state)
         return initial_obs, reset_state
 
-    @partial(jax.jit, static_argnums=(0, ), donate_argnums=(1,))
+    @partial(jax.jit, static_argnums=(0, ))
     def step(
         self, state: SeaquestState, action: chex.Array
     ) -> Tuple[SeaquestObservation, SeaquestState, float, bool, SeaquestInfo]:
@@ -2896,7 +2896,7 @@ class SeaquestRenderer(JAXGameRenderer):
         self.enemy_sub_offset_length = len(ENEMY_SUB_OFFSETS)
         self.consts = consts or SeaquestConstants()
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
+    @partial(jax.jit, static_argnums=(0,))
     def render(self, state):
         raster = jr.create_initial_frame(width=160, height=210)
 
