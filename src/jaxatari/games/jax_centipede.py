@@ -38,9 +38,9 @@ class CentipedeConstants:
     MAX_VELOCITY_Y = 2.5 # Default: 2.5 | Maximum speed in y direction (pixels per frame)
 
     ## -------- Player spell constants --------
-    PLAYER_SPELL_SPEED = 10
+    PLAYER_SPELL_SPEED = 5
 
-    PLAYER_SPELL_SIZE = (0, 8) # (0, 8) because of collision logic from spell
+    PLAYER_SPELL_SIZE = (0, 8) # (0, 8) because of collision logic of spell
 
     ## -------- Starting Pattern (X -> placed, O -> not placed) --------
     MUSHROOM_STARTING_PATTERN = [
@@ -92,8 +92,8 @@ class CentipedeState(NamedTuple):
     player_y: chex.Array
     player_velocity_x: chex.Array
     player_spell: chex.Array  # (1, 3) array for player spell: x, y, is_alive
-    mushroom_positions: chex.Array # (304, 5) array for mushroom positions -> mushroom_positions need 5 entries per mushroom: 1. x value 2. y value 3. is shown 4. lives (1, 2 or 3) 5. is poisoned -> there are also 304 mushrooms in total
-    centipede_position: chex.Array # (9, 5): x, y, speed(vertical), movement(horizontal), is_head /  must contain position, direction and status(head)
+    mushroom_positions: chex.Array # (304, 4) array for mushroom positions -> mushroom_positions need 4 entries per mushroom: 1. x value 2. y value 3. lives (1, 2 or 3) 4. is poisoned -> there are also 304 mushrooms in total
+    centipede_position: chex.Array # (9, 5): x, y, speed(horizontal), movement(vertical), is_head /  must contain position, direction and status(head)
     # spider_position: chex.Array # (1, 3) array for spider (x, y, direction)
     # flea_position: chex.Array # (1, 3) array for flea, 2 lives, speed doubles after 1 hit
     # scorpion_position: chex.Array # (1, ?) array for scorpion, only moves from right to left?: (x, y)
@@ -167,8 +167,6 @@ def load_sprites():
         ]
     )
 
-    #jax.debug.print("{}", centipede.shape)
-
     SPRITE_BOTTOM_BORDER = jnp.expand_dims(bottom_border, 0)
     SPRITE_MUSHROOM = jnp.expand_dims(mushroom, 0)
 
@@ -177,7 +175,6 @@ def load_sprites():
 
     # Debug
     frame_player = jru.get_sprite_frame(SPRITE_PLAYER, 0)
-    #jax.debug.print("{x}, {y}", x=frame_player, y=(frame_player.shape[0], frame_player.shape[1], frame_player.shape[2]))
 
     return (
         SPRITE_PLAYER,
@@ -332,6 +329,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     def _get_done(self, state: CentipedeState) -> bool:
         return state.lives < 0
 
+    # -------- Helper Functions --------
+
     @partial(jax.jit, static_argnums=(0, ))
     def check_collision_single(self, pos1, size1, pos2, size2):
         """Check collision between two single entities"""
@@ -359,6 +358,15 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         )
 
         return jnp.logical_and(horizontal_overlap, vertical_overlap)
+
+    @partial(jax.jit, static_argnums=(0, ))
+    def get_mushroom_index(self, pos: jnp.ndarray) -> jnp.ndarray:
+        row_idx = (pos[1] - 7) / 9
+        odd_row = pos[1] % 2 == 0
+        col_idx = jnp.where(odd_row, pos[0], pos[0] - 4) / 8
+        return row_idx * 16 + col_idx - 2
+
+    # -------- Logic Functions --------
 
     @partial(jax.jit, static_argnums=(0,)) # TODO: fix glitching through diagonally placed mushrooms
     def centipede_step(
@@ -425,17 +433,26 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 new_x = segment[0] + speed
                 return jnp.array([new_x, segment[1], new_speed, segment[3], segment[4]]), jnp.array(1)
 
-            def check_mushroom_collision(mushroom):
-                collision = self.check_collision_single(
-                    pos1=jnp.array([segment[0], segment[1]]),
-                    size1=self.consts.SEGMENT_SIZE,
-                    pos2=mushroom[:2],
-                    size2=self.consts.MUSHROOM_SIZE
+            def check_mushroom_collision(mushroom, seg_speed):
+                direction = jnp.where(seg_speed > 0, 6, -6)
+                collision = jnp.logical_and(
+                    self.check_collision_single(
+                        pos1=jnp.array([segment[0], segment[1]]),
+                        size1=self.consts.SEGMENT_SIZE,
+                        pos2=mushroom[:2],
+                        size2=self.consts.MUSHROOM_SIZE
+                    ),
+                    self.check_collision_single(
+                        pos1=jnp.array([segment[0] + direction, segment[1]]),
+                        size1=self.consts.SEGMENT_SIZE,
+                        pos2=mushroom[:2],
+                        size2=self.consts.MUSHROOM_SIZE
+                    ),
                 )
 
                 return jnp.where(mushroom[3] > 0, collision, False)
 
-            collision = jax.vmap(check_mushroom_collision)(mushrooms_positions)
+            collision = jax.vmap(lambda m: check_mushroom_collision(m, segment[2]))(mushrooms_positions)
             collision = jnp.any(collision)
 
             move_down = jnp.logical_or(
@@ -522,7 +539,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 jnp.repeat(spell_active, centipede_position.shape[0]),
                 centipede_position,
                 jnp.repeat(score, centipede_position.shape[0]),
-                jnp.repeat(0, centipede_position.shape[0])
+                jnp.repeat(0, centipede_position.shape[0]),
+                jnp.repeat(-1, centipede_position.shape[0])
             )
 
         def check_single_segment(is_alive, seg):
@@ -535,10 +553,43 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 size2=self.consts.MUSHROOM_SIZE,
             )
 
-            def on_hit():  # TODO: spawn mushroom
-                return False, jnp.zeros_like(seg), score + jnp.where(seg[3] == 2, 100, 10), jnp.array(1)
+            def on_hit():
+                mush_y = seg[1] + 2
+                odd_mush_row = seg[1] % 2 == 0
+                mush_x = jnp.where(
+                    odd_mush_row,
+                    jnp.where(
+                        seg[2] > 0,
+                        jnp.ceil(seg[0] / 8) * 8,
+                        jnp.floor(seg[0] / 8) * 8,
+                    ),
+                    jnp.where(
+                        seg[2] > 0,
+                        jnp.ceil(seg[0] / 8) * 8 + 4,
+                        jnp.floor(seg[0] / 8) * 8 + 4,
+                    )
+                )
+                out_of_border = jnp.where(
+                    odd_mush_row,
+                    jnp.logical_or(
+                        jnp.logical_and(seg[2] > 0, mush_x > 136),
+                        jnp.logical_and(seg[2] < 0, mush_x < 16)
+                    ),
+                    jnp.logical_or(
+                        jnp.logical_and(seg[2] > 0, mush_x > 140),
+                        jnp.logical_and(seg[2] < 0, mush_x < 20)
+                    )
+                )
+                idx = jnp.where(out_of_border, -1, self.get_mushroom_index(jnp.array([mush_x, mush_y])))
+                return (
+                    False,
+                    jnp.zeros_like(seg),
+                    score + jnp.where(seg[4] == 2, 100, 10),
+                    jnp.array(1),
+                    jnp.array(idx, dtype=jnp.int32)
+                )
 
-            return jax.lax.cond(collision, on_hit, lambda: (is_alive, seg, score, jnp.array(0)))
+            return jax.lax.cond(collision, on_hit, lambda: (is_alive, seg, score, jnp.array(0), jnp.array(-1)))
 
         check = jax.vmap(lambda s: check_single_segment(spell_active, s), in_axes=0)
 
@@ -547,19 +598,26 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             new_centipede_position,
             new_score,
             segment_hit,
+            mush_idx
         ) = jax.lax.cond(spell_active != 0, lambda: check(centipede_position), no_hit)
         spell_active = jnp.invert(jnp.any(jnp.invert(spell_active)))
 
         new_score = jnp.max(new_score)
         new_heads = jnp.roll(segment_hit, 1)
+        mush_idx = jnp.max(mush_idx)
+        new_mushroom_positions = jnp.where(
+            jnp.logical_and(mush_idx >= 0, mush_idx < self.consts.MAX_MUSHROOMS),
+            mushroom_positions.at[mush_idx, 3].set(3),
+            mushroom_positions
+        )
 
         def set_new_status(seg, new):     # change value of hit following segment to head
-            return jnp.where(new == 1, seg.at[4].set(2), seg)
+            return jnp.where(jnp.logical_and(new == 1, seg[4] != 0), seg.at[4].set(2), seg)
 
         return (
             spell_state.at[2].set(jnp.where(spell_active, 1, 0)),
             jax.vmap(set_new_status)(new_centipede_position, new_heads),
-            mushroom_positions,
+            new_mushroom_positions,
             new_score
         )
 
@@ -591,7 +649,6 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         lives = pattern_array[row_indices, col_indices] * 3  # 3 lives if visible, 0 if not
         is_poisoned = jnp.zeros_like(lives)
-
         return jnp.stack([x, y, is_poisoned, lives], axis=1)
 
     @partial(jax.jit, static_argnums=(0, ))
@@ -611,7 +668,6 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             )
 
         centipede = jax.lax.fori_loop(0, self.consts.MAX_SEGMENTS, spawn_segment, initial_positions)
-        jax.debug.print("{}", centipede)
         return centipede
 
     @partial(jax.jit, static_argnums=(0, ))
@@ -694,38 +750,26 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             Action.DOWNLEFTFIRE
         ]))
 
-        collision_with_mushrooms = True # TODO: Implement
-        kill_spell = jnp.logical_and(state.player_spell[1] < 0, collision_with_mushrooms)
         spawn = jnp.logical_and(jnp.logical_not(state.player_spell[2] != 0), fire)
 
-        # New is_alive-status
         new_is_alive = jnp.where(
             spawn,  # on spawn
-            True,
-            jnp.where(kill_spell, False, state.player_spell[2] != 0)  # on kill or keep
-        )
-        '''
-        for i in range(0, 304, 50):
-            jax.debug.print("Mushroom positions {i}–{j}: {chunk}",
-                            i=i,
-                            j=i + 50,
-                            chunk=state.mushroom_positions[i:i + 50])
-        '''
-        # Base x
-        base_x = jnp.where(spawn, state.player_x + 1, state.player_spell[0]) # player x on spawn or keep x
-        # Base y
-        base_y = jnp.where(spawn, state.player_y + 5, state.player_spell[1]) # player y on spawn or keey y
-
-        # move only when alive
-        new_y = jnp.where(
-            spawn,
-            state.player_y + 5 - self.consts.PLAYER_SPELL_SPEED,
-            jnp.where(new_is_alive, base_y - self.consts.PLAYER_SPELL_SPEED, 0.0)
+            1,
+            jnp.where(
+                state.player_spell[1] < 0,
+                0,
+                state.player_spell[2]
+            )  # on kill or keep
         )
         new_x = jnp.where(
-            new_is_alive,
-            base_x,
-            0.0
+            spawn,
+            state.player_x + 1,
+            jnp.where(new_is_alive, state.player_spell[0], 0.0)
+        )
+        new_y = jnp.where(
+            spawn,
+            state.player_y + 1,
+            jnp.where(new_is_alive, state.player_spell[1] - self.consts.PLAYER_SPELL_SPEED, 0.0)
         )
 
         return jnp.array([new_x, new_y, new_is_alive])
