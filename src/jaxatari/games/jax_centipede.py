@@ -18,6 +18,8 @@ from typing import NamedTuple, Tuple
 from jaxatari import spaces
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action, EnvState, EnvObs
 from jaxatari.renderers import JAXGameRenderer
+from jaxatari.rendering.jax_rendering_utils import recolor_sprite
+
 
 class CentipedeConstants:
     # -------- Game constants --------
@@ -143,16 +145,25 @@ def load_sprites():
     spider2 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/2.npy"))
     spider3 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/3.npy"))
     spider4 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider/4.npy"))
+    spider_300 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider_scores/300.npy"))
+    spider_600 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider_scores/600.npy"))
+    spider_900 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider_scores/900.npy"))
     flea1 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/flea/1.npy"))
+    sparks1 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/sparks/1.npy"))
+    sparks2 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/sparks/2.npy"))
+    sparks3 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/sparks/3.npy"))
+    sparks4 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/sparks/4.npy"))
     bottom_border = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/ui/bottom_border.npy"))
 
+    sparks_sprites, _ = jru.pad_to_match([sparks1, sparks2, sparks3, sparks4])
     spider_sprites, _ = jru.pad_to_match([spider1, spider2, spider3, spider4])
 
     SPRITE_PLAYER = jnp.expand_dims(player, 0)
-    SPRITE_PLAYER_spell = jnp.expand_dims(player_spell, 0)
+    SPRITE_PLAYER_SPELL = jnp.expand_dims(player_spell, 0)
 
     SPRITE_CENTIPEDE = jnp.expand_dims(centipede, 0)
-    SPRITE_FLEA = jnp.expand_dims(flea1, 0)
+    SPRITE_MUSHROOM = jnp.expand_dims(mushroom, 0)
+
     SPRITE_SPIDER = jnp.concatenate(
         [
             jnp.repeat(spider_sprites[0][None], 4, axis=0),
@@ -161,9 +172,21 @@ def load_sprites():
             jnp.repeat(spider_sprites[3][None], 4, axis=0),
         ]
     )
+    SPRITE_SPIDER_300 = jnp.expand_dims(spider_300, 0)
+    SPRITE_SPIDER_600 = jnp.expand_dims(spider_600, 0)
+    SPRITE_SPIDER_900 = jnp.expand_dims(spider_900, 0)
+    SPRITE_FLEA = jnp.expand_dims(flea1, 0)
 
+    SPRITE_SPARKS = jnp.concatenate(
+        [
+            jnp.repeat(sparks_sprites[0][None], 4, axis=0),
+            jnp.repeat(sparks_sprites[1][None], 4, axis=0),
+            jnp.repeat(sparks_sprites[2][None], 4, axis=0),
+            jnp.repeat(sparks_sprites[3][None], 4, axis=0),
+        ]
+    )
     SPRITE_BOTTOM_BORDER = jnp.expand_dims(bottom_border, 0)
-    SPRITE_MUSHROOM = jnp.expand_dims(mushroom, 0)
+
 
     DIGITS = jru.load_and_pad_digits(os.path.join(MODULE_DIR, "sprites/centipede/big_numbers/{}.npy"))
     LIFE_INDICATOR = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/ui/wand.npy"))
@@ -173,11 +196,15 @@ def load_sprites():
 
     return (
         SPRITE_PLAYER,
-        SPRITE_PLAYER_spell,
-        SPRITE_MUSHROOM,
+        SPRITE_PLAYER_SPELL,
         SPRITE_CENTIPEDE,
+        SPRITE_MUSHROOM,
         SPRITE_SPIDER,
+        SPRITE_SPIDER_300,
+        SPRITE_SPIDER_600,
+        SPRITE_SPIDER_900,
         SPRITE_FLEA,
+        SPRITE_SPARKS,
         SPRITE_BOTTOM_BORDER,
         DIGITS,
         LIFE_INDICATOR,
@@ -185,11 +212,15 @@ def load_sprites():
 
 (
     SPRITE_PLAYER,
-    SPRITE_PLAYER_spell,
-    SPRITE_MUSHROOM,
+    SPRITE_PLAYER_SPELL,
     SPRITE_CENTIPEDE,
+    SPRITE_MUSHROOM,
     SPRITE_SPIDER,
+    SPRITE_SPIDER_300,
+    SPRITE_SPIDER_600,
+    SPRITE_SPIDER_900,
     SPRITE_FLEA,
+    SPRITE_SPARKS,
     SPRITE_BOTTOM_BORDER,
     DIGITS,
     LIFE_INDICATOR,
@@ -939,7 +970,7 @@ class CentipedeRenderer(JAXGameRenderer):
         )
 
         ### -------- Render player spell --------
-        frame_player_spell = jru.get_sprite_frame(SPRITE_PLAYER_spell, 0)
+        frame_player_spell = jru.get_sprite_frame(SPRITE_PLAYER_SPELL, 0)
         frame_player_spell = recolor_sprite(frame_player_spell, jnp.array([92, 186, 92]))
         raster = jnp.where(
             state.player_spell[2] != 0,
