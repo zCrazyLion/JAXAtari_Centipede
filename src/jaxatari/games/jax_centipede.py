@@ -18,7 +18,7 @@ from typing import NamedTuple, Tuple
 from jaxatari import spaces
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action, EnvState, EnvObs
 from jaxatari.renderers import JAXGameRenderer
-from jaxatari.rendering.jax_rendering_utils import recolor_sprite
+#from jaxatari.rendering.jax_rendering_utils import recolor_sprite
 
 
 class CentipedeConstants:
@@ -82,6 +82,24 @@ class CentipedeConstants:
     MAX_SEGMENTS = 9
     SEGMENT_SIZE = (4, 6)
 
+    ## -------- Color constants --------
+
+    ORANGE = jnp.array([181, 83, 40])#B55328    # Mushrooms lvl1
+    DARK_ORANGE = jnp.array([198, 108, 58])#C66C3A
+    PINK = jnp.array([184, 70, 162])#B846A2      # Centipede lvl1
+    GREEN = jnp.array([110, 156, 66])#6E9C42     # Border lvl1
+    LIGHT_PURPLE = jnp.array([188, 144, 252])#BC90FC  # UI Elements
+    PURPLE = jnp.array([146, 70, 192])#9246C0        # Spider
+    DARK_PURPLE = jnp.array([66, 72, 200])#4248C8
+    LIGHT_BLUE = jnp.array([84, 138, 210])#548AD2    # Border lvl2
+    BLUE = jnp.array([66, 114, 194])#4272C2
+    DARK_BLUE = jnp.array([45, 50, 184])#2D32B8     # Mushrooms lvl2
+    LIGHT_RED = jnp.array([200, 72, 72])#C84848
+    RED = jnp.array([184, 50, 50])#B83232       # Centipede lvl2
+    YELLOW = jnp.array([187, 187, 53])#BBBB35
+    DARK_YELLOW = jnp.array([162, 162, 42])#A2A22A
+    # POISONED_RAINBOW = ?
+
     # -------- Centipede States --------
 
 class CentipedeState(NamedTuple):
@@ -96,7 +114,7 @@ class CentipedeState(NamedTuple):
     # scorpion_position: chex.Array # (1, ?) array for scorpion, only moves from right to left?: (x, y)
     score: chex.Array
     lives: chex.Array
-    wave: chex.Array # number of wave (+ 0.5 if second (faster) wave
+    wave: chex.Array # (1, 2): logical wave, ui wave
     step_counter: chex.Array
     rng_key: jax.random.PRNGKey
     # TODO: fill
@@ -149,6 +167,9 @@ def load_sprites():
     spider_600 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider_scores/600.npy"))
     spider_900 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/spider_scores/900.npy"))
     flea1 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/flea/1.npy"))
+    flea2 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/flea/2.npy"))
+    scorpion1 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/scorpion/1.npy"))
+    scorpion2 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/scorpion/2.npy"))
     sparks1 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/sparks/1.npy"))
     sparks2 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/sparks/2.npy"))
     sparks3 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/sparks/3.npy"))
@@ -157,6 +178,8 @@ def load_sprites():
 
     sparks_sprites, _ = jru.pad_to_match([sparks1, sparks2, sparks3, sparks4])
     spider_sprites, _ = jru.pad_to_match([spider1, spider2, spider3, spider4])
+    flea_sprites, _ = jru.pad_to_match([flea1, flea2])
+    scorpion_sprites, _ = jru.pad_to_match([scorpion1, scorpion2])
 
     SPRITE_PLAYER = jnp.expand_dims(player, 0)
     SPRITE_PLAYER_SPELL = jnp.expand_dims(player_spell, 0)
@@ -166,16 +189,27 @@ def load_sprites():
 
     SPRITE_SPIDER = jnp.concatenate(
         [
-            jnp.repeat(spider_sprites[0][None], 4, axis=0),
-            jnp.repeat(spider_sprites[1][None], 4, axis=0),
-            jnp.repeat(spider_sprites[2][None], 4, axis=0),
-            jnp.repeat(spider_sprites[3][None], 4, axis=0),
+            jnp.repeat(spider_sprites[0][None], 8, axis=0),
+            jnp.repeat(spider_sprites[1][None], 8, axis=0),
+            jnp.repeat(spider_sprites[2][None], 8, axis=0),
+            jnp.repeat(spider_sprites[3][None], 8, axis=0),
         ]
     )
     SPRITE_SPIDER_300 = jnp.expand_dims(spider_300, 0)
     SPRITE_SPIDER_600 = jnp.expand_dims(spider_600, 0)
     SPRITE_SPIDER_900 = jnp.expand_dims(spider_900, 0)
-    SPRITE_FLEA = jnp.expand_dims(flea1, 0)
+    SPRITE_FLEA = jnp.concatenate(
+        [
+            jnp.repeat(flea_sprites[0][None], 2, axis=0),
+            jnp.repeat(flea_sprites[1][None], 2, axis=0),
+        ]
+    )
+    SPRITE_SCORPION = jnp.concatenate(
+        [
+            jnp.repeat(scorpion_sprites[0][None], 8, axis=0),
+            jnp.repeat(scorpion_sprites[1][None], 8, axis=0),
+        ]
+    )
 
     SPRITE_SPARKS = jnp.concatenate(
         [
@@ -191,9 +225,6 @@ def load_sprites():
     DIGITS = jru.load_and_pad_digits(os.path.join(MODULE_DIR, "sprites/centipede/big_numbers/{}.npy"))
     LIFE_INDICATOR = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/ui/wand.npy"))
 
-    # Debug
-    frame_player = jru.get_sprite_frame(SPRITE_PLAYER, 0)
-
     return (
         SPRITE_PLAYER,
         SPRITE_PLAYER_SPELL,
@@ -204,6 +235,7 @@ def load_sprites():
         SPRITE_SPIDER_600,
         SPRITE_SPIDER_900,
         SPRITE_FLEA,
+        SPRITE_SCORPION,
         SPRITE_SPARKS,
         SPRITE_BOTTOM_BORDER,
         DIGITS,
@@ -220,6 +252,7 @@ def load_sprites():
     SPRITE_SPIDER_600,
     SPRITE_SPIDER_900,
     SPRITE_FLEA,
+    SPRITE_SCORPION,
     SPRITE_SPARKS,
     SPRITE_BOTTOM_BORDER,
     DIGITS,
@@ -813,7 +846,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             score=jnp.array(0),
             lives=jnp.array(3),
             step_counter=jnp.array(0),
-            wave=jnp.array(1),
+            wave=jnp.array(0),
             rng_key=key,
         )
 
@@ -919,10 +952,202 @@ class CentipedeRenderer(JAXGameRenderer):
                 recolored_sprite = sprite.at[left:right, top:bottom].set(recolored_region)
                 return recolored_sprite
 
-        ### -------- Render mushrooms --------
-        frame_mushroom = jru.get_sprite_frame(SPRITE_MUSHROOM, 0)
-        frame_mushroom = recolor_sprite(frame_mushroom, jnp.array([92, 186, 92]))
+        def get_sprite_frames(wave: jnp.ndarray) -> tuple[      # TODO: use dynamic frame_idx
+            jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray,
+            jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
 
+            frame_player = jru.get_sprite_frame(SPRITE_PLAYER, 0)
+            frame_player_spell = jru.get_sprite_frame(SPRITE_PLAYER_SPELL, 0)
+            frame_centipede = jru.get_sprite_frame(SPRITE_CENTIPEDE, 0)
+            frame_mushroom = jru.get_sprite_frame(SPRITE_MUSHROOM, 0)
+            frame_spider = jru.get_sprite_frame(SPRITE_SPIDER, 0)
+            frame_spider300 = jru.get_sprite_frame(SPRITE_SPIDER_300, 0)
+            frame_spider600 = jru.get_sprite_frame(SPRITE_SPIDER_600, 0)
+            frame_spider900 = jru.get_sprite_frame(SPRITE_SPIDER_900, 0)
+            frame_flea = jru.get_sprite_frame(SPRITE_FLEA, 0)
+            frame_scorpion = jru.get_sprite_frame(SPRITE_SCORPION, 0)
+            frame_sparks = jru.get_sprite_frame(SPRITE_SPARKS, 0)
+            frame_bottom_border = jru.get_sprite_frame(SPRITE_BOTTOM_BORDER, 0)
+
+            # TODO: handle sparks
+            recolored_sparks = recolor_sprite(frame_sparks, self.consts.LIGHT_PURPLE),  # Placeholder
+
+            def wave_0():
+                return (
+                    recolor_sprite(frame_player, self.consts.ORANGE),
+                    recolor_sprite(frame_player_spell, self.consts.ORANGE),
+                    recolor_sprite(frame_centipede, self.consts.PINK),
+                    recolor_sprite(frame_mushroom, self.consts.ORANGE),
+                    recolor_sprite(frame_spider, self.consts.PURPLE),
+                    recolor_sprite(frame_spider300, self.consts.PURPLE),
+                    recolor_sprite(frame_spider600, self.consts.PURPLE),
+                    recolor_sprite(frame_spider900, self.consts.PURPLE),
+                    recolor_sprite(frame_flea, self.consts.DARK_BLUE),       # Placeholder
+                    recolor_sprite(frame_scorpion, self.consts.LIGHT_BLUE),
+                    recolored_sparks,
+                    recolor_sprite(frame_bottom_border, self.consts.GREEN),
+                )
+
+            def wave_1():
+                return (
+                    recolor_sprite(frame_player, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_player_spell, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_centipede, self.consts.RED),
+                    recolor_sprite(frame_mushroom, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_spider, self.consts.GREEN),
+                    recolor_sprite(frame_spider300, self.consts.GREEN),
+                    recolor_sprite(frame_spider600, self.consts.GREEN),
+                    recolor_sprite(frame_spider900, self.consts.GREEN),
+                    recolor_sprite(frame_flea, self.consts.YELLOW),
+                    recolor_sprite(frame_scorpion, self.consts.ORANGE),
+                    recolored_sparks,
+                    recolor_sprite(frame_bottom_border, self.consts.LIGHT_BLUE),
+                )
+
+            def wave_2():
+                return (
+                    recolor_sprite(frame_player, self.consts.YELLOW),
+                    recolor_sprite(frame_player_spell, self.consts.YELLOW),
+                    recolor_sprite(frame_centipede, self.consts.PURPLE),
+                    recolor_sprite(frame_mushroom, self.consts.YELLOW),
+                    recolor_sprite(frame_spider, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_spider300, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_spider600, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_spider900, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_flea, self.consts.PINK),
+                    recolor_sprite(frame_scorpion, self.consts.DARK_BLUE),
+                    recolored_sparks,
+                    recolor_sprite(frame_bottom_border, self.consts.ORANGE),
+                )
+
+            def wave_3():
+                return (
+                    recolor_sprite(frame_player, self.consts.PINK),
+                    recolor_sprite(frame_player_spell, self.consts.PINK),
+                    recolor_sprite(frame_centipede, self.consts.GREEN),
+                    recolor_sprite(frame_mushroom, self.consts.PINK),
+                    recolor_sprite(frame_spider, self.consts.ORANGE),
+                    recolor_sprite(frame_spider300, self.consts.ORANGE),
+                    recolor_sprite(frame_spider600, self.consts.ORANGE),
+                    recolor_sprite(frame_spider900, self.consts.ORANGE),
+                    recolor_sprite(frame_flea, self.consts.RED),
+                    recolor_sprite(frame_scorpion, self.consts.YELLOW),
+                    recolored_sparks,
+                    recolor_sprite(frame_bottom_border, self.consts.DARK_PURPLE),
+                )
+
+            def wave_4():
+                return (
+                    recolor_sprite(frame_player, self.consts.RED),
+                    recolor_sprite(frame_player_spell, self.consts.RED),
+                    recolor_sprite(frame_centipede, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_mushroom, self.consts.RED),
+                    recolor_sprite(frame_spider, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_spider300, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_spider600, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_spider900, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_flea, self.consts.PURPLE),
+                    recolor_sprite(frame_scorpion, self.consts.PINK),
+                    recolored_sparks,
+                    recolor_sprite(frame_bottom_border, self.consts.DARK_YELLOW),
+                )
+
+            def wave_5():
+                return (
+                    recolor_sprite(frame_player, self.consts.PURPLE),
+                    recolor_sprite(frame_player_spell, self.consts.PURPLE),
+                    recolor_sprite(frame_centipede, self.consts.ORANGE),
+                    recolor_sprite(frame_mushroom, self.consts.PURPLE),
+                    recolor_sprite(frame_spider, self.consts.YELLOW),
+                    recolor_sprite(frame_spider300, self.consts.YELLOW),
+                    recolor_sprite(frame_spider600, self.consts.YELLOW),
+                    recolor_sprite(frame_spider900, self.consts.YELLOW),
+                    recolor_sprite(frame_flea, self.consts.GREEN),
+                    recolor_sprite(frame_scorpion, self.consts.RED),
+                    recolored_sparks,
+                    recolor_sprite(frame_bottom_border, self.consts.PINK),
+                )
+
+            def wave_6():
+                return (
+                    recolor_sprite(frame_player, self.consts.GREEN),
+                    recolor_sprite(frame_player_spell, self.consts.GREEN),
+                    recolor_sprite(frame_centipede, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_mushroom, self.consts.GREEN),
+                    recolor_sprite(frame_spider, self.consts.PINK),
+                    recolor_sprite(frame_spider300, self.consts.PINK),
+                    recolor_sprite(frame_spider600, self.consts.PINK),
+                    recolor_sprite(frame_spider900, self.consts.PINK),
+                    recolor_sprite(frame_flea, self.consts.LIGHT_BLUE),       # Placeholder
+                    recolor_sprite(frame_scorpion, self.consts.PURPLE),
+                    recolored_sparks,
+                    recolor_sprite(frame_bottom_border, self.consts.RED),
+                )
+
+            def wave_7():
+                return (
+                    recolor_sprite(frame_player, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_player_spell, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_centipede, self.consts.YELLOW),
+                    recolor_sprite(frame_mushroom, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_spider, self.consts.RED),
+                    recolor_sprite(frame_spider300, self.consts.RED),
+                    recolor_sprite(frame_spider600, self.consts.RED),
+                    recolor_sprite(frame_spider900, self.consts.RED),
+                    recolor_sprite(frame_flea, self.consts.ORANGE),       # Placeholder
+                    recolor_sprite(frame_scorpion, self.consts.GREEN),
+                    recolored_sparks,
+                    recolor_sprite(frame_bottom_border, self.consts.RED),
+                )
+
+            wave = wave % 8
+
+            return jax.lax.cond(
+                wave == 0,
+                lambda: wave_0(),
+                lambda: jax.lax.cond(
+                    wave == 1,
+                    lambda: wave_1(),
+                    lambda: jax.lax.cond(
+                        wave == 2,
+                        lambda: wave_2(),
+                        lambda: jax.lax.cond(
+                            wave == 3,
+                            lambda: wave_3(),
+                            lambda: jax.lax.cond(
+                                wave == 4,
+                                lambda: wave_4(),
+                                lambda: jax.lax.cond(
+                                    wave == 5,
+                                    lambda: wave_5(),
+                                    lambda: jax.lax.cond(
+                                        wave == 6,
+                                        lambda: wave_6(),
+                                        lambda: wave_7()
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+
+        (
+            frame_player,
+            frame_player_spell,
+            frame_centipede,
+            frame_mushroom,
+            frame_spider,
+            frame_spider300,
+            frame_spider600,
+            frame_spider900,
+            frame_flea,
+            frame_scorpion,
+            frame_sparks,
+            frame_bottom_border,
+        ) = get_sprite_frames(state.wave)
+
+        ### -------- Render mushrooms --------
         def render_mushrooms(i, raster_base):
             should_render = state.mushroom_positions[i][3] > 0
             return jax.lax.cond(
@@ -936,13 +1161,9 @@ class CentipedeRenderer(JAXGameRenderer):
                 lambda r: r,
                 raster_base,
             )
-
         raster = jax.lax.fori_loop(0, self.consts.MAX_MUSHROOMS, render_mushrooms, raster)
 
         ### -------- Render centipede --------
-        frame_centipede = jru.get_sprite_frame(SPRITE_CENTIPEDE, 0)
-        frame_centipede = recolor_sprite(frame_centipede, jnp.array([92, 186, 92]))
-
         def render_centipede_segment(i, raster_base):
             should_render = state.centipede_position[i][4] != 0
             return jax.lax.cond(
@@ -956,12 +1177,9 @@ class CentipedeRenderer(JAXGameRenderer):
                 lambda r: r,
                 raster_base
             )
-
         raster = jax.lax.fori_loop(0, self.consts.MAX_SEGMENTS, render_centipede_segment, raster)
 
         ### -------- Render player --------
-        frame_player = jru.get_sprite_frame(SPRITE_PLAYER, 0)
-        frame_player = recolor_sprite(frame_player, jnp.array([92, 186, 92]))
         raster = jru.render_at(
             raster,
             state.player_x,
@@ -970,8 +1188,6 @@ class CentipedeRenderer(JAXGameRenderer):
         )
 
         ### -------- Render player spell --------
-        frame_player_spell = jru.get_sprite_frame(SPRITE_PLAYER_SPELL, 0)
-        frame_player_spell = recolor_sprite(frame_player_spell, jnp.array([92, 186, 92]))
         raster = jnp.where(
             state.player_spell[2] != 0,
             jru.render_at(
@@ -984,8 +1200,6 @@ class CentipedeRenderer(JAXGameRenderer):
         )
 
         ### -------- Render bottom border --------
-        frame_bottom_border = jru.get_sprite_frame(SPRITE_BOTTOM_BORDER, 0)
-        frame_bottom_border = recolor_sprite(frame_bottom_border, jnp.array([92, 186, 92]))
         raster = jru.render_at(
             raster,
             16,
@@ -1000,7 +1214,6 @@ class CentipedeRenderer(JAXGameRenderer):
         raster = jru.render_label(raster, 100, 187, score_array, DIGITS, spacing=8)
 
         ### -------- Render live indicator --------
-        life_indicator = recolor_sprite(LIFE_INDICATOR, jnp.array([92, 186, 92]))
-        raster = jru.render_indicator(raster, 16, 187, state.lives - 1, life_indicator, spacing=8)
+        raster = jru.render_indicator(raster, 16, 187, state.lives - 1, LIFE_INDICATOR, spacing=8)
 
         return raster
