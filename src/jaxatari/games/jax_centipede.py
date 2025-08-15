@@ -108,7 +108,7 @@ class CentipedeState(NamedTuple):
     player_velocity_x: chex.Array
     player_spell: chex.Array  # (1, 3) array for player spell: x, y, is_alive
     mushroom_positions: chex.Array # (304, 4): x, y, is_poisoned, lives; 304 mushrooms in total
-    centipede_position: chex.Array # (9, 5): x, y, speed(horizontal), movement(vertical), is_head; 9 segments in total
+    centipede_position: chex.Array # (9, 5): x, y, speed(horizontal), movement(vertical), status/is_head; 9 segments in total
     # spider_position: chex.Array # (1, 3) array for spider: (x, y, direction)
     # flea_position: chex.Array # (1, 3) array for flea: (x, y, lives), 2 lives, speed doubles after 1 hit
     # scorpion_position: chex.Array # (1, 3) array for scorpion: (x, y, direction)
@@ -662,7 +662,13 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         new_heads = jnp.roll(segment_hit, 1)
         mush_idx = jnp.max(mush_idx)
         new_mushroom_positions = jnp.where(
-            jnp.logical_and(mush_idx >= 0, mush_idx < self.consts.MAX_MUSHROOMS),
+            jnp.logical_and(
+                jnp.logical_and(
+                    mush_idx >= 0,
+                    mush_idx < self.consts.MAX_MUSHROOMS
+                ),
+                mushroom_positions[mush_idx, 3] == 0
+            ),
             mushroom_positions.at[mush_idx, 3].set(3),
             mushroom_positions
         )
@@ -725,6 +731,21 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         centipede = jax.lax.fori_loop(0, self.consts.MAX_SEGMENTS, spawn_segment, initial_positions)
         return centipede
+
+    @partial(jax.jit, static_argnums=(0,))
+    def process_wave(self, centipede_state: chex.Array, wave: chex.Array) -> tuple[chex.Array, chex.Array]:
+        logical_wave = wave[0]
+        ui_wave = wave[1]
+
+        def new_wave():
+            new_logical_wave = jnp.where(logical_wave < 0, logical_wave * -1, (logical_wave + 1) * -1)
+            return self.initialize_centipede_positions(new_logical_wave), jnp.array([new_logical_wave, ui_wave + 1])
+
+        return jax.lax.cond(
+            jnp.sum(centipede_state[:, 4]) == 0,
+            lambda: new_wave(),
+            lambda: (centipede_state, wave)
+        )
 
     @partial(jax.jit, static_argnums=(0, ))
     def player_step(    # TODO: correct movement
@@ -843,7 +864,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             score=jnp.array(0),
             lives=jnp.array(3),
             step_counter=jnp.array(0),
-            wave=jnp.array(0),
+            wave=jnp.array([0, 0]),
             rng_key=key,
         )
 
@@ -883,6 +904,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         new_centipede_position = self.centipede_step(new_centipede_position, state.mushroom_positions)
 
+        new_centipede_position, new_wave = self.process_wave(new_centipede_position, state.wave)
+
         return_state = state._replace(
             player_x=new_player_x,
             player_y=new_player_y,
@@ -891,6 +914,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             mushroom_positions=updated_mushrooms,
             centipede_position=new_centipede_position,
             score=new_score,
+            wave=new_wave,
             step_counter=state.step_counter + 1
         )
 
@@ -1096,7 +1120,7 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_bottom_border, self.consts.RED),
                 )
 
-            wave = wave % 8
+            wave = wave[1] % 8
 
             return jax.lax.cond(
                 wave == 0,
