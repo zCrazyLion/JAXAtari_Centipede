@@ -30,7 +30,7 @@ class CentipedeConstants:
     ## -------- Player constants --------
     PLAYER_START_X = 76
     PLAYER_START_Y = 190 - 18
-    PLAYER_BOUNDS = (16, 140), (150, 172) # TODO: Check if correct
+    PLAYER_BOUNDS = (16, 140), (141, 172)
 
     PLAYER_SIZE = (4, 9)
 
@@ -40,7 +40,7 @@ class CentipedeConstants:
     MAX_VELOCITY_Y = 2.5 # Default: 2.5 | Maximum speed in y direction (pixels per frame)
 
     ## -------- Player spell constants --------
-    PLAYER_SPELL_SPEED = 9
+    PLAYER_SPELL_SPEED = 4.5
 
     PLAYER_SPELL_SIZE = (0, 8) # (0, 8) because of collision logic of spell
 
@@ -107,17 +107,16 @@ class CentipedeState(NamedTuple):
     player_y: chex.Array
     player_velocity_x: chex.Array
     player_spell: chex.Array  # (1, 3) array for player spell: x, y, is_alive
-    mushroom_positions: chex.Array # (304, 4) array for mushroom positions -> mushroom_positions need 4 entries per mushroom: 1. x value 2. y value 3. lives (1, 2 or 3) 4. is poisoned -> there are also 304 mushrooms in total
-    centipede_position: chex.Array # (9, 5): x, y, speed(horizontal), movement(vertical), is_head /  must contain position, direction and status(head)
-    # spider_position: chex.Array # (1, 3) array for spider (x, y, direction)
-    # flea_position: chex.Array # (1, 3) array for flea, 2 lives, speed doubles after 1 hit
-    # scorpion_position: chex.Array # (1, ?) array for scorpion, only moves from right to left?: (x, y)
+    mushroom_positions: chex.Array # (304, 4): x, y, is_poisoned, lives; 304 mushrooms in total
+    centipede_position: chex.Array # (9, 5): x, y, speed(horizontal), movement(vertical), is_head; 9 segments in total
+    # spider_position: chex.Array # (1, 3) array for spider: (x, y, direction)
+    # flea_position: chex.Array # (1, 3) array for flea: (x, y, lives), 2 lives, speed doubles after 1 hit
+    # scorpion_position: chex.Array # (1, 3) array for scorpion: (x, y, direction)
     score: chex.Array
     lives: chex.Array
     wave: chex.Array # (1, 2): logical wave, ui wave
     step_counter: chex.Array
     rng_key: jax.random.PRNGKey
-    # TODO: fill
 
 class PlayerEntity(NamedTuple):
     x: jnp.ndarray
@@ -290,8 +289,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         ]
         # self.frame_stack_size = 4 # ???
         # self.obs_size = 1024 # ???
-
-    # TODO: add other funtions if needed
+        self.renderer = CentipedeRenderer(self.consts)
 
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state: CentipedeState) -> jnp.ndarray:
@@ -327,6 +325,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
                 "active": spaces.Box(low=0, high=1, shape=(), dtype=jnp.int32),
             }),
+            # TODO: fill
         })
 
     def image_space(self) -> spaces.Box:
@@ -341,8 +340,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         )
 
     @partial(jax.jit, static_argnums=(0, ))
-    def _get_observation(self, state: CentipedeState) -> CentipedeObservation:
-        # TODO: fill
+    def _get_observation(self, state: CentipedeState) -> CentipedeObservation:      # TODO: fill
         player = PlayerEntity(
             x=state.player_x,
             y=state.player_y,
@@ -366,8 +364,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         )
 
     @partial(jax.jit, static_argnums=(0, ))
-    def _get_info(self, state: CentipedeState, all_rewards: jnp.ndarray) -> CentipedeInfo:
-        # TODO: fill
+    def _get_info(self, state: CentipedeState, all_rewards: jnp.ndarray) -> CentipedeInfo:      # TODO: fill
         return CentipedeInfo(
             step_counter=state.step_counter,
             all_rewards=all_rewards,
@@ -427,7 +424,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
     # -------- Logic Functions --------
 
-    @partial(jax.jit, static_argnums=(0,)) # TODO: fix glitching through diagonally placed mushrooms
+    @partial(jax.jit, static_argnums=(0,))
     def centipede_step(
         self,
         centipede_state: jnp.ndarray,
@@ -566,7 +563,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 def on_hit():
                     new_hp = mush_hp - 1
                     updated_mushroom_position = mushroom.at[3].set(new_hp)
-                    new_score = jnp.where(new_hp == 0, score + 1, score) # TODO: add case mushroom poisoned
+                    new_score = jnp.where(new_hp == 0, score + 1, score)
                     return False, updated_mushroom_position, new_score
 
                 def check_hp():
@@ -730,7 +727,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return centipede
 
     @partial(jax.jit, static_argnums=(0, ))
-    def player_step(
+    def player_step(    # TODO: correct movement
             self, state: CentipedeState, action: chex.Array
     ) -> tuple[chex.Array, chex.Array, chex.Array]:
         up = jnp.isin(action, jnp.array([
@@ -836,7 +833,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     @partial(jax.jit, static_argnums=(0, ))
     def reset(self, key: jax.random.PRNGKey = jax.random.PRNGKey(time.time_ns() % (2**32))) -> tuple[CentipedeObservation, CentipedeState]:
         """Initialize game state"""
-        reset_state = CentipedeState( # TODO: fill
+        reset_state = CentipedeState(
             player_x=jnp.array(self.consts.PLAYER_START_X),
             player_y=jnp.array(self.consts.PLAYER_START_Y),
             player_velocity_x=jnp.array(0),
@@ -855,9 +852,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
     @partial(jax.jit, static_argnums=(0, ))
     def step(
-            self, state: CentipedeState, action: Action
+            self, state: CentipedeState, action: chex.Array
     ) -> tuple[CentipedeObservation, CentipedeState, float, bool, CentipedeInfo]:
-        # TODO: fill
 
         new_player_x, new_player_y, new_velocity_x = self.player_step(state, action)
 
@@ -914,7 +910,7 @@ class CentipedeRenderer(JAXGameRenderer):
     def render(self, state: CentipedeState):
         raster = jnp.zeros((self.consts.HEIGHT, self.consts.WIDTH, 3))
 
-        def recolor_sprite(  # TODO: recolor sprites only when colors change (new wave)
+        def recolor_sprite(
                 sprite: jnp.ndarray,
                 color: jnp.ndarray,  # RGB, up to 4 dimensions
                 bounds: tuple[int, int, int, int] = None  # (top, left, bottom, right)
@@ -1207,7 +1203,7 @@ class CentipedeRenderer(JAXGameRenderer):
             frame_bottom_border,
         )
 
-        ### -------- Render score -------- TODO: make colorable, dynamic digit count
+        ### -------- Render score --------
         score_array = jru.int_to_digits(state.score, max_digits=6)
         # first_nonzero = jnp.argmax(score_array != 0)
         # _, score_array = jnp.split(score_array, first_nonzero - 1)
