@@ -416,7 +416,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return jnp.logical_and(horizontal_overlap, vertical_overlap)
 
     @partial(jax.jit, static_argnums=(0, ))
-    def get_mushroom_index(self, pos: jnp.ndarray) -> jnp.ndarray:
+    def get_mushroom_index(self, pos: chex.Array) -> chex.Array:
         row_idx = (pos[1] - 7) / 9
         odd_row = pos[1] % 2 == 0
         col_idx = jnp.where(odd_row, pos[0], pos[0] - 4) / 8
@@ -427,9 +427,9 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     @partial(jax.jit, static_argnums=(0,))
     def centipede_step(
         self,
-        centipede_state: jnp.ndarray,
-        mushrooms_positions: jnp.ndarray,
-    ) -> jnp.ndarray:
+        centipede_state: chex.Array,
+        mushrooms_positions: chex.Array,
+    ) -> chex.Array:
 
         def should_turn_around(i, carry):
             groups, same_group = carry
@@ -537,9 +537,9 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     @partial(jax.jit, static_argnums=(0, ))
     def check_spell_mushroom_collision(
         self,
-        spell_state: jnp.ndarray,
-        mushroom_positions: jnp.ndarray,
-        score: jnp.ndarray,
+        spell_state: chex.Array,
+        mushroom_positions: chex.Array,
+        score: chex.Array,
     ) -> tuple[chex.Array, chex.Array, chex.Array]:
         spell_pos_x = spell_state[0]
         spell_pos_y = spell_state[1]
@@ -583,11 +583,11 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     @partial(jax.jit, static_argnums=(0,))
     def check_centipede_spell_collision(
             self,
-            spell_state: jnp.ndarray,
-            centipede_position: jnp.ndarray,
-            mushroom_positions: jnp.ndarray,
-            score: jnp.ndarray,
-    ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+            spell_state: chex.Array,
+            centipede_position: chex.Array,
+            mushroom_positions: chex.Array,
+            score: chex.Array,
+    ) -> tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
         spell_active = spell_state[2] != 0
 
         def no_hit():
@@ -708,12 +708,12 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return jnp.stack([x, y, is_poisoned, lives], axis=1)
 
     @partial(jax.jit, static_argnums=(0, ))
-    def initialize_centipede_positions(self, wave: jnp.ndarray) -> chex.Array:
+    def initialize_centipede_positions(self, wave: chex.Array) -> chex.Array:
         base_x = 79
         base_y = 5
         initial_positions = jnp.zeros((self.consts.MAX_SEGMENTS, 5))
 
-        def spawn_segment(i, segments: jnp.ndarray):
+        def spawn_segment(i, segments: chex.Array):
             is_head = i == 0
             return segments.at[i].set(
                 jnp.where(
@@ -792,7 +792,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
     def player_spell_step(
             self, state: CentipedeState, action: chex.Array
-    ) -> jnp.array:
+    ) -> chex.Array:
 
         fire = jnp.isin(action, jnp.array([
             Action.FIRE,
@@ -911,10 +911,10 @@ class CentipedeRenderer(JAXGameRenderer):
         raster = jnp.zeros((self.consts.HEIGHT, self.consts.WIDTH, 3))
 
         def recolor_sprite(
-                sprite: jnp.ndarray,
-                color: jnp.ndarray,  # RGB, up to 4 dimensions
+                sprite: chex.Array,
+                color: chex.Array,  # RGB, up to 4 dimensions
                 bounds: tuple[int, int, int, int] = None  # (top, left, bottom, right)
-        ) -> jnp.ndarray:
+        ) -> chex.Array:
             # Ensure color is the same dtype as sprite
             dtype = sprite.dtype
             color = color.astype(dtype)
@@ -948,9 +948,9 @@ class CentipedeRenderer(JAXGameRenderer):
                 recolored_sprite = sprite.at[left:right, top:bottom].set(recolored_region)
                 return recolored_sprite
 
-        def get_sprite_frames(wave: jnp.ndarray) -> tuple[      # TODO: use dynamic frame_idx
-            jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray,
-            jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        def get_sprite_frames(wave: chex.Array) -> tuple[      # TODO: use dynamic frame_idx
+            chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array,
+            chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array]:
 
             frame_player = jru.get_sprite_frame(SPRITE_PLAYER, 0)
             frame_player_spell = jru.get_sprite_frame(SPRITE_PLAYER_SPELL, 0)
