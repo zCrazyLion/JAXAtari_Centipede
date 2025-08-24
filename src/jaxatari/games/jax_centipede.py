@@ -460,7 +460,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             moving_left = segment[2] < 0
 
             def step_horizontal():
-                speed = segment[2] * 0.5
+                speed = segment[2] * 0.25    # should be 0.21875 but see yourself
                 new_x = segment[0] + speed
                 return jnp.array([new_x, segment[1],segment[2], segment[3], segment[4]]), jnp.array(0)
 
@@ -485,7 +485,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
             def step_turn_around():
                 new_speed = -segment[2]
-                speed = new_speed * 0.5
+                speed = new_speed * 0.25    # should be 0.21875 but see yourself
                 new_x = segment[0] + speed
                 return jnp.array([new_x, segment[1], new_speed, segment[3], segment[4]]), jnp.array(1)
 
@@ -715,31 +715,102 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
     @partial(jax.jit, static_argnums=(0, ))
     def initialize_centipede_positions(self, wave: chex.Array) -> chex.Array:
-        base_x = 79
+        base_x = 80
         base_y = 5
         initial_positions = jnp.zeros((self.consts.MAX_SEGMENTS, 5))
 
+        wave = wave[0]
+        slow_wave = wave < 0
+        num_heads = jnp.abs(wave)
+        main_segments = self.consts.MAX_SEGMENTS - num_heads
+
         def spawn_segment(i, segments: chex.Array):
-            is_head = i == 0
-            return segments.at[i].set(
-                jnp.where(
-                    is_head,
-                    jnp.array([base_x + 4*i, base_y, -1, 1, 2]),
-                    jnp.array([base_x + 4*i, base_y, -1, 1, 1]),
+            def main_body():
+                is_head = i == 0
+                return segments.at[i].set(
+                    jnp.where(
+                        slow_wave,
+                        jnp.where(
+                            is_head,
+                            jnp.array([base_x + 4 * i, base_y, -1, 1, 2]),
+                            jnp.array([base_x + 4 * i, base_y, -1, 1, 1]),
+                        ),
+                        jnp.where(
+                            is_head,
+                            jnp.array([base_x + 4 * i, base_y, -2, 1, 2]),
+                            jnp.array([base_x + 4 * i, base_y, -2, 1, 1]),
+                        )
+                    )
                 )
+
+            def single_head():      # May not be 100% accurate (1-2px offset, varying per round)
+                j = i - main_segments
+                return jnp.where(
+                    j == 0,
+                    segments.at[i].set(jnp.array([140, 5, -2, 1, 2])),      # TODO: sometimes starts with different direction
+                    jnp.where(
+                        j == 1,
+                        segments.at[i].set(jnp.array([16, 5, 2, 1, 2])),
+                        jnp.where(
+                            j == 2,
+                            segments.at[i].set(jnp.array([108, 5, -2, 1, 2])),
+                            jnp.where(
+                                j == 3,
+                                segments.at[i].set(jnp.array([48, 14, 2, 1, 2])),
+                                jnp.where(
+                                    j == 4,
+                                    segments.at[i].set(jnp.array([124, 23, 2, 1, 2])),
+                                    jnp.where(
+                                        j == 5,
+                                        segments.at[i].set(jnp.array([32, 14, 2, 1, 2])),
+                                        jnp.where(
+                                            j == 6,
+                                            segments.at[i].set(jnp.array([92, 14, -2, 1, 2])),
+                                            jnp.where(
+                                                j == 7,
+                                                segments.at[i].set(jnp.array([64, 14, -2, 1, 2])),
+                                                segments.at[i].set(jnp.array([80, 5, -2, 1, 2])),
+                                            )
+                                        )
+                                    ),
+                                )
+                            )
+                        )
+                    )
+                )
+
+            return jax.lax.cond(
+                i < main_segments,
+                main_body,
+                single_head,
             )
 
-        centipede = jax.lax.fori_loop(0, self.consts.MAX_SEGMENTS, spawn_segment, initial_positions)
-        return centipede
+        return jax.lax.fori_loop(0, self.consts.MAX_SEGMENTS, spawn_segment, initial_positions)
 
     @partial(jax.jit, static_argnums=(0,))
-    def process_wave(self, centipede_state: chex.Array, wave: chex.Array) -> tuple[chex.Array, chex.Array]:
+    def process_wave(
+            self,
+            centipede_state: chex.Array,
+            wave: chex.Array,
+            score: chex.Array
+    ) -> tuple[chex.Array, chex.Array]:
         logical_wave = wave[0]
         ui_wave = wave[1]
 
         def new_wave():
-            new_logical_wave = jnp.where(logical_wave < 0, logical_wave * -1, (logical_wave + 1) * -1)
-            return self.initialize_centipede_positions(new_logical_wave), jnp.array([new_logical_wave, ui_wave + 1])
+            new_logical_wave = jnp.where(
+                score < 40_000,
+                jnp.where(
+                    logical_wave < 0,
+                    logical_wave * -1 % 8,
+                    (logical_wave + 1) * -1 % -8
+                ),
+                jnp.abs(logical_wave) + 1 % 8
+            )
+
+            new_wave = jnp.array([new_logical_wave, ui_wave + 1 % 8])
+            jax.debug.print("{}", new_wave)
+            return self.initialize_centipede_positions(new_wave), new_wave
 
         return jax.lax.cond(
             jnp.sum(centipede_state[:, 4]) == 0,
@@ -860,7 +931,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             player_velocity_x=jnp.array(0),
             player_spell=jnp.zeros(3),
             mushroom_positions=self.initialize_mushroom_positions(),
-            centipede_position=self.initialize_centipede_positions(wave=jnp.array(0)),
+            centipede_position=self.initialize_centipede_positions(jnp.array([0, 0])),
             score=jnp.array(0),
             lives=jnp.array(3),
             step_counter=jnp.array(0),
@@ -904,7 +975,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         new_centipede_position = self.centipede_step(new_centipede_position, state.mushroom_positions)
 
-        new_centipede_position, new_wave = self.process_wave(new_centipede_position, state.wave)
+        new_centipede_position, new_wave = self.process_wave(new_centipede_position, state.wave, state.score)
 
         return_state = state._replace(
             player_x=new_player_x,
