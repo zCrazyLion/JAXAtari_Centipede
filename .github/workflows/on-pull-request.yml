@@ -35,6 +35,7 @@ jobs:
               CHANGED_GAMES="[]"
             fi
           fi
+          echo $CHANGED_GAMES # debug
           echo "matrix=$CHANGED_GAMES" >> $GITHUB_OUTPUT
         shell: bash
 
