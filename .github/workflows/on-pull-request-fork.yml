@@ -25,7 +25,7 @@ jobs:
           git fetch origin pull/${{ github.event.pull_request.number }}/head:pr_head
           CHANGED_GAME_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}...pr_head | grep 'src/jaxatari/games/jax_.*\.py' || true)
           if [[ -n "$CHANGED_GAME_FILES" ]]; then
-            CHANGED_GAMES=$(echo "$CHANGED_GAME_FILES" | sed -e 's|src/jaxatari/games/jax_||' -e 's|\\.py\$||' | jq -R . | jq -cs .)
+            CHANGED_GAMES=$(echo "$CHANGED_GAME_FILES" | sed -e 's|src/jaxatari/games/jax_||' | sed -e 's|\.py||' | jq -R . | jq -cs .)
           else
             CHANGED_GAMES="[]"
           fi
