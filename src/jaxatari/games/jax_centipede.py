@@ -29,15 +29,16 @@ class CentipedeConstants:
 
     ## -------- Player constants --------
     PLAYER_START_X = 76
-    PLAYER_START_Y = 190 - 18
+    PLAYER_START_Y = 172
     PLAYER_BOUNDS = (16, 140), (141, 172)
 
     PLAYER_SIZE = (4, 9)
 
-    MAX_VELOCITY_X = 6 # Default: 6 | Maximum speed in x direction (pixels per frame)
-    ACCELERATION_X = 0.2 # Default: 0.2 | How fast player accelerates
+    MAX_VELOCITY_X = 1 # Default: 6 | Maximum speed in x direction (pixels per frame)
+    ACCELERATION_X = 1 # Default: 0.2 | How fast player accelerates
     FRICTION_X = 1 # Default: 1 | 1 = 100% -> player stops immediately, 0 = 0% -> player does not stop, 0.5 = 50 % -> player loses 50% of its velocity every frame
-    MAX_VELOCITY_Y = 2.5 # Default: 2.5 | Maximum speed in y direction (pixels per frame)
+    PLAYER_Y_VALUES = jnp.array([141, 145, 145.5, 147, 147.5, 150, 150.5, 154, 154.5, 156, 156.5, 159, 159.5, 163, 163.5, 165, 165.5, 168, 168.5, 172])      # Double to not need extra state value
+    MAX_VELOCITY_Y = 0.25
 
     ## -------- Player spell constants --------
     PLAYER_SPELL_SPEED = 4.5
@@ -819,8 +820,12 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         )
 
     @partial(jax.jit, static_argnums=(0, ))
-    def player_step(    # TODO: correct movement
-            self, state: CentipedeState, action: chex.Array
+    def player_step(
+            self,
+            player_x: chex.Array,
+            player_y: chex.Array,
+            player_velocity_x: chex.Array,
+            action: chex.Array
     ) -> tuple[chex.Array, chex.Array, chex.Array]:
         up = jnp.isin(action, jnp.array([
             Action.UP,
@@ -856,34 +861,52 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         ]))
 
         # x acceleration
-        accel_x = jnp.where(right, self.consts.ACCELERATION_X, jnp.where(left, -self.consts.ACCELERATION_X, 0.0))  # Compute acceleration based on input
+        acc_dir = jnp.where(right, 1, jnp.where(left, -1, 0))
+        no_horiz_op = jnp.invert(jnp.logical_or(right, left))
+        turn_around = jnp.logical_or(
+            jnp.logical_and(jnp.greater(player_velocity_x, 1/32), left),
+            jnp.logical_and(jnp.less(player_velocity_x, -1/32), right),
+        )
 
-        # x velocity
-        velocity_x = state.player_velocity_x  # Get current x velocity
-
-        moving_left_right_input = jnp.logical_and(right, (velocity_x < 0)) # If currently moving to the left and right input is detected
-        moving_right_left_input = jnp.logical_and(left, (velocity_x > 0)) # If currently moving to the right and left input is detected
-
-        direction_change = jnp.where(jnp.logical_or(moving_left_right_input, moving_right_left_input),True,False) # Detect direction change and reset velocity if needed
-        velocity_x = jnp.where(direction_change, 0.0, velocity_x)  # Reset velocity on direction change
-        velocity_x = velocity_x + accel_x  # Update velocity with acceleration
-        velocity_x = jnp.where(jnp.logical_not(jnp.logical_or(left, right)), velocity_x * (1.0 - self.consts.FRICTION_X), velocity_x)  # Slow down if no input
-        velocity_x = jnp.clip(velocity_x, -self.consts.MAX_VELOCITY_X, self.consts.MAX_VELOCITY_X)  # Clamp velocity within limits
-
-        # Global x position
-        new_player_x = state.player_x + velocity_x  # Compute next x position
-        velocity_x = jnp.where(new_player_x <= self.consts.PLAYER_BOUNDS[0][0], 0.0, velocity_x)  # Stop at left bound
-        player_x = jnp.clip(state.player_x + velocity_x, self.consts.PLAYER_BOUNDS[0][0], self.consts.PLAYER_BOUNDS[0][1])  # Final x position
+        raw_vel_x = jnp.fix(player_velocity_x) * 0.5
+        new_velocity_x = jnp.where(
+            no_horiz_op,
+            jnp.where(
+                player_x % 4 == 0,
+                0,
+                1/32 * jnp.sign(player_velocity_x),
+            ),
+            jnp.where(
+                turn_around,
+                1/32 * jnp.sign(player_velocity_x),
+                jnp.clip(
+                    jnp.where(jnp.abs(raw_vel_x) * 2 < 1, player_velocity_x + 1/8 * acc_dir, player_velocity_x + 1/16 * acc_dir),
+                    -3, 3,
+                ),
+            )
+        )
+        new_player_x = jnp.where(
+            jnp.logical_and(no_horiz_op, player_x % 4 != 0),
+            player_x + jnp.sign(new_velocity_x) * 0.5,
+            jnp.clip(player_x + raw_vel_x, self.consts.PLAYER_BOUNDS[0][0], self.consts.PLAYER_BOUNDS[0][1])
+        )
 
         # Calculate new y position
-        delta_y = jnp.where(up, -self.consts.MAX_VELOCITY_Y, jnp.where(down, self.consts.MAX_VELOCITY_Y, 0))
-        player_y = jnp.clip(state.player_y + delta_y, self.consts.PLAYER_BOUNDS[1][0], self.consts.PLAYER_BOUNDS[1][1])
+        y_idx = jnp.argmax(self.consts.PLAYER_Y_VALUES == player_y)
+        new_idx = jnp.clip(
+            y_idx + jnp.where(up, -1, jnp.where(down, 1, 0)),
+            0, self.consts.PLAYER_Y_VALUES.shape[0] - 1)
+        new_player_y = self.consts.PLAYER_Y_VALUES[new_idx]
 
-        return player_x, player_y, velocity_x
+        return new_player_x, new_player_y, new_velocity_x
 
 
-    def player_spell_step(
-            self, state: CentipedeState, action: chex.Array
+    def player_spell_step(      # TODO: fix behaviour for close objects (add cooldown)
+            self,
+            player_x: chex.Array,
+            player_y: chex.Array,
+            player_spell: chex.Array,
+            action: chex.Array
     ) -> chex.Array:
 
         fire = jnp.isin(action, jnp.array([
@@ -898,26 +921,26 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             Action.DOWNLEFTFIRE
         ]))
 
-        spawn = jnp.logical_and(jnp.logical_not(state.player_spell[2] != 0), fire)
+        spawn = jnp.logical_and(jnp.logical_not(player_spell[2] != 0), fire)
 
         new_is_alive = jnp.where(
             spawn,  # on spawn
             1,
             jnp.where(
-                state.player_spell[1] < 0,
+                player_spell[1] < 0,
                 0,
-                state.player_spell[2]
+                player_spell[2]
             )  # on kill or keep
         )
         new_x = jnp.where(
             spawn,
-            state.player_x + 1,
-            jnp.where(new_is_alive, state.player_spell[0], 0.0)
+            player_x + 1,
+            jnp.where(new_is_alive, player_spell[0], 0.0)
         )
         new_y = jnp.where(
             spawn,
-            state.player_y - 9,
-            jnp.where(new_is_alive, state.player_spell[1] - self.consts.PLAYER_SPELL_SPEED, 0.0)
+            jnp.floor(player_y) - 9,
+            jnp.where(new_is_alive, player_spell[1] - self.consts.PLAYER_SPELL_SPEED, 0.0)
         )
 
         return jnp.array([new_x, new_y, new_is_alive])
@@ -947,9 +970,23 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             self, state: CentipedeState, action: chex.Array
     ) -> tuple[CentipedeObservation, CentipedeState, float, bool, CentipedeInfo]:
 
-        new_player_x, new_player_y, new_velocity_x = self.player_step(state, action)
+        (
+            new_player_x,
+            new_player_y,
+            new_velocity_x
+        ) = self.player_step(
+            state.player_x,
+            state.player_y,
+            state.player_velocity_x,
+            action
+        )
 
-        new_player_spell_state = self.player_spell_step(state, action)
+        new_player_spell_state = self.player_spell_step(
+            new_player_x,
+            new_player_y,
+            state.player_spell,
+            action
+        )
 
         (
             new_player_spell_state,
