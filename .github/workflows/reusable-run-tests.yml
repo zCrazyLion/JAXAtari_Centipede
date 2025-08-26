@@ -5,11 +5,11 @@ on:
   workflow_call:
     inputs:
       game_matrix:
-        description: 'A JSON string of the game matrix to test'
+        description: "A JSON string of the game matrix to test"
         required: true
         type: string
       pr_head_sha:
-        description: 'The SHA of the PR head'
+        description: "The SHA of the PR head"
         required: false
         type: string
 
@@ -43,7 +43,7 @@ jobs:
       - name: Override src with PR changes
         if: ${{ inputs.pr_head_sha != '' }}
         run: |
-          rsync -av pr_head/src/jaxatari/ src/jaxatari/
+          rsync -av pr_head/src/jaxatari/games/ src/jaxatari/games/
         shell: bash
 
       - name: Remove PR head sources
