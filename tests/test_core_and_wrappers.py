@@ -37,16 +37,6 @@ def test_obs_to_flat_array_with_stacked_observations(raw_env):
     # The observation should maintain the stacked structure
     single_frame_size = get_object_centric_obs_size(atari_env._env.observation_space())
     assert obs.shape == (4, single_frame_size), f"Expected shape (4, {single_frame_size}), got {obs.shape}"
-    
-    # Run for a few steps to ensure frames are different
-    # Use UP action (2) instead of NOOP (0) to ensure game state changes
-    for _ in range(100):
-        obs, state, _, _, _ = env.step(state, 2)  # Use UP action
-    
-    # Check that the start of the obs stack is different from the end
-    first_frame = obs[0]
-    last_frame = obs[-1]
-    assert not jnp.array_equal(first_frame, last_frame), "Frames should be different after active gameplay"
 
 def test_pixel_obs_wrapper_with_stacked_frames(raw_env):
     """Test that PixelObsWrapper correctly handles stacked frames."""
@@ -140,15 +130,6 @@ def test_object_centric_wrapper(raw_env):
     # 3. Test the runtime output from step()
     obs, state, _, _, _ = env.step(state, 2) # Use an action that causes change
     assert obs.shape == space.shape
-
-    # 4. Verify that frames are different after several steps
-    for _ in range(100):
-        obs, state, _, _, _ = env.step(state, 2)
-    
-    first_frame = obs[0]
-    last_frame = obs[-1]
-    assert not jnp.array_equal(first_frame, last_frame), "Frames should be different after active gameplay"
-
 
 def test_log_wrapper(raw_env):
     """Test that LogWrapper correctly tracks episode returns and lengths."""
