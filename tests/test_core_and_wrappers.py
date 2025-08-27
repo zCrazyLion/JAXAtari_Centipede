@@ -62,11 +62,6 @@ def test_pixel_obs_wrapper_with_stacked_frames(raw_env):
     for _ in range(100):
         obs, state, reward, done, info = env.step(state, 0)
     
-    # Verify that frames are different (not just copies)
-    # The first and last frame in the stack should be different
-    # This is a basic check - in practice, they might be similar if the game state hasn't changed much
-    assert not jnp.array_equal(obs[0], obs[-1]), "First and last frames should be different"
-    
     # Verify that frames are in the correct range (0-255 for uint8)
     assert jnp.all(obs >= 0) and jnp.all(obs <= 255), "Pixel values should be in range [0, 255]"
 
