@@ -102,7 +102,6 @@ class CentipedeConstants:
     PURPLE = jnp.array([146, 70, 192])#9246C0        # Spider
     DARK_PURPLE = jnp.array([66, 72, 200])#4248C8
     LIGHT_BLUE = jnp.array([84, 138, 210])#548AD2    # Border lvl2
-    BLUE = jnp.array([66, 114, 194])#4272C2
     DARK_BLUE = jnp.array([45, 50, 184])#2D32B8     # Mushrooms lvl2
     LIGHT_RED = jnp.array([200, 72, 72])#C84848
     RED = jnp.array([184, 50, 50])#B83232       # Centipede lvl2
@@ -607,8 +606,47 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         spell_active = jnp.invert(jnp.any(jnp.invert(spell_active)))
         return spell_state.at[2].set(jnp.where(spell_active, 1, 0)), updated_mushrooms, jnp.max(updated_score)
 
-    ## -------- Spider Spell Collision Logic -------- ##
+    ## -------- Spider Mushroom Collision Logic -------- ##
+    @partial(jax.jit, static_argnums=(0,))
+    def check_spider_mushroom_collision(
+            self,
+            spider_position: chex.Array,
+            mushroom_positions: chex.Array,  # shape (304, 4): x, y, is_poisoned, lives
+    ) -> chex.Array:
+        """
+        Detects collisions between spider and mushrooms.
+        Returns updated mushroom positions (lives set to 0 if hit by spider).
+        """
 
+        spider_x, spider_y, spider_dir = spider_position
+        spider_alive = spider_dir != 0
+
+        def no_collision():
+            return mushroom_positions.astype(jnp.float32)
+
+        def check_hit():
+            # Prüfe pro Mushroom Kollision mit der Spinne
+            def collide_single(mushroom):
+                x, y, is_poisoned, lives = mushroom
+
+                collision = self.check_collision_single(
+                    pos1=jnp.array([spider_x + 4, spider_y - 2]),
+                    size1=(2, 4), # mushrooms do not always react to the spider bumping into them so the spider frame to check has to be smaller than SPIDER_SIZE (so we take MUSHROOM_SIZE so that two mushrooms cannot be hit at the same time)
+                    pos2=jnp.array([x, y]),
+                    size2=self.consts.MUSHROOM_SIZE,
+                )
+
+                # Bei Kollision direkt lives auf 0 setzen
+                new_lives = jnp.where(collision, 0.0, lives)
+
+                return jnp.array([x, y, is_poisoned, new_lives], dtype=jnp.float32)
+
+            new_mushrooms = jax.vmap(collide_single)(mushroom_positions)
+            return new_mushrooms
+
+        return jax.lax.cond(spider_alive, check_hit, no_collision)
+
+    ## -------- Spider Spell Collision Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
     def check_spell_spider_collision(
             self,
@@ -638,7 +676,6 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         # Default return (no collision, no sprite)
         def no_collision():
-            # wichtig: bestehenden Wert behalten, nicht [0,0] zurücksetzen
             return spell_state, spider_position, score, spider_points
 
         def check_hit():
@@ -1170,8 +1207,15 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         )
 
         # --- Centipede Collision ---
-        new_player_spell_state, new_centipede_position, updated_mushrooms, new_score = self.check_centipede_spell_collision(
-            new_player_spell_state, state.centipede_position, updated_mushrooms, new_score
+        new_player_spell_state, new_centipede_position, updated_mushrooms, new_score = \
+            self.check_centipede_spell_collision(
+                new_player_spell_state, state.centipede_position, updated_mushrooms, new_score
+            )
+
+        # --- Spider collision with mushrooms ---
+        updated_mushrooms = self.check_spider_mushroom_collision(
+            state.spider_position,
+            updated_mushrooms
         )
 
         # --- Centipede Step & Wave ---
@@ -1228,8 +1272,6 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             jnp.array([new_spider_points_pre[0], new_spider_points_pre[1] - 1]),
             new_spider_points_pre
         )
-
-        jax.debug.print("{x}", x=new_spider_points)
 
         # --- Return State ---
         return_state = state._replace(
@@ -1337,8 +1379,8 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_mushroom_idx, self.consts.ORANGE),
                     recolor_sprite(frame_spider_idx, self.consts.PURPLE),
                     recolor_sprite(frame_spider300_idx, self.consts.PURPLE),
-                    recolor_sprite(frame_spider600_idx, self.consts.PURPLE),
-                    recolor_sprite(frame_spider900_idx, self.consts.PURPLE),
+                    recolor_sprite(frame_spider600_idx, self.consts.GREEN),
+                    recolor_sprite(frame_spider900_idx, self.consts.LIGHT_BLUE),
                     recolor_sprite(frame_flea_idx, self.consts.DARK_BLUE),
                     recolor_sprite(frame_scorpion_idx, self.consts.LIGHT_BLUE),
                     recolored_sparks,
@@ -1353,8 +1395,8 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_mushroom_idx, self.consts.DARK_BLUE),
                     recolor_sprite(frame_spider_idx, self.consts.GREEN),
                     recolor_sprite(frame_spider300_idx, self.consts.GREEN),
-                    recolor_sprite(frame_spider600_idx, self.consts.GREEN),
-                    recolor_sprite(frame_spider900_idx, self.consts.GREEN),
+                    recolor_sprite(frame_spider600_idx, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_spider900_idx, self.consts.ORANGE),
                     recolor_sprite(frame_flea_idx, self.consts.YELLOW),
                     recolor_sprite(frame_scorpion_idx, self.consts.ORANGE),
                     recolored_sparks,
@@ -1369,8 +1411,8 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_mushroom_idx, self.consts.YELLOW),
                     recolor_sprite(frame_spider_idx, self.consts.LIGHT_BLUE),
                     recolor_sprite(frame_spider300_idx, self.consts.LIGHT_BLUE),
-                    recolor_sprite(frame_spider600_idx, self.consts.LIGHT_BLUE),
-                    recolor_sprite(frame_spider900_idx, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_spider600_idx, self.consts.ORANGE),
+                    recolor_sprite(frame_spider900_idx, self.consts.DARK_BLUE),
                     recolor_sprite(frame_flea_idx, self.consts.PINK),
                     recolor_sprite(frame_scorpion_idx, self.consts.DARK_BLUE),
                     recolored_sparks,
@@ -1385,8 +1427,8 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_mushroom_idx, self.consts.PINK),
                     recolor_sprite(frame_spider_idx, self.consts.ORANGE),
                     recolor_sprite(frame_spider300_idx, self.consts.ORANGE),
-                    recolor_sprite(frame_spider600_idx, self.consts.ORANGE),
-                    recolor_sprite(frame_spider900_idx, self.consts.ORANGE),
+                    recolor_sprite(frame_spider600_idx, self.consts.DARK_PURPLE),
+                    recolor_sprite(frame_spider900_idx, self.consts.YELLOW),
                     recolor_sprite(frame_flea_idx, self.consts.RED),
                     recolor_sprite(frame_scorpion_idx, self.consts.YELLOW),
                     recolored_sparks,
@@ -1401,8 +1443,8 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_mushroom_idx, self.consts.RED),
                     recolor_sprite(frame_spider_idx, self.consts.DARK_BLUE),
                     recolor_sprite(frame_spider300_idx, self.consts.DARK_BLUE),
-                    recolor_sprite(frame_spider600_idx, self.consts.DARK_BLUE),
-                    recolor_sprite(frame_spider900_idx, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_spider600_idx, self.consts.DARK_YELLOW),
+                    recolor_sprite(frame_spider900_idx, self.consts.PINK),
                     recolor_sprite(frame_flea_idx, self.consts.PURPLE),
                     recolor_sprite(frame_scorpion_idx, self.consts.PINK),
                     recolored_sparks,
@@ -1417,8 +1459,8 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_mushroom_idx, self.consts.PURPLE),
                     recolor_sprite(frame_spider_idx, self.consts.YELLOW),
                     recolor_sprite(frame_spider300_idx, self.consts.YELLOW),
-                    recolor_sprite(frame_spider600_idx, self.consts.YELLOW),
-                    recolor_sprite(frame_spider900_idx, self.consts.YELLOW),
+                    recolor_sprite(frame_spider600_idx, self.consts.PINK),
+                    recolor_sprite(frame_spider900_idx, self.consts.RED),
                     recolor_sprite(frame_flea_idx, self.consts.GREEN),
                     recolor_sprite(frame_scorpion_idx, self.consts.RED),
                     recolored_sparks,
@@ -1433,8 +1475,8 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_mushroom_idx, self.consts.GREEN),
                     recolor_sprite(frame_spider_idx, self.consts.PINK),
                     recolor_sprite(frame_spider300_idx, self.consts.PINK),
-                    recolor_sprite(frame_spider600_idx, self.consts.PINK),
-                    recolor_sprite(frame_spider900_idx, self.consts.PINK),
+                    recolor_sprite(frame_spider600_idx, self.consts.RED),
+                    recolor_sprite(frame_spider900_idx, self.consts.PURPLE),
                     recolor_sprite(frame_flea_idx, self.consts.LIGHT_BLUE),
                     recolor_sprite(frame_scorpion_idx, self.consts.PURPLE),
                     recolored_sparks,
@@ -1450,7 +1492,7 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_spider_idx, self.consts.RED),
                     recolor_sprite(frame_spider300_idx, self.consts.RED),
                     recolor_sprite(frame_spider600_idx, self.consts.RED),
-                    recolor_sprite(frame_spider900_idx, self.consts.RED),
+                    recolor_sprite(frame_spider900_idx, self.consts.GREEN),
                     recolor_sprite(frame_flea_idx, self.consts.ORANGE),
                     recolor_sprite(frame_scorpion_idx, self.consts.GREEN),
                     recolored_sparks,
