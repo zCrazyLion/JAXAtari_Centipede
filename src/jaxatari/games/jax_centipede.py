@@ -47,26 +47,26 @@ class CentipedeConstants:
 
     ## -------- Starting Pattern (X -> placed, O -> not placed) --------
     MUSHROOM_STARTING_PATTERN = [
-            "OOOOOOOOOOOOOOOO",
-            "OOOOOOOOXOOOOXOO",
-            "OOOOOOOOOXOOOOXO",
-            "OOOOOOOOOOXXOOOO",
-            "OOOXOOOOOOOOOOOO",
-            "OXOOOOOOOOOOOOOO",
-            "OOOOOOOXOOOOOOOO",
-            "OOOOOOXOOOOOOOXO",
-            "OOOXXOOOOXOOOOOO",
-            "OOOOOOOXOOOOOOOO",
-            "OOOOOOOOOOOOXOOO",
-            "OOOOXOOOOOOOOOOO",
-            "OOOOOOOOOOOOOXOO",
-            "OOOOOOOOOOOXOOOX",
-            "OOOOOOOOOOOOOOXO",
-            "OOOOXOOXOOOOOOOO",
-            "OXOOOXOOOOOOOOOO",
-            "OOOOXOOOOOOOOOOX",
-            "OOOOOOOOOOOOOOOO",
-        ]
+        "OOOOOOOOOOOOOOOO",
+        "OOOOOOOOXOOOOXOO",
+        "OOOOOOOOOXOOOOXO",
+        "OOOOOOOOOOXXOOOO",
+        "OOOXOOOOOOOOOOOO",
+        "OXOOOOOOOOOOOOOO",
+        "OOOOOOOXOOOOOOOO",
+        "OOOOOOXOOOOOOOXO",
+        "OOOXXOOOOXOOOOOO",
+        "OOOOOOOXOOOOOOOO",
+        "OOOOOOOOOOOOXOOO",
+        "OOOOXOOOOOOOOOOO",
+        "OOOOOOOOOOOOOXOO",
+        "OOOOOOOOOOOXOOOX",
+        "OOOOOOOOOOOOOOXO",
+        "OOOOXOOXOOOOOOOO",
+        "OXOOOXOOOOOOOOOO",
+        "OOOOXOOOOOOOOOOX",
+        "OOOOOOOOOOOOOOOO",
+    ]
 
     ## -------- Mushroom constants --------
     MAX_MUSHROOMS = 304             # Default 304 (19*16) | Maximum number of mushrooms that can appear at the same time
@@ -83,8 +83,17 @@ class CentipedeConstants:
     MAX_SEGMENTS = 9
     SEGMENT_SIZE = (4, 6)
 
-    ## -------- Color constants --------
+    ## -------- Spider constants --------
+    SPIDER_X_POSITIONS = jnp.array([16, 133])
+    SPIDER_Y_POSITIONS = jnp.array([115, 124, 133, 142, 151, 160, 169, 178])
+    SPIDER_MOVE_PROBABILITY = 0.2
+    SPIDER_MIN_SPAWN_FRAMES = 55
+    SPIDER_MAX_SPAWN_FRAMES = 355
+    SPIDER_SIZE = (8, 6)
+    SPIDER_CLOSE_RANGE = 16
+    SPIDER_MID_RANGE = 32
 
+    ## -------- Color constants --------
     ORANGE = jnp.array([181, 83, 40])#B55328    # Mushrooms lvl1
     DARK_ORANGE = jnp.array([198, 108, 58])#C66C3A
     PINK = jnp.array([184, 70, 162])#B846A2      # Centipede lvl1
@@ -101,23 +110,39 @@ class CentipedeConstants:
     DARK_YELLOW = jnp.array([162, 162, 42])#A2A22A
     # POISONED_RAINBOW = ?
 
+    ## -------- Sprite Frames --------
+    SPRITE_PLAYER_FRAMES = 1
+    SPRITE_PLAYER_SPELL_FRAMES = 1
+    SPRITE_CENTIPEDE_FRAMES = 1
+    SPRITE_MUSHROOM_FRAMES = 1
+    SPRITE_SPIDER_FRAMES = 4
+    SPRITE_SPIDER_300_FRAMES = 1
+    SPRITE_SPIDER_600_FRAMES = 1
+    SPRITE_SPIDER_900_FRAMES = 1
+    SPRITE_FLEA_FRAMES = 2
+    SPRITE_SCORPION_FRAMES = 2
+    SPRITE_SPARKS_FRAMES = 4
+    SPRITE_BOTTOM_BORDER_FRAMES = 1
+
     # -------- Centipede States --------
 
 class CentipedeState(NamedTuple):
     player_x: chex.Array
     player_y: chex.Array
     player_velocity_x: chex.Array
-    player_spell: chex.Array  # (1, 3) array for player spell: x, y, is_alive
+    player_spell: chex.Array  # (1, 3): x, y, is_alive
     mushroom_positions: chex.Array # (304, 4): x, y, is_poisoned, lives; 304 mushrooms in total
     centipede_position: chex.Array # (9, 5): x, y, speed(horizontal), movement(vertical), status/is_head; 9 segments in total
-    # spider_position: chex.Array # (1, 3) array for spider: (x, y, direction)
+    spider_position: chex.Array # (1, 3): x, y, direction
+    spider_spawn_timer: chex.Array # Frames until new spider spawns
+    spider_points: chex.Array # (1, 2): sprite, timeout
     # flea_position: chex.Array # (1, 3) array for flea: (x, y, lives), 2 lives, speed doubles after 1 hit
     # scorpion_position: chex.Array # (1, 3) array for scorpion: (x, y, direction)
     score: chex.Array
     lives: chex.Array
     wave: chex.Array # (1, 2): logical wave, ui wave
     step_counter: chex.Array
-    rng_key: jax.random.PRNGKey
+    rng_key: chex.PRNGKey
 
 class PlayerEntity(NamedTuple):
     x: jnp.ndarray
@@ -331,7 +356,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
     def image_space(self) -> spaces.Box:
         """Returns the image space for Centipede.
-        The image is a RGB image with shape (160, 210, 3).
+        The image is an RGB image with shape (160, 210, 3).
         """
         return spaces.Box(
             low=0,
@@ -425,6 +450,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
     # -------- Logic Functions --------
 
+    ## -------- Centipede Move Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
     def centipede_step(
         self,
@@ -534,7 +560,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         return jax.vmap(set_new_status)(new_state, segment_split)
 
-
+    ## -------- Spell Mushroom Collision Logic -------- ##
     @partial(jax.jit, static_argnums=(0, ))
     def check_spell_mushroom_collision(
         self,
@@ -581,6 +607,90 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         spell_active = jnp.invert(jnp.any(jnp.invert(spell_active)))
         return spell_state.at[2].set(jnp.where(spell_active, 1, 0)), updated_mushrooms, jnp.max(updated_score)
 
+    ## -------- Spider Spell Collision Logic -------- ##
+
+    @partial(jax.jit, static_argnums=(0,))
+    def check_spell_spider_collision(
+            self,
+            spell_state: chex.Array,
+            spider_position: chex.Array,
+            score: chex.Array,
+            player_y: chex.Array,
+            spider_points: chex.Array,
+    ) -> tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
+        """
+        Detects collision between spell and spider.
+        Points are determined by the distance from player to spider on hit
+        - close range: 900 Points
+        - middle range: 600 Points
+        - far range: 300 Points
+        Additionally returns a spider_timer_sprite as int32[2] array.
+        """
+
+        # Check if spell is still active
+        spell_pos_x = spell_state[0]
+        spell_pos_y = spell_state[1]
+        spell_is_alive = spell_state[2] != 0
+
+        # Check if spider is still active
+        spider_x, spider_y, spider_dir = spider_position
+        spider_alive = spider_dir != 0
+
+        # Default return (no collision, no sprite)
+        def no_collision():
+            # wichtig: bestehenden Wert behalten, nicht [0,0] zurücksetzen
+            return spell_state, spider_position, score, spider_points
+
+        def check_hit():
+            collision = self.check_collision_single(
+                pos1=jnp.array([spell_pos_x, spell_pos_y]),
+                size1=self.consts.PLAYER_SPELL_SIZE,
+                pos2=jnp.array([spider_x + 2, spider_y - 2]),
+                size2=self.consts.SPIDER_SIZE,
+            )
+
+            def on_hit():
+                # Distance from player to spider
+                dist = jnp.abs(player_y - spider_y)
+
+                # Points determined by distance
+                points = jnp.where(
+                    dist < self.consts.SPIDER_CLOSE_RANGE,
+                    900,
+                    jnp.where(
+                        dist < self.consts.SPIDER_MID_RANGE,
+                        600,
+                        300,
+                    ),
+                )
+
+                # Sprite determined by distance
+                spider_timer_sprite = jnp.select(
+                    [
+                        dist < self.consts.SPIDER_CLOSE_RANGE,
+                        dist < self.consts.SPIDER_MID_RANGE,
+                    ],
+                    [
+                        jnp.array([3, 55], dtype=jnp.int32),
+                        jnp.array([2, 55], dtype=jnp.int32),
+                    ],
+                    default=jnp.array([1, 55], dtype=jnp.int32),
+                )
+
+                new_spell = spell_state.at[2].set(0)
+                new_spider = jnp.array([spider_x, spider_y, 0], dtype=jnp.float32)
+                new_score = score + points
+                return new_spell, new_spider, new_score, spider_timer_sprite
+
+            return jax.lax.cond(collision, on_hit, no_collision)
+
+        return jax.lax.cond(
+            jnp.logical_and(spell_is_alive, spider_alive),
+            check_hit,
+            no_collision,
+        )
+
+    ## -------- Centipede Spell Collision Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
     def check_centipede_spell_collision(
             self,
@@ -684,7 +794,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             score + new_score
         )
 
-    ## -------- Mushroom Spawn Logic --------
+    ## -------- Mushroom Spawn Logic -------- ##
     @partial(jax.jit, static_argnums=(0, ))
     def initialize_mushroom_positions(self) -> chex.Array:
         # Create row and column indices
@@ -712,8 +822,23 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         lives = pattern_array[row_indices, col_indices] * 3  # 3 lives if visible, 0 if not
         is_poisoned = jnp.zeros_like(lives)
+
         return jnp.stack([x, y, is_poisoned, lives], axis=1)
 
+    ## -------- Spider Spawn Logic -------- ##
+    @partial(jax.jit, static_argnums=(0,))
+    def initialize_spider_position(self, key: chex.PRNGKey) -> chex.Array:
+        idx_x = jax.random.randint(key, (), 0, 2)
+        x = self.consts.SPIDER_X_POSITIONS[idx_x]
+
+        direction = jnp.where(x == 133, -1, +1)
+
+        idx_y = jax.random.randint(key, (), 0, len(self.consts.SPIDER_Y_POSITIONS))
+        y = self.consts.SPIDER_Y_POSITIONS[idx_y]
+
+        return jnp.stack([x, y, direction]).astype(jnp.float32)
+
+    ## -------- Centipede Spawn Logic -------- ##
     @partial(jax.jit, static_argnums=(0, ))
     def initialize_centipede_positions(self, wave: chex.Array) -> chex.Array:
         base_x = 80
@@ -788,6 +913,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         return jax.lax.fori_loop(0, self.consts.MAX_SEGMENTS, spawn_segment, initial_positions)
 
+    ## -------- Wave Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
     def process_wave(
             self,
@@ -810,7 +936,6 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             )
 
             new_wave = jnp.array([new_logical_wave, ui_wave + 1 % 8])
-            jax.debug.print("{}", new_wave)
             return self.initialize_centipede_positions(new_wave), new_wave
 
         return jax.lax.cond(
@@ -819,6 +944,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             lambda: (centipede_state, wave)
         )
 
+    ## -------- Player Move Logic -------- ##
     @partial(jax.jit, static_argnums=(0, ))
     def player_step(
             self,
@@ -900,7 +1026,58 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         return new_player_x, new_player_y, new_velocity_x
 
+    ## -------- Spider Move Logic -------- ##
+    def spider_step(
+            self,
+            spider_x: chex.Array,
+            spider_y: chex.Array,
+            spider_direction: chex.Array,
+            step_counter: chex.Array,
+            key: chex.PRNGKey
+    ) -> chex.Array:
+        """Moves Spider one Step further with random x-movement and periodic y-movement"""
 
+        # Split key in two parts, one for x and one for y
+        key_x, key_y = jax.random.split(key)
+
+        # X movement of spider
+        move_x = jax.random.bernoulli(key_x, self.consts.SPIDER_MOVE_PROBABILITY)  # True = bewegen
+        new_x = jnp.where(move_x, spider_x + spider_direction, spider_x)
+
+        # Check if left or right border is reached
+        stop_left = (spider_direction == -1) & (new_x < 16)
+        stop_right = (spider_direction == +1) & (new_x > 133)
+
+        new_direction = jnp.where(stop_left | stop_right, 0, spider_direction)
+
+        # Y movement of spider
+        move_y = (step_counter % 8 == 7)
+
+        def update_y(spider_y):
+            idx = jnp.argwhere(self.consts.SPIDER_Y_POSITIONS == spider_y, size=1).squeeze()
+
+            can_go_up = idx > 0
+            can_go_down = idx < len(self.consts.SPIDER_Y_POSITIONS) - 1
+
+            rand = jax.random.bernoulli(key_y)
+
+            dy = jnp.where(~can_go_down, -1,
+                           jnp.where(~can_go_up, +1,
+                                     jnp.where(rand, -1, +1)))
+
+            new_idx = idx + dy
+            return self.consts.SPIDER_Y_POSITIONS[new_idx].astype(jnp.float32)
+
+        new_y = jax.lax.cond(
+            move_y,
+            update_y,
+            lambda y: y.astype(jnp.float32),
+            spider_y
+        )
+
+        return jnp.stack([new_x, new_y, new_direction])
+
+    ## -------- Player Spell Logic -------- ##
     def player_spell_step(      # TODO: fix behaviour for close objects (add cooldown)
             self,
             player_x: chex.Array,
@@ -946,8 +1123,14 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return jnp.array([new_x, new_y, new_is_alive])
 
     @partial(jax.jit, static_argnums=(0, ))
-    def reset(self, key: jax.random.PRNGKey = jax.random.PRNGKey(time.time_ns() % (2**32))) -> tuple[CentipedeObservation, CentipedeState]:
+    def reset(self, key = 42) -> Tuple[CentipedeObservation, CentipedeState]:
         """Initialize game state"""
+
+        key = jax.random.PRNGKey(time.time_ns() % (2 ** 32))  # Pseudo random number generator seed key, based on current system time.
+        new_key0, key_spider = jax.random.split(key, 2)
+
+        initial_spider_timer = jax.random.randint(key_spider, (), self.consts.SPIDER_MIN_SPAWN_FRAMES, self.consts.SPIDER_MAX_SPAWN_FRAMES + 1)
+
         reset_state = CentipedeState(
             player_x=jnp.array(self.consts.PLAYER_START_X),
             player_y=jnp.array(self.consts.PLAYER_START_Y),
@@ -955,65 +1138,100 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             player_spell=jnp.zeros(3),
             mushroom_positions=self.initialize_mushroom_positions(),
             centipede_position=self.initialize_centipede_positions(jnp.array([0, 0])),
+            spider_position=jnp.zeros(3),
+            spider_spawn_timer=initial_spider_timer,
+            spider_points=jnp.array([0, 0]),
             score=jnp.array(0),
             lives=jnp.array(3),
             step_counter=jnp.array(0),
             wave=jnp.array([0, 0]),
-            rng_key=key,
+            rng_key=new_key0,
         )
 
         initial_obs = self._get_observation(reset_state)
         return initial_obs, reset_state
 
-    @partial(jax.jit, static_argnums=(0, ))
-    def step(
-            self, state: CentipedeState, action: chex.Array
-    ) -> tuple[CentipedeObservation, CentipedeState, float, bool, CentipedeInfo]:
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, state: CentipedeState, action: chex.Array) -> tuple[
+        CentipedeObservation, CentipedeState, float, bool, CentipedeInfo]:
 
-        (
-            new_player_x,
-            new_player_y,
-            new_velocity_x
-        ) = self.player_step(
-            state.player_x,
-            state.player_y,
-            state.player_velocity_x,
-            action
+        # --- Player Movement ---
+        new_player_x, new_player_y, new_velocity_x = self.player_step(
+            state.player_x, state.player_y, state.player_velocity_x, action
         )
 
         new_player_spell_state = self.player_spell_step(
-            new_player_x,
-            new_player_y,
-            state.player_spell,
-            action
+            new_player_x, new_player_y, state.player_spell, action
         )
 
-        (
-            new_player_spell_state,
-            updated_mushrooms,
-            new_score
-        ) = self.check_spell_mushroom_collision(
-            new_player_spell_state,
-            state.mushroom_positions,
-            state.score,
+        # --- Mushroom Collision ---
+        new_player_spell_state, updated_mushrooms, new_score = self.check_spell_mushroom_collision(
+            new_player_spell_state, state.mushroom_positions, state.score
         )
 
-        (
-            new_player_spell_state,
-            new_centipede_position,
-            updated_mushrooms,
-            new_score
-        ) = self.check_centipede_spell_collision(
-            new_player_spell_state,
-            state.centipede_position,
-            updated_mushrooms,
-            new_score
+        # --- Centipede Collision ---
+        new_player_spell_state, new_centipede_position, updated_mushrooms, new_score = self.check_centipede_spell_collision(
+            new_player_spell_state, state.centipede_position, updated_mushrooms, new_score
         )
 
+        # --- Centipede Step & Wave ---
         new_centipede_position = self.centipede_step(new_centipede_position, state.mushroom_positions)
-
         new_centipede_position, new_wave = self.process_wave(new_centipede_position, state.wave, state.score)
 
+        # --- Spider Collision ---
+        new_player_spell_state, new_spider_position, new_score, new_spider_points_pre = self.check_spell_spider_collision(
+            new_player_spell_state,
+            state.spider_position,
+            new_score,
+            new_player_y,
+            state.spider_points,
+        )
+
+        # --- Spider Movement & Spawn Timer ---
+        new_rng_key, key_spawn, key_step = jax.random.split(state.rng_key, 3)
+
+        spider_x, spider_y, spider_dir = new_spider_position
+        spider_alive = spider_dir != 0
+
+        def move_spider(_):
+            new_spider = self.spider_step(spider_x, spider_y, spider_dir, state.step_counter, key_step)
+            return new_spider, state.spider_spawn_timer
+
+        def handle_dead_spider(_):
+            new_timer = state.spider_spawn_timer - 1
+
+            def respawn():
+                new_spider = self.initialize_spider_position(key_spawn).astype(jnp.float32)
+                next_timer = jax.random.randint(
+                    key_spawn,
+                    (),
+                    self.consts.SPIDER_MIN_SPAWN_FRAMES,
+                    self.consts.SPIDER_MAX_SPAWN_FRAMES + 1
+                )
+                return new_spider, next_timer
+
+            def wait():
+                return jnp.array([state.spider_position[0], state.spider_position[1], 0], dtype=jnp.float32), new_timer
+
+            return jax.lax.cond(new_timer <= 0, respawn, wait)
+
+        new_spider_position, new_spider_timer = jax.lax.cond(
+            spider_alive,
+            move_spider,
+            handle_dead_spider,
+            operand=None
+        )
+
+        # --- Spider points ---
+        new_spider_points = jnp.where(
+            new_spider_points_pre[1] > 0,
+            jnp.array([new_spider_points_pre[0], new_spider_points_pre[1] - 1]),
+            new_spider_points_pre
+        )
+
+        jax.debug.print("{x}", x=new_spider_points)
+
+        # --- Return State ---
         return_state = state._replace(
             player_x=new_player_x,
             player_y=new_player_y,
@@ -1021,9 +1239,13 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             player_spell=new_player_spell_state,
             mushroom_positions=updated_mushrooms,
             centipede_position=new_centipede_position,
+            spider_position=new_spider_position,
+            spider_spawn_timer=new_spider_timer,
+            spider_points=new_spider_points,
             score=new_score,
+            step_counter=state.step_counter + 1,
             wave=new_wave,
-            step_counter=state.step_counter + 1
+            rng_key=new_rng_key
         )
 
         obs = self._get_observation(return_state)
@@ -1080,184 +1302,166 @@ class CentipedeRenderer(JAXGameRenderer):
                 recolored_sprite = sprite.at[left:right, top:bottom].set(recolored_region)
                 return recolored_sprite
 
-        def get_sprite_frames(wave: chex.Array) -> tuple[      # TODO: use dynamic frame_idx
-            chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array,
-            chex.Array, chex.Array, chex.Array, chex.Array, chex.Array, chex.Array]:
+        def get_sprite_frames(wave: chex.Array, step_counter: int):
+            """Gives all sprite-frames dynamically depending on step_counter and recoloring depending on wave"""
 
-            frame_player = jru.get_sprite_frame(SPRITE_PLAYER, 0)
-            frame_player_spell = jru.get_sprite_frame(SPRITE_PLAYER_SPELL, 0)
-            frame_centipede = jru.get_sprite_frame(SPRITE_CENTIPEDE, 0)
-            frame_mushroom = jru.get_sprite_frame(SPRITE_MUSHROOM, 0)
-            frame_spider = jru.get_sprite_frame(SPRITE_SPIDER, 0)
-            frame_spider300 = jru.get_sprite_frame(SPRITE_SPIDER_300, 0)
-            frame_spider600 = jru.get_sprite_frame(SPRITE_SPIDER_600, 0)
-            frame_spider900 = jru.get_sprite_frame(SPRITE_SPIDER_900, 0)
-            frame_flea = jru.get_sprite_frame(SPRITE_FLEA, 0)
-            frame_scorpion = jru.get_sprite_frame(SPRITE_SCORPION, 0)
-            frame_sparks = jru.get_sprite_frame(SPRITE_SPARKS, 0)
-            frame_bottom_border = jru.get_sprite_frame(SPRITE_BOTTOM_BORDER, 0)
+            def get_frame(sprite_id, num_frames: int, step_counter: int):
+                """Calculates dynamically the frame of a sprite"""
+                if num_frames == 1:
+                    return jru.get_sprite_frame(sprite_id, 0)
+                idx = step_counter
+                return jru.get_sprite_frame(sprite_id, idx)
 
-            # TODO: handle sparks
-            recolored_sparks = recolor_sprite(frame_sparks, self.consts.LIGHT_PURPLE),  # Placeholder
+            # --- Get frames dynamically --- #
+            frame_player_idx = get_frame(SPRITE_PLAYER, self.consts.SPRITE_PLAYER_FRAMES, step_counter)
+            frame_player_spell_idx = get_frame(SPRITE_PLAYER_SPELL, self.consts.SPRITE_PLAYER_SPELL_FRAMES, step_counter)
+            frame_centipede_idx = get_frame(SPRITE_CENTIPEDE, self.consts.SPRITE_CENTIPEDE_FRAMES, step_counter)
+            frame_mushroom_idx = get_frame(SPRITE_MUSHROOM, self.consts.SPRITE_MUSHROOM_FRAMES, step_counter)
+            frame_spider_idx = get_frame(SPRITE_SPIDER, self.consts.SPRITE_SPIDER_FRAMES, step_counter)
+            frame_spider300_idx = get_frame(SPRITE_SPIDER_300, self.consts.SPRITE_SPIDER_300_FRAMES, step_counter)
+            frame_spider600_idx = get_frame(SPRITE_SPIDER_600, self.consts.SPRITE_SPIDER_600_FRAMES, step_counter)
+            frame_spider900_idx = get_frame(SPRITE_SPIDER_900, self.consts.SPRITE_SPIDER_900_FRAMES, step_counter)
+            frame_flea_idx = get_frame(SPRITE_FLEA, self.consts.SPRITE_FLEA_FRAMES, step_counter)
+            frame_scorpion_idx = get_frame(SPRITE_SCORPION, self.consts.SPRITE_SCORPION_FRAMES, step_counter)
+            frame_sparks_idx = get_frame(SPRITE_SPARKS, self.consts.SPRITE_SPARKS_FRAMES, step_counter)
+            frame_bottom_border_idx = get_frame(SPRITE_BOTTOM_BORDER, self.consts.SPRITE_BOTTOM_BORDER_FRAMES, step_counter)
+
+            # --- Recoloring depending on wave --- #
+            recolored_sparks = recolor_sprite(frame_sparks_idx, self.consts.LIGHT_PURPLE)  # Platzhalter
 
             def wave_0():
                 return (
-                    recolor_sprite(frame_player, self.consts.ORANGE),
-                    recolor_sprite(frame_player_spell, self.consts.ORANGE),
-                    recolor_sprite(frame_centipede, self.consts.PINK),
-                    recolor_sprite(frame_mushroom, self.consts.ORANGE),
-                    recolor_sprite(frame_spider, self.consts.PURPLE),
-                    recolor_sprite(frame_spider300, self.consts.PURPLE),
-                    recolor_sprite(frame_spider600, self.consts.PURPLE),
-                    recolor_sprite(frame_spider900, self.consts.PURPLE),
-                    recolor_sprite(frame_flea, self.consts.DARK_BLUE),       # Placeholder
-                    recolor_sprite(frame_scorpion, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_player_idx, self.consts.ORANGE),
+                    recolor_sprite(frame_player_spell_idx, self.consts.ORANGE),
+                    recolor_sprite(frame_centipede_idx, self.consts.PINK),
+                    recolor_sprite(frame_mushroom_idx, self.consts.ORANGE),
+                    recolor_sprite(frame_spider_idx, self.consts.PURPLE),
+                    recolor_sprite(frame_spider300_idx, self.consts.PURPLE),
+                    recolor_sprite(frame_spider600_idx, self.consts.PURPLE),
+                    recolor_sprite(frame_spider900_idx, self.consts.PURPLE),
+                    recolor_sprite(frame_flea_idx, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_scorpion_idx, self.consts.LIGHT_BLUE),
                     recolored_sparks,
-                    recolor_sprite(frame_bottom_border, self.consts.GREEN),
+                    recolor_sprite(frame_bottom_border_idx, self.consts.GREEN),
                 )
 
             def wave_1():
                 return (
-                    recolor_sprite(frame_player, self.consts.DARK_BLUE),
-                    recolor_sprite(frame_player_spell, self.consts.DARK_BLUE),
-                    recolor_sprite(frame_centipede, self.consts.RED),
-                    recolor_sprite(frame_mushroom, self.consts.DARK_BLUE),
-                    recolor_sprite(frame_spider, self.consts.GREEN),
-                    recolor_sprite(frame_spider300, self.consts.GREEN),
-                    recolor_sprite(frame_spider600, self.consts.GREEN),
-                    recolor_sprite(frame_spider900, self.consts.GREEN),
-                    recolor_sprite(frame_flea, self.consts.YELLOW),
-                    recolor_sprite(frame_scorpion, self.consts.ORANGE),
+                    recolor_sprite(frame_player_idx, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_player_spell_idx, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_centipede_idx, self.consts.RED),
+                    recolor_sprite(frame_mushroom_idx, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_spider_idx, self.consts.GREEN),
+                    recolor_sprite(frame_spider300_idx, self.consts.GREEN),
+                    recolor_sprite(frame_spider600_idx, self.consts.GREEN),
+                    recolor_sprite(frame_spider900_idx, self.consts.GREEN),
+                    recolor_sprite(frame_flea_idx, self.consts.YELLOW),
+                    recolor_sprite(frame_scorpion_idx, self.consts.ORANGE),
                     recolored_sparks,
-                    recolor_sprite(frame_bottom_border, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_bottom_border_idx, self.consts.LIGHT_BLUE),
                 )
 
             def wave_2():
                 return (
-                    recolor_sprite(frame_player, self.consts.YELLOW),
-                    recolor_sprite(frame_player_spell, self.consts.YELLOW),
-                    recolor_sprite(frame_centipede, self.consts.PURPLE),
-                    recolor_sprite(frame_mushroom, self.consts.YELLOW),
-                    recolor_sprite(frame_spider, self.consts.LIGHT_BLUE),
-                    recolor_sprite(frame_spider300, self.consts.LIGHT_BLUE),
-                    recolor_sprite(frame_spider600, self.consts.LIGHT_BLUE),
-                    recolor_sprite(frame_spider900, self.consts.LIGHT_BLUE),
-                    recolor_sprite(frame_flea, self.consts.PINK),
-                    recolor_sprite(frame_scorpion, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_player_idx, self.consts.YELLOW),
+                    recolor_sprite(frame_player_spell_idx, self.consts.YELLOW),
+                    recolor_sprite(frame_centipede_idx, self.consts.PURPLE),
+                    recolor_sprite(frame_mushroom_idx, self.consts.YELLOW),
+                    recolor_sprite(frame_spider_idx, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_spider300_idx, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_spider600_idx, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_spider900_idx, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_flea_idx, self.consts.PINK),
+                    recolor_sprite(frame_scorpion_idx, self.consts.DARK_BLUE),
                     recolored_sparks,
-                    recolor_sprite(frame_bottom_border, self.consts.ORANGE),
+                    recolor_sprite(frame_bottom_border_idx, self.consts.ORANGE),
                 )
 
             def wave_3():
                 return (
-                    recolor_sprite(frame_player, self.consts.PINK),
-                    recolor_sprite(frame_player_spell, self.consts.PINK),
-                    recolor_sprite(frame_centipede, self.consts.GREEN),
-                    recolor_sprite(frame_mushroom, self.consts.PINK),
-                    recolor_sprite(frame_spider, self.consts.ORANGE),
-                    recolor_sprite(frame_spider300, self.consts.ORANGE),
-                    recolor_sprite(frame_spider600, self.consts.ORANGE),
-                    recolor_sprite(frame_spider900, self.consts.ORANGE),
-                    recolor_sprite(frame_flea, self.consts.RED),
-                    recolor_sprite(frame_scorpion, self.consts.YELLOW),
+                    recolor_sprite(frame_player_idx, self.consts.PINK),
+                    recolor_sprite(frame_player_spell_idx, self.consts.PINK),
+                    recolor_sprite(frame_centipede_idx, self.consts.GREEN),
+                    recolor_sprite(frame_mushroom_idx, self.consts.PINK),
+                    recolor_sprite(frame_spider_idx, self.consts.ORANGE),
+                    recolor_sprite(frame_spider300_idx, self.consts.ORANGE),
+                    recolor_sprite(frame_spider600_idx, self.consts.ORANGE),
+                    recolor_sprite(frame_spider900_idx, self.consts.ORANGE),
+                    recolor_sprite(frame_flea_idx, self.consts.RED),
+                    recolor_sprite(frame_scorpion_idx, self.consts.YELLOW),
                     recolored_sparks,
-                    recolor_sprite(frame_bottom_border, self.consts.DARK_PURPLE),
+                    recolor_sprite(frame_bottom_border_idx, self.consts.DARK_PURPLE),
                 )
 
             def wave_4():
                 return (
-                    recolor_sprite(frame_player, self.consts.RED),
-                    recolor_sprite(frame_player_spell, self.consts.RED),
-                    recolor_sprite(frame_centipede, self.consts.LIGHT_BLUE),
-                    recolor_sprite(frame_mushroom, self.consts.RED),
-                    recolor_sprite(frame_spider, self.consts.DARK_BLUE),
-                    recolor_sprite(frame_spider300, self.consts.DARK_BLUE),
-                    recolor_sprite(frame_spider600, self.consts.DARK_BLUE),
-                    recolor_sprite(frame_spider900, self.consts.DARK_BLUE),
-                    recolor_sprite(frame_flea, self.consts.PURPLE),
-                    recolor_sprite(frame_scorpion, self.consts.PINK),
+                    recolor_sprite(frame_player_idx, self.consts.RED),
+                    recolor_sprite(frame_player_spell_idx, self.consts.RED),
+                    recolor_sprite(frame_centipede_idx, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_mushroom_idx, self.consts.RED),
+                    recolor_sprite(frame_spider_idx, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_spider300_idx, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_spider600_idx, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_spider900_idx, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_flea_idx, self.consts.PURPLE),
+                    recolor_sprite(frame_scorpion_idx, self.consts.PINK),
                     recolored_sparks,
-                    recolor_sprite(frame_bottom_border, self.consts.DARK_YELLOW),
+                    recolor_sprite(frame_bottom_border_idx, self.consts.DARK_YELLOW),
                 )
 
             def wave_5():
                 return (
-                    recolor_sprite(frame_player, self.consts.PURPLE),
-                    recolor_sprite(frame_player_spell, self.consts.PURPLE),
-                    recolor_sprite(frame_centipede, self.consts.ORANGE),
-                    recolor_sprite(frame_mushroom, self.consts.PURPLE),
-                    recolor_sprite(frame_spider, self.consts.YELLOW),
-                    recolor_sprite(frame_spider300, self.consts.YELLOW),
-                    recolor_sprite(frame_spider600, self.consts.YELLOW),
-                    recolor_sprite(frame_spider900, self.consts.YELLOW),
-                    recolor_sprite(frame_flea, self.consts.GREEN),
-                    recolor_sprite(frame_scorpion, self.consts.RED),
+                    recolor_sprite(frame_player_idx, self.consts.PURPLE),
+                    recolor_sprite(frame_player_spell_idx, self.consts.PURPLE),
+                    recolor_sprite(frame_centipede_idx, self.consts.ORANGE),
+                    recolor_sprite(frame_mushroom_idx, self.consts.PURPLE),
+                    recolor_sprite(frame_spider_idx, self.consts.YELLOW),
+                    recolor_sprite(frame_spider300_idx, self.consts.YELLOW),
+                    recolor_sprite(frame_spider600_idx, self.consts.YELLOW),
+                    recolor_sprite(frame_spider900_idx, self.consts.YELLOW),
+                    recolor_sprite(frame_flea_idx, self.consts.GREEN),
+                    recolor_sprite(frame_scorpion_idx, self.consts.RED),
                     recolored_sparks,
-                    recolor_sprite(frame_bottom_border, self.consts.PINK),
+                    recolor_sprite(frame_bottom_border_idx, self.consts.PINK),
                 )
 
             def wave_6():
                 return (
-                    recolor_sprite(frame_player, self.consts.GREEN),
-                    recolor_sprite(frame_player_spell, self.consts.GREEN),
-                    recolor_sprite(frame_centipede, self.consts.DARK_BLUE),
-                    recolor_sprite(frame_mushroom, self.consts.GREEN),
-                    recolor_sprite(frame_spider, self.consts.PINK),
-                    recolor_sprite(frame_spider300, self.consts.PINK),
-                    recolor_sprite(frame_spider600, self.consts.PINK),
-                    recolor_sprite(frame_spider900, self.consts.PINK),
-                    recolor_sprite(frame_flea, self.consts.LIGHT_BLUE),       # Placeholder
-                    recolor_sprite(frame_scorpion, self.consts.PURPLE),
+                    recolor_sprite(frame_player_idx, self.consts.GREEN),
+                    recolor_sprite(frame_player_spell_idx, self.consts.GREEN),
+                    recolor_sprite(frame_centipede_idx, self.consts.DARK_BLUE),
+                    recolor_sprite(frame_mushroom_idx, self.consts.GREEN),
+                    recolor_sprite(frame_spider_idx, self.consts.PINK),
+                    recolor_sprite(frame_spider300_idx, self.consts.PINK),
+                    recolor_sprite(frame_spider600_idx, self.consts.PINK),
+                    recolor_sprite(frame_spider900_idx, self.consts.PINK),
+                    recolor_sprite(frame_flea_idx, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_scorpion_idx, self.consts.PURPLE),
                     recolored_sparks,
-                    recolor_sprite(frame_bottom_border, self.consts.RED),
+                    recolor_sprite(frame_bottom_border_idx, self.consts.RED),
                 )
 
             def wave_7():
                 return (
-                    recolor_sprite(frame_player, self.consts.LIGHT_BLUE),
-                    recolor_sprite(frame_player_spell, self.consts.LIGHT_BLUE),
-                    recolor_sprite(frame_centipede, self.consts.YELLOW),
-                    recolor_sprite(frame_mushroom, self.consts.LIGHT_BLUE),
-                    recolor_sprite(frame_spider, self.consts.RED),
-                    recolor_sprite(frame_spider300, self.consts.RED),
-                    recolor_sprite(frame_spider600, self.consts.RED),
-                    recolor_sprite(frame_spider900, self.consts.RED),
-                    recolor_sprite(frame_flea, self.consts.ORANGE),       # Placeholder
-                    recolor_sprite(frame_scorpion, self.consts.GREEN),
+                    recolor_sprite(frame_player_idx, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_player_spell_idx, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_centipede_idx, self.consts.YELLOW),
+                    recolor_sprite(frame_mushroom_idx, self.consts.LIGHT_BLUE),
+                    recolor_sprite(frame_spider_idx, self.consts.RED),
+                    recolor_sprite(frame_spider300_idx, self.consts.RED),
+                    recolor_sprite(frame_spider600_idx, self.consts.RED),
+                    recolor_sprite(frame_spider900_idx, self.consts.RED),
+                    recolor_sprite(frame_flea_idx, self.consts.ORANGE),
+                    recolor_sprite(frame_scorpion_idx, self.consts.GREEN),
                     recolored_sparks,
-                    recolor_sprite(frame_bottom_border, self.consts.RED),
+                    recolor_sprite(frame_bottom_border_idx, self.consts.RED),
                 )
 
-            wave = wave[1] % 8
+            wave_mod = wave[1] % 8
 
-            return jax.lax.cond(
-                wave == 0,
-                lambda: wave_0(),
-                lambda: jax.lax.cond(
-                    wave == 1,
-                    lambda: wave_1(),
-                    lambda: jax.lax.cond(
-                        wave == 2,
-                        lambda: wave_2(),
-                        lambda: jax.lax.cond(
-                            wave == 3,
-                            lambda: wave_3(),
-                            lambda: jax.lax.cond(
-                                wave == 4,
-                                lambda: wave_4(),
-                                lambda: jax.lax.cond(
-                                    wave == 5,
-                                    lambda: wave_5(),
-                                    lambda: jax.lax.cond(
-                                        wave == 6,
-                                        lambda: wave_6(),
-                                        lambda: wave_7()
-                                    )
-                                )
-                            )
-                        )
-                    )
-                )
+            return jax.lax.switch(
+                wave_mod,
+                [wave_0, wave_1, wave_2, wave_3, wave_4, wave_5, wave_6, wave_7],
             )
 
         (
@@ -1273,9 +1477,9 @@ class CentipedeRenderer(JAXGameRenderer):
             frame_scorpion,
             frame_sparks,
             frame_bottom_border,
-        ) = get_sprite_frames(state.wave)
+        ) = get_sprite_frames(state.wave, state.step_counter)
 
-        ### -------- Render mushrooms --------
+        ### -------- Render mushrooms -------- ###
         def render_mushrooms(i, raster_base):
             should_render = state.mushroom_positions[i][3] > 0
             return jax.lax.cond(
@@ -1291,7 +1495,39 @@ class CentipedeRenderer(JAXGameRenderer):
             )
         raster = jax.lax.fori_loop(0, self.consts.MAX_MUSHROOMS, render_mushrooms, raster)
 
-        ### -------- Render centipede --------
+        ### -------- Render spider -------- ###
+        raster = jnp.where(
+            state.spider_position[2] != 0,
+            jru.render_at(
+                raster,
+                state.spider_position[0] + 2,
+                state.spider_position[1] - 2,
+                frame_spider,
+            ),
+            raster
+        )
+
+        ### -------- Render spider score -------- ###
+        raster = jnp.where(
+            state.spider_points[1] != 0,
+            jru.render_at(
+                raster,
+                state.spider_position[0] + 2,
+                state.spider_position[1] - 2,
+                jnp.where(
+                    state.spider_points[0] == 1,
+                    frame_spider300,
+                    jnp.where(
+                        state.spider_points[0] == 2,
+                        frame_spider600,
+                        frame_spider900,
+                    )
+                )
+            ),
+            raster
+        )
+
+        ### -------- Render centipede -------- ###
         def render_centipede_segment(i, raster_base):
             should_render = state.centipede_position[i][4] != 0
             return jax.lax.cond(
@@ -1307,7 +1543,7 @@ class CentipedeRenderer(JAXGameRenderer):
             )
         raster = jax.lax.fori_loop(0, self.consts.MAX_SEGMENTS, render_centipede_segment, raster)
 
-        ### -------- Render player --------
+        ### -------- Render player -------- ###
         raster = jru.render_at(
             raster,
             state.player_x,
@@ -1315,7 +1551,7 @@ class CentipedeRenderer(JAXGameRenderer):
             frame_player,
         )
 
-        ### -------- Render player spell --------
+        ### -------- Render player spell -------- ###
         raster = jnp.where(
             state.player_spell[2] != 0,
             jru.render_at(
@@ -1327,7 +1563,7 @@ class CentipedeRenderer(JAXGameRenderer):
         raster
         )
 
-        ### -------- Render bottom border --------
+        ### -------- Render bottom border -------- ###
         raster = jru.render_at(
             raster,
             16,
@@ -1335,13 +1571,13 @@ class CentipedeRenderer(JAXGameRenderer):
             frame_bottom_border,
         )
 
-        ### -------- Render score --------
+        ### -------- Render score -------- ###
         score_array = jru.int_to_digits(state.score, max_digits=6)
         # first_nonzero = jnp.argmax(score_array != 0)
         # _, score_array = jnp.split(score_array, first_nonzero - 1)
         raster = jru.render_label(raster, 100, 187, score_array, DIGITS, spacing=8)
 
-        ### -------- Render live indicator --------
+        ### -------- Render live indicator -------- ###
         raster = jru.render_indicator(raster, 16, 187, state.lives - 1, LIFE_INDICATOR, spacing=8)
 
         return raster

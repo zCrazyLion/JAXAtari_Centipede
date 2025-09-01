@@ -67,7 +67,7 @@ MUSHROOM_STARTING_PATTERN = [
         "XOXOXOXOXOXOXOXO",
     ]
 
-# standart centipede starting pattern (currently in use)
+# standard centipede starting pattern (currently in use)
 MUSHROOM_STARTING_PATTERN = [
         "OOOOOOOOOOOOOOOO",
         "OOOOOOOOXOOOOXOO",
