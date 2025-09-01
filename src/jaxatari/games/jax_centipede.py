@@ -8,7 +8,6 @@ import os
 import jax
 import jax.numpy as jnp
 import chex
-import pygame
 
 import jaxatari.rendering.jax_rendering_utils as jru
 import time
@@ -16,7 +15,7 @@ from functools import partial
 from typing import NamedTuple, Tuple
 
 from jaxatari import spaces
-from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action, EnvState, EnvObs
+from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 from jaxatari.renderers import JAXGameRenderer
 #from jaxatari.rendering.jax_rendering_utils import recolor_sprite
 
@@ -1114,6 +1113,41 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         return jnp.stack([new_x, new_y, new_direction])
 
+    def spider_alive_step(
+            self,
+            spider_x: chex.Array,
+            spider_y: chex.Array,
+            spider_dir: chex.Array,
+            step_counter: chex.Array,
+            key_step: chex.PRNGKey,
+            spawn_timer: chex.Array,
+    ) -> tuple[chex.Array, int]:
+        new_spider = self.spider_step(spider_x, spider_y, spider_dir, step_counter, key_step)
+        return new_spider, spawn_timer
+
+    def spider_dead_step(
+            self,
+            spider_position: chex.Array,
+            spawn_timer: int,
+            key_spawn: chex.PRNGKey,
+    ) -> tuple[chex.Array, int]:
+        new_timer = spawn_timer - 1
+
+        def respawn():
+            new_spider = self.initialize_spider_position(key_spawn).astype(jnp.float32)
+            next_timer = jax.random.randint(
+                key_spawn,
+                (),
+                self.consts.SPIDER_MIN_SPAWN_FRAMES,
+                self.consts.SPIDER_MAX_SPAWN_FRAMES + 1
+            )
+            return new_spider, next_timer
+
+        def wait():
+            return jnp.array([spider_position[0], spider_position[1], 0], dtype=jnp.float32), new_timer
+
+        return jax.lax.cond(new_timer <= 0, respawn, wait)
+
     ## -------- Player Spell Logic -------- ##
     def player_spell_step(      # TODO: fix behaviour for close objects (add cooldown)
             self,
@@ -1237,32 +1271,11 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         spider_x, spider_y, spider_dir = new_spider_position
         spider_alive = spider_dir != 0
 
-        def move_spider(_):
-            new_spider = self.spider_step(spider_x, spider_y, spider_dir, state.step_counter, key_step)
-            return new_spider, state.spider_spawn_timer
-
-        def handle_dead_spider(_):
-            new_timer = state.spider_spawn_timer - 1
-
-            def respawn():
-                new_spider = self.initialize_spider_position(key_spawn).astype(jnp.float32)
-                next_timer = jax.random.randint(
-                    key_spawn,
-                    (),
-                    self.consts.SPIDER_MIN_SPAWN_FRAMES,
-                    self.consts.SPIDER_MAX_SPAWN_FRAMES + 1
-                )
-                return new_spider, next_timer
-
-            def wait():
-                return jnp.array([state.spider_position[0], state.spider_position[1], 0], dtype=jnp.float32), new_timer
-
-            return jax.lax.cond(new_timer <= 0, respawn, wait)
-
         new_spider_position, new_spider_timer = jax.lax.cond(
             spider_alive,
-            move_spider,
-            handle_dead_spider,
+            lambda _: self.spider_alive_step(spider_x, spider_y, spider_dir, state.step_counter, key_step,
+                                             state.spider_spawn_timer),
+            lambda _: self.spider_dead_step(state.spider_position, state.spider_spawn_timer, key_spawn),
             operand=None
         )
 
