@@ -1215,9 +1215,23 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 state.score
             )
 
-            # jax.debug.print("{x}, {y}", x=new_death_counter, y=new_score)
+            new_player_x = jnp.where(
+                new_death_counter == 0,
+                jnp.array(self.consts.PLAYER_START_X),
+                state.player_x
+            )
+
+            new_player_y = jnp.where(
+                new_death_counter == 0,
+                jnp.array(self.consts.PLAYER_START_Y),
+                state.player_y
+            )
+
+            jax.debug.print("{x}, {y}", x=new_death_counter, y=new_score)
 
             return state._replace(
+                player_x=new_player_x,
+                player_y=new_player_y,
                 score=new_score,
                 death_counter=new_death_counter
             )
@@ -1302,20 +1316,19 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 rng_key=new_rng_key
             )
 
-        """
-                       normal_step_state = jax.tree.map(
-                           lambda new, old: new.astype(old.dtype),
-                           normal_game_step(),
-                           state,
-                       )
-                       death_animation_state = jax.tree.map(
-                    lambda new, old: new.astype(old.dtype),
-                    handle_death_animation(),
-                    state,
-                )"""
+        normal_step_state = jax.tree.map(
+            lambda new, old: new.astype(old.dtype),
+            normal_game_step(),
+            state,
+        )
+        death_animation_state = jax.tree.map(
+            lambda new, old: new.astype(old.dtype),
+            handle_death_animation(),
+             state,
+        )
 
-        return_state = handle_death_animation()
-        """jax.lax.cond(
+        # return_state = handle_death_animation()
+        return_state = jax.lax.cond(
             state.lives == 0,       # If no more lives
             lambda: state,
             lambda: jax.lax.cond(
@@ -1323,7 +1336,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 lambda: normal_step_state,
                 lambda: death_animation_state,
             )
-        )"""
+        )
 
         obs = self._get_observation(return_state)
         all_rewards = self._get_all_rewards(state, return_state)
@@ -1390,7 +1403,7 @@ class CentipedeRenderer(JAXGameRenderer):
                 return jru.get_sprite_frame(sprite_id, idx)
 
             def get_sparks(death_counter):
-                jax.debug.print("{}", jnp.mod(jnp.ceil(death_counter / 8), 4).astype(jnp.int32))
+                # jax.debug.print("{}", jnp.mod(jnp.ceil(death_counter / 8), 4).astype(jnp.int32))
                 sprites = jnp.array([
                     recolor_sprite(jru.get_sprite_frame(SPRITE_SPARKS, 0), self.consts.DARK_BLUE),
                     recolor_sprite(jru.get_sprite_frame(SPRITE_SPARKS, 1), self.consts.YELLOW),
@@ -1400,7 +1413,7 @@ class CentipedeRenderer(JAXGameRenderer):
                 return jnp.where(
                     death_counter < 0,
                     sprites[-(death_counter // 8) % 4],
-                    recolor_sprite(jru.get_sprite_frame(SPRITE_SPARKS, 0), self.consts.DARK_BLUE),      # placeholder
+                    sprites[-jnp.mod(jnp.ceil(death_counter / 2), 4).astype(jnp.int32)],      # placeholder
                 )
 
 
@@ -1621,7 +1634,7 @@ class CentipedeRenderer(JAXGameRenderer):
 
         ### -------- Render centipede -------- ###
         def render_centipede_segment(i, raster_base):
-            should_render = state.centipede_position[i][4] != 0
+            should_render = jnp.logical_and(state.centipede_position[i][4] != 0, state.death_counter <= 0)
             return jax.lax.cond(
                 should_render,
                 lambda r: jru.render_at(
@@ -1679,14 +1692,61 @@ class CentipedeRenderer(JAXGameRenderer):
                 )
 
             def mushroom_sparks():
-                return raster_base      # placeholder
+                mush_alive = jnp.count_nonzero(mush_pos[:, 3])
+                alive_idx = mush_alive - jnp.ceil(death_counter / 8)
+
+                def get_mushroom():
+                    idx_y = jnp.argsort(mush_pos[:, 1])
+                    mush_sorted_y = mush_pos[idx_y]
+                    idx_x = jnp.argsort(mush_sorted_y[:, 0])
+                    mush_sorted_x = mush_sorted_y[idx_x]
+
+                    def body(i, carry):
+                        existing_mush_idx, mushroom = carry
+                        cond1 = jnp.all(mushroom == 0)  # "empty" marker for (4,) vector
+                        cond2 = mush_sorted_x[i, 3] != 0
+                        cond3 = existing_mush_idx == alive_idx
+
+                        # Branch result if cond3
+                        new_existing_idx = jnp.where(cond3, existing_mush_idx, existing_mush_idx + 1)
+                        new_mushroom = jnp.where(cond3, mush_sorted_x[i], mushroom)
+
+                        # Combine cond2
+                        new_existing_idx = jnp.where(cond2, new_existing_idx, existing_mush_idx)
+                        new_mushroom = jnp.where(cond2, new_mushroom, mushroom)
+
+                        # Combine cond1
+                        new_existing_idx = jnp.where(cond1, new_existing_idx, existing_mush_idx)
+                        new_mushroom = jnp.where(cond1, new_mushroom, mushroom)
+
+                        return new_existing_idx, new_mushroom
+
+                    # init_carry: index scalar, and a "zero row" with same shape as mush_pos row
+                    init_carry = (jnp.array(0), jnp.zeros(mush_pos.shape[1], dtype=mush_pos.dtype))
+                    _, res_mushroom = jax.lax.fori_loop(0, mush_sorted_x.shape[0], body, init_carry)
+                    return res_mushroom
+
+                mush = get_mushroom()
+
+                res_raster = jru.render_at(
+                    raster_base,
+                    mush[0] - 2,
+                    mush[1] - 2,
+                    frame_sparks,
+                )
+
+                return res_raster
 
             return jax.lax.cond(
                 death_counter != 0,
                 lambda: jax.lax.cond(
                     death_counter < 0,
                     lambda: player_sparks(),
-                    lambda: mushroom_sparks(),
+                    lambda: jax.lax.cond(
+                        (death_counter - 1) % 8 >= 4,
+                        lambda: mushroom_sparks(),
+                        lambda: no_render(),
+                    ),
                 ),
                 lambda: no_render(),
             )
