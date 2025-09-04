@@ -92,6 +92,9 @@ class CentipedeConstants:
     SPIDER_CLOSE_RANGE = 16
     SPIDER_MID_RANGE = 32
 
+    ## -------- Death animation constants --------
+    DEATH_ANIMATION_MUSHROOM_THRESHOLD = 128        # 8 Frames * 4 Sprites * 4 Repetitions
+
     ## -------- Color constants --------
     ORANGE = jnp.array([181, 83, 40])#B55328    # Mushrooms lvl1
     DARK_ORANGE = jnp.array([198, 108, 58])#C66C3A
@@ -140,6 +143,7 @@ class CentipedeState(NamedTuple):
     lives: chex.Array
     wave: chex.Array # (1, 2): logical wave, ui wave
     step_counter: chex.Array
+    death_counter: chex.Array
     rng_key: chex.PRNGKey
 
 class PlayerEntity(NamedTuple):
@@ -236,13 +240,15 @@ def load_sprites():
 
     SPRITE_SPARKS = jnp.concatenate(
         [
-            jnp.repeat(sparks_sprites[0][None], 4, axis=0),
-            jnp.repeat(sparks_sprites[1][None], 4, axis=0),
-            jnp.repeat(sparks_sprites[2][None], 4, axis=0),
-            jnp.repeat(sparks_sprites[3][None], 4, axis=0),
+            jnp.repeat(sparks_sprites[0][None], 1, axis=0),
+            jnp.repeat(sparks_sprites[1][None], 1, axis=0),
+            jnp.repeat(sparks_sprites[2][None], 1, axis=0),
+            jnp.repeat(sparks_sprites[3][None], 1, axis=0),
         ]
     )
     SPRITE_BOTTOM_BORDER = jnp.expand_dims(bottom_border, 0)
+
+    jax.debug.print("{}", SPRITE_SPARKS[0].shape)
 
 
     DIGITS = jru.load_and_pad_digits(os.path.join(MODULE_DIR, "sprites/centipede/big_numbers/{}.npy"))
@@ -931,7 +937,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                                             jnp.where(
                                                 j == 7,
                                                 segments.at[i].set(jnp.array([64, 14, -2, 1, 2])),
-                                                segments.at[i].set(jnp.array([80, 5, -2, 1, 2])),
+                                                segments.at[i].set(jnp.array([80, 5, -2, 1, 2])),       # failsafe
                                             )
                                         )
                                     ),
@@ -1113,41 +1119,6 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         return jnp.stack([new_x, new_y, new_direction])
 
-    def spider_alive_step(
-            self,
-            spider_x: chex.Array,
-            spider_y: chex.Array,
-            spider_dir: chex.Array,
-            step_counter: chex.Array,
-            key_step: chex.PRNGKey,
-            spawn_timer: chex.Array,
-    ) -> tuple[chex.Array, int]:
-        new_spider = self.spider_step(spider_x, spider_y, spider_dir, step_counter, key_step)
-        return new_spider, spawn_timer
-
-    def spider_dead_step(
-            self,
-            spider_position: chex.Array,
-            spawn_timer: int,
-            key_spawn: chex.PRNGKey,
-    ) -> tuple[chex.Array, int]:
-        new_timer = spawn_timer - 1
-
-        def respawn():
-            new_spider = self.initialize_spider_position(key_spawn).astype(jnp.float32)
-            next_timer = jax.random.randint(
-                key_spawn,
-                (),
-                self.consts.SPIDER_MIN_SPAWN_FRAMES,
-                self.consts.SPIDER_MAX_SPAWN_FRAMES + 1
-            )
-            return new_spider, next_timer
-
-        def wait():
-            return jnp.array([spider_position[0], spider_position[1], 0], dtype=jnp.float32), new_timer
-
-        return jax.lax.cond(new_timer <= 0, respawn, wait)
-
     ## -------- Player Spell Logic -------- ##
     def player_spell_step(      # TODO: fix behaviour for close objects (add cooldown)
             self,
@@ -1216,6 +1187,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             lives=jnp.array(3),
             step_counter=jnp.array(0),
             wave=jnp.array([0, 0]),
+            death_counter=jnp.array(0),
             rng_key=new_key0,
         )
 
@@ -1226,82 +1198,132 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     def step(self, state: CentipedeState, action: chex.Array) -> tuple[
         CentipedeObservation, CentipedeState, float, bool, CentipedeInfo]:
 
-        # --- Player Movement ---
-        new_player_x, new_player_y, new_velocity_x = self.player_step(
-            state.player_x, state.player_y, state.player_velocity_x, action
-        )
+        def handle_death_animation():
+            def compute_mushroom_frames():
+                mush_alive = jnp.count_nonzero(state.mushroom_positions[:, 3])
+                return mush_alive * 8
 
-        new_player_spell_state = self.player_spell_step(
-            new_player_x, new_player_y, state.player_spell, action
-        )
-
-        # --- Mushroom Collision ---
-        new_player_spell_state, updated_mushrooms, new_score = self.check_spell_mushroom_collision(
-            new_player_spell_state, state.mushroom_positions, state.score
-        )
-
-        # --- Centipede Collision ---
-        new_player_spell_state, new_centipede_position, updated_mushrooms, new_score = \
-            self.check_centipede_spell_collision(
-                new_player_spell_state, state.centipede_position, updated_mushrooms, new_score
+            new_death_counter = jax.lax.cond(
+                state.death_counter <= -self.consts.DEATH_ANIMATION_MUSHROOM_THRESHOLD,
+                lambda: compute_mushroom_frames(),
+                lambda: (state.death_counter - 1),
             )
 
-        # --- Spider collision with mushrooms ---
-        updated_mushrooms = self.check_spider_mushroom_collision(
-            state.spider_position,
-            updated_mushrooms
-        )
+            new_score = jnp.where(
+                jnp.logical_and(new_death_counter > 0, new_death_counter % 16 == 0),
+                state.score + 5,
+                state.score
+            )
 
-        # --- Centipede Step & Wave ---
-        new_centipede_position = self.centipede_step(new_centipede_position, state.mushroom_positions)
-        new_centipede_position, new_wave = self.process_wave(new_centipede_position, state.wave, state.score)
+            # jax.debug.print("{x}, {y}", x=new_death_counter, y=new_score)
 
-        # --- Spider Collision ---
-        new_player_spell_state, new_spider_position, new_score, new_spider_points_pre = self.check_spell_spider_collision(
-            new_player_spell_state,
-            state.spider_position,
-            new_score,
-            new_player_y,
-            state.spider_points,
-        )
+            return state._replace(
+                score=new_score,
+                death_counter=new_death_counter
+            )
 
-        # --- Spider Movement & Spawn Timer ---
-        new_rng_key, key_spawn, key_step = jax.random.split(state.rng_key, 3)
+        def normal_game_step():
+            new_death_counter = -1  # check_player_centipede_collision(state.player_x, state.player_y, state.centipede_position)
 
-        spider_x, spider_y, spider_dir = new_spider_position
-        spider_alive = spider_dir != 0
+            # --- Player Movement ---
+            new_player_x, new_player_y, new_velocity_x = self.player_step(
+                state.player_x, state.player_y, state.player_velocity_x, action
+            )
 
-        new_spider_position, new_spider_timer = jax.lax.cond(
+            new_player_spell_state = self.player_spell_step(
+                new_player_x, new_player_y, state.player_spell, action
+            )
+
+            # --- Mushroom Collision ---
+            new_player_spell_state, updated_mushrooms, new_score = self.check_spell_mushroom_collision(
+                new_player_spell_state, state.mushroom_positions, state.score
+            )
+
+            # --- Centipede Collision ---
+            new_player_spell_state, new_centipede_position, updated_mushrooms, new_score = \
+                self.check_centipede_spell_collision(
+                    new_player_spell_state, state.centipede_position, updated_mushrooms, new_score
+                )
+
+            # --- Spider collision with mushrooms ---
+            updated_mushrooms = self.check_spider_mushroom_collision(
+                state.spider_position,
+                updated_mushrooms
+            )
+
+            # --- Centipede Step & Wave ---
+            new_centipede_position = self.centipede_step(new_centipede_position, state.mushroom_positions)
+            new_centipede_position, new_wave = self.process_wave(new_centipede_position, state.wave, state.score)
+
+            # --- Spider Collision ---
+            new_player_spell_state, new_spider_position, new_score, new_spider_points_pre = self.check_spell_spider_collision(
+                new_player_spell_state,
+                state.spider_position,
+                new_score,
+                new_player_y,
+                state.spider_points,
+            )
+
+            # --- Spider Movement & Spawn Timer ---
+            new_rng_key, key_spawn, key_step = jax.random.split(state.rng_key, 3)
+
+            spider_x, spider_y, spider_dir = new_spider_position
+            spider_alive = spider_dir != 0
+
+            new_spider_position, new_spider_timer = jax.lax.cond(
             spider_alive,
             lambda _: self.spider_alive_step(spider_x, spider_y, spider_dir, state.step_counter, key_step,
                                              state.spider_spawn_timer),
             lambda _: self.spider_dead_step(state.spider_position, state.spider_spawn_timer, key_spawn),
             operand=None
-        )
+            )
 
-        # --- Spider points ---
-        new_spider_points = jnp.where(
-            new_spider_points_pre[1] > 0,
-            jnp.array([new_spider_points_pre[0], new_spider_points_pre[1] - 1]),
-            new_spider_points_pre
-        )
+            # --- Spider points ---
+            new_spider_points = jnp.where(
+                new_spider_points_pre[1] > 0,
+                jnp.array([new_spider_points_pre[0], new_spider_points_pre[1] - 1]),
+                new_spider_points_pre
+            )
 
-        # --- Return State ---
-        return_state = state._replace(
-            player_x=new_player_x,
-            player_y=new_player_y,
-            player_velocity_x=new_velocity_x,
-            player_spell=new_player_spell_state,
-            mushroom_positions=updated_mushrooms,
-            centipede_position=new_centipede_position,
-            spider_position=new_spider_position,
-            spider_spawn_timer=new_spider_timer,
-            spider_points=new_spider_points,
-            score=new_score,
-            step_counter=state.step_counter + 1,
-            wave=new_wave,
-            rng_key=new_rng_key
-        )
+            # --- Return State ---
+            return state._replace(
+                player_x=new_player_x,
+                player_y=new_player_y,
+                player_velocity_x=new_velocity_x,
+                player_spell=new_player_spell_state,
+                mushroom_positions=updated_mushrooms,
+                centipede_position=new_centipede_position,
+                spider_position=new_spider_position,
+                spider_spawn_timer=new_spider_timer,
+                spider_points=new_spider_points,
+                score=new_score,
+                step_counter=state.step_counter + 1,
+                wave=new_wave,
+                rng_key=new_rng_key
+            )
+
+        """
+                       normal_step_state = jax.tree.map(
+                           lambda new, old: new.astype(old.dtype),
+                           normal_game_step(),
+                           state,
+                       )
+                       death_animation_state = jax.tree.map(
+                    lambda new, old: new.astype(old.dtype),
+                    handle_death_animation(),
+                    state,
+                )"""
+
+        return_state = handle_death_animation()
+        """jax.lax.cond(
+            state.lives == 0,       # If no more lives
+            lambda: state,
+            lambda: jax.lax.cond(
+                state.death_counter == 0,       # If not dead
+                lambda: normal_step_state,
+                lambda: death_animation_state,
+            )
+        )"""
 
         obs = self._get_observation(return_state)
         all_rewards = self._get_all_rewards(state, return_state)
@@ -1367,6 +1389,21 @@ class CentipedeRenderer(JAXGameRenderer):
                 idx = step_counter
                 return jru.get_sprite_frame(sprite_id, idx)
 
+            def get_sparks(death_counter):
+                jax.debug.print("{}", jnp.mod(jnp.ceil(death_counter / 8), 4).astype(jnp.int32))
+                sprites = jnp.array([
+                    recolor_sprite(jru.get_sprite_frame(SPRITE_SPARKS, 0), self.consts.DARK_BLUE),
+                    recolor_sprite(jru.get_sprite_frame(SPRITE_SPARKS, 1), self.consts.YELLOW),
+                    recolor_sprite(jru.get_sprite_frame(SPRITE_SPARKS, 2), self.consts.RED),
+                    recolor_sprite(jru.get_sprite_frame(SPRITE_SPARKS, 3), self.consts.ORANGE),
+                ])
+                return jnp.where(
+                    death_counter < 0,
+                    sprites[-(death_counter // 8) % 4],
+                    recolor_sprite(jru.get_sprite_frame(SPRITE_SPARKS, 0), self.consts.DARK_BLUE),      # placeholder
+                )
+
+
             # --- Get frames dynamically --- #
             frame_player_idx = get_frame(SPRITE_PLAYER, self.consts.SPRITE_PLAYER_FRAMES, step_counter)
             frame_player_spell_idx = get_frame(SPRITE_PLAYER_SPELL, self.consts.SPRITE_PLAYER_SPELL_FRAMES, step_counter)
@@ -1378,11 +1415,11 @@ class CentipedeRenderer(JAXGameRenderer):
             frame_spider900_idx = get_frame(SPRITE_SPIDER_900, self.consts.SPRITE_SPIDER_900_FRAMES, step_counter)
             frame_flea_idx = get_frame(SPRITE_FLEA, self.consts.SPRITE_FLEA_FRAMES, step_counter)
             frame_scorpion_idx = get_frame(SPRITE_SCORPION, self.consts.SPRITE_SCORPION_FRAMES, step_counter)
-            frame_sparks_idx = get_frame(SPRITE_SPARKS, self.consts.SPRITE_SPARKS_FRAMES, step_counter)
+            # frame_sparks_idx = get_frame(SPRITE_SPARKS, self.consts.SPRITE_SPARKS_FRAMES, step_counter)
             frame_bottom_border_idx = get_frame(SPRITE_BOTTOM_BORDER, self.consts.SPRITE_BOTTOM_BORDER_FRAMES, step_counter)
 
             # --- Recoloring depending on wave --- #
-            recolored_sparks = recolor_sprite(frame_sparks_idx, self.consts.LIGHT_PURPLE)  # Platzhalter
+            recolored_sparks = get_sparks(state.death_counter)
 
             def wave_0():
                 return (
@@ -1599,11 +1636,15 @@ class CentipedeRenderer(JAXGameRenderer):
         raster = jax.lax.fori_loop(0, self.consts.MAX_SEGMENTS, render_centipede_segment, raster)
 
         ### -------- Render player -------- ###
-        raster = jru.render_at(
-            raster,
-            state.player_x,
-            state.player_y,
-            frame_player,
+        raster = jnp.where(
+            state.death_counter >= 0,
+            jru.render_at(
+                raster,
+                state.player_x,
+                state.player_y,
+                frame_player,
+            ),
+            raster
         )
 
         ### -------- Render player spell -------- ###
@@ -1617,6 +1658,47 @@ class CentipedeRenderer(JAXGameRenderer):
             ),
         raster
         )
+
+        ### -------- Render sparks -------- ###
+        def render_sparks(
+                frame_sparks,
+                raster_base,
+                player_pos,
+                mush_pos,
+                death_counter
+        ):
+            def no_render():
+                return raster_base
+
+            def player_sparks():
+                return jru.render_at(
+                    raster_base,
+                    player_pos[0] - 4,
+                    player_pos[1] + 3,
+                    frame_sparks,
+                )
+
+            def mushroom_sparks():
+                return raster_base      # placeholder
+
+            return jax.lax.cond(
+                death_counter != 0,
+                lambda: jax.lax.cond(
+                    death_counter < 0,
+                    lambda: player_sparks(),
+                    lambda: mushroom_sparks(),
+                ),
+                lambda: no_render(),
+            )
+
+        raster = render_sparks(
+            frame_sparks,
+            raster,
+            jnp.array([state.player_x, state.player_y]),
+            state.mushroom_positions,
+            state.death_counter,
+        )
+
 
         ### -------- Render bottom border -------- ###
         raster = jru.render_at(
