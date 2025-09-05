@@ -658,7 +658,7 @@ class TestAdvancedWrapperFeatures:
                 
                 def check_space_leaf(s):
                     assert isinstance(s, spaces.Box), f"[{desc}] Leaf space should be Box"
-                    assert s.dtype == jnp.float32, f"[{desc}] Dtype should be float32"
+                    assert s.dtype == jnp.float16, f"[{desc}] Dtype should be float16"
                     assert jnp.all(s.low == expected_low), f"[{desc}] Space low bound is incorrect"
                     assert jnp.all(s.high == 1.0), f"[{desc}] Space high bound is incorrect"
                 

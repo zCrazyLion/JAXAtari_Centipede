@@ -581,7 +581,6 @@ class NormalizeObservationWrapper(JaxatariWrapper):
         )
 
         # The new observation space will have the same structure, but all leaves
-        # will be float32 arrays with bounds [0, 1].
         def _normalize_space(space: spaces.Box) -> spaces.Box:
             low_val = -1.0 if self._to_neg_one else 0.0
             return spaces.Box(
