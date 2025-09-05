@@ -1119,6 +1119,41 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         return jnp.stack([new_x, new_y, new_direction])
 
+    def spider_alive_step(
+            self,
+            spider_x: chex.Array,
+            spider_y: chex.Array,
+            spider_dir: chex.Array,
+            step_counter: chex.Array,
+            key_step: chex.PRNGKey,
+            spawn_timer: chex.Array,
+    ) -> tuple[chex.Array, int]:
+        new_spider = self.spider_step(spider_x, spider_y, spider_dir, step_counter, key_step)
+        return new_spider, spawn_timer
+
+    def spider_dead_step(
+            self,
+            spider_position: chex.Array,
+            spawn_timer: int,
+            key_spawn: chex.PRNGKey,
+    ) -> tuple[chex.Array, int]:
+        new_timer = spawn_timer - 1
+
+        def respawn():
+            new_spider = self.initialize_spider_position(key_spawn).astype(jnp.float32)
+            next_timer = jax.random.randint(
+                key_spawn,
+                (),
+                self.consts.SPIDER_MIN_SPAWN_FRAMES,
+                self.consts.SPIDER_MAX_SPAWN_FRAMES + 1
+            )
+            return new_spider, next_timer
+
+        def wait():
+            return jnp.array([spider_position[0], spider_position[1], 0], dtype=jnp.float32), new_timer
+
+        return jax.lax.cond(new_timer <= 0, respawn, wait)
+
     ## -------- Player Spell Logic -------- ##
     def player_spell_step(      # TODO: fix behaviour for close objects (add cooldown)
             self,
@@ -1227,17 +1262,24 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 state.player_y
             )
 
+            new_lives = jnp.where(
+                new_death_counter == 0,
+                state.lives - 1,
+                state.lives
+            )
+
             jax.debug.print("{x}, {y}", x=new_death_counter, y=new_score)
 
             return state._replace(
                 player_x=new_player_x,
                 player_y=new_player_y,
                 score=new_score,
+                lives=new_lives,
                 death_counter=new_death_counter
             )
 
         def normal_game_step():
-            new_death_counter = -1  # check_player_centipede_collision(state.player_x, state.player_y, state.centipede_position)
+            new_death_counter = jnp.array(0)  # check_player_mob_collision(state.player_x, state.player_y, state.centipede_position, state.spider_position)
 
             # --- Player Movement ---
             new_player_x, new_player_y, new_velocity_x = self.player_step(
@@ -1313,6 +1355,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 score=new_score,
                 step_counter=state.step_counter + 1,
                 wave=new_wave,
+                death_counter=new_death_counter,
                 rng_key=new_rng_key
             )
 
@@ -1600,38 +1643,6 @@ class CentipedeRenderer(JAXGameRenderer):
             )
         raster = jax.lax.fori_loop(0, self.consts.MAX_MUSHROOMS, render_mushrooms, raster)
 
-        ### -------- Render spider -------- ###
-        raster = jnp.where(
-            state.spider_position[2] != 0,
-            jru.render_at(
-                raster,
-                state.spider_position[0] + 2,
-                state.spider_position[1] - 2,
-                frame_spider,
-            ),
-            raster
-        )
-
-        ### -------- Render spider score -------- ###
-        raster = jnp.where(
-            state.spider_points[1] != 0,
-            jru.render_at(
-                raster,
-                state.spider_position[0] + 2,
-                state.spider_position[1] - 2,
-                jnp.where(
-                    state.spider_points[0] == 1,
-                    frame_spider300,
-                    jnp.where(
-                        state.spider_points[0] == 2,
-                        frame_spider600,
-                        frame_spider900,
-                    )
-                )
-            ),
-            raster
-        )
-
         ### -------- Render centipede -------- ###
         def render_centipede_segment(i, raster_base):
             should_render = jnp.logical_and(state.centipede_position[i][4] != 0, state.death_counter <= 0)
@@ -1670,6 +1681,38 @@ class CentipedeRenderer(JAXGameRenderer):
                 frame_player_spell,
             ),
         raster
+        )
+
+        ### -------- Render spider -------- ###
+        raster = jnp.where(
+            state.spider_position[2] != 0,
+            jru.render_at(
+                raster,
+                state.spider_position[0] + 2,
+                state.spider_position[1] - 2,
+                frame_spider,
+            ),
+            raster
+        )
+
+        ### -------- Render spider score -------- ###
+        raster = jnp.where(
+            state.spider_points[1] != 0,
+            jru.render_at(
+                raster,
+                state.spider_position[0] + 2,
+                state.spider_position[1] - 2,
+                jnp.where(
+                    state.spider_points[0] == 1,
+                    frame_spider300,
+                    jnp.where(
+                        state.spider_points[0] == 2,
+                        frame_spider600,
+                        frame_spider900,
+                    )
+                )
+            ),
+            raster
         )
 
         ### -------- Render sparks -------- ###
