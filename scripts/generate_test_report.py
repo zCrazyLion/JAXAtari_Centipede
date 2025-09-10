@@ -39,11 +39,22 @@ def main():
     }
 
     # Test Logs
-    test_reports_str = os.environ.get("TEST_REPORTS", "{}")
-    test_reports = json.loads(test_reports_str)
     test_logs = {}
-    for game, report_b64 in test_reports.items():
-        test_logs[game] = base64.b64decode(report_b64).decode()
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    reports_dir = os.path.join(repo_root, "reports")
+    if os.path.isdir(reports_dir):
+        for fname in os.listdir(reports_dir):
+            if not (fname.startswith("pytest_output_") and fname.endswith(".txt")):
+                continue
+            game = fname[len("pytest_output_") : -len(".txt")]
+            fpath = os.path.join(reports_dir, fname)
+            try:
+                with open(fpath, "r", encoding="utf-8", errors="replace") as rf:
+                    test_logs[game] = rf.read()
+            except Exception as e:
+                # Keep going; file might be unreadable
+                test_logs[game] = f"<error reading {fname}: {e}>"
 
     # --- Template Rendering ---
 

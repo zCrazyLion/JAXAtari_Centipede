@@ -105,6 +105,12 @@ jobs:
           ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
 
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pytest-report-*
+          merge-multiple: true
+          path: reports
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -116,7 +122,6 @@ jobs:
       - name: Generate markdown report
         env:
           TEST_OUTCOMES: ${{ needs.trigger.outputs.test_outcomes }}
-          TEST_REPORTS: ${{ needs.trigger.outputs.test_reports }}
           GITHUB_ACTION_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BRANCH_RESULT: ${{ needs.branch.outputs.result }}
           BRANCH_ACTUAL: ${{ github.event.pull_request.base.ref }}

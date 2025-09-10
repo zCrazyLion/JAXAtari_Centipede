@@ -13,9 +13,6 @@ on:
         required: false
         type: string
     outputs:
-      test_reports:
-        description: "JSON object of test reports"
-        value: ${{ jobs.collect-results.outputs.test_report_b64 }}
       test_outcomes:
         description: "JSON object of test outcomes"
         value: ${{ jobs.collect-results.outputs.test_outcome }}
@@ -84,13 +81,10 @@ jobs:
         shell: bash
 
       - name: Get pytest output
-        id: pytest_output
         if: always()
         run: |
           # Strip ANSI color codes for the report
-          sed -r "s/\x1B\[[0-9;]*[mK]//g" pytest_output_with_color.txt > pytest_output.txt
-          output_b64=$(base64 -w 0 pytest_output.txt)
-          echo "report=$output_b64" >> $GITHUB_OUTPUT
+          sed -r "s/\x1B\[[0-9;]*[mK]//g" pytest_output_with_color.txt > pytest_output_${{ matrix.game }}.txt
         shell: bash
 
       - uses: cloudposse/github-action-matrix-outputs-write@v1
@@ -100,15 +94,21 @@ jobs:
           matrix-step-name: ${{ github.job }}
           matrix-key: ${{ matrix.game }}
           outputs: |-
-            test_report_b64: ${{ steps.pytest_output.outputs.report }}
             test_outcome: ${{ steps.run_tests.outcome }}
+      
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report-${{ matrix.game }}
+          path: pytest_output_${{ matrix.game }}.txt
+          retention-days: 1
 
   collect-results:
     needs: run-tests
     if: always()
     runs-on: ubuntu-latest
     outputs:
-      test_report_b64: ${{ steps.set_outputs.outputs.test_reports }}
       test_outcome: ${{ steps.set_outputs.outputs.test_outcomes }}
     steps:
       - uses: cloudposse/github-action-matrix-outputs-read@v1
@@ -119,8 +119,6 @@ jobs:
       - id: set_outputs
         run: |
           result='${{ steps.read.outputs.result }}'
-          test_reports=$(echo "$result" | jq -c .test_report_b64)
           test_outcomes=$(echo "$result" | jq -c .test_outcome)
-          echo "test_reports=$test_reports" >> $GITHUB_OUTPUT
           echo "test_outcomes=$test_outcomes" >> $GITHUB_OUTPUT
         shell: bash
