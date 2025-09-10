@@ -81,7 +81,7 @@ jobs:
         shell: bash
 
       - name: Get pytest output
-        if: always()
+        if: always() && (github.event.pull_request.head.repo.full_name != github.repository)
         run: |
           # Strip ANSI color codes for the report
           sed -r "s/\x1B\[[0-9;]*[mK]//g" pytest_output_with_color.txt > pytest_output_${{ matrix.game }}.txt
@@ -89,7 +89,7 @@ jobs:
 
       - uses: cloudposse/github-action-matrix-outputs-write@v1
         id: out
-        if: always()
+        if: always() && (github.event.pull_request.head.repo.full_name != github.repository)
         with:
           matrix-step-name: ${{ github.job }}
           matrix-key: ${{ matrix.game }}
@@ -106,7 +106,7 @@ jobs:
 
   collect-results:
     needs: run-tests
-    if: always()
+    if: always() && (github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
     outputs:
       test_outcome: ${{ steps.set_outputs.outputs.test_outcomes }}

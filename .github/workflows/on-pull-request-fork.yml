@@ -97,7 +97,7 @@ jobs:
       contents: read
       pull-requests: write
     needs: [branch, changed-files, trigger]
-    if: always()
+    if: always() && (github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
