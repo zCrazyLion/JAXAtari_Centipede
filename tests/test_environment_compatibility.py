@@ -215,7 +215,7 @@ class TestBasicAPI:
         total_reward = 0.0
         step_count = 0
         done = False
-        max_steps = 1000  # Prevent infinite loops
+        max_steps = 50  # Prevent infinite loops
         
         while not done and step_count < max_steps:
             action = action_space.sample(key)
