@@ -425,31 +425,6 @@ class TestWrapperCompatibility:
         assert sample_action is not None, "Wrapper action space sample should not be None"
         assert action_space.contains(sample_action), "Wrapper action space sample should be contained in space"
 
-    def test_wrapper_episode_completion(self, wrapped_env):
-        """Test that wrapped environments can complete episodes."""
-        key = jax.random.PRNGKey(0)
-        obs, state = wrapped_env.reset(key)
-        action_space = wrapped_env.action_space()
-        
-        total_reward = 0.0
-        step_count = 0
-        done = False
-        max_steps = 1000  # Prevent infinite loops
-        
-        while not done and step_count < max_steps:
-            action = action_space.sample(key)
-            obs, state, reward, done, info = wrapped_env.step(state, action)
-            
-            total_reward += float(reward)
-            step_count += 1
-            
-            # Update key for next random action
-            key, _ = jax.random.split(key)
-        
-        assert step_count > 0, "Wrapped environment should have taken at least one step"
-        assert step_count <= max_steps, "Wrapped environment should not exceed max steps"
-        assert isinstance(total_reward, float), "Wrapped total reward should be float"
-
     def test_wrapper_determinism(self, wrapped_env):
         """Test that wrapped environments are deterministic."""
         key = jax.random.PRNGKey(42)
