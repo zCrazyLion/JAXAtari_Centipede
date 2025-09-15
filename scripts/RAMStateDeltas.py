@@ -40,6 +40,7 @@ class Renderer:
             render_oc_overlay=True,
             frameskip=1,
             obs_mode="obj",
+            repeat_action_probability=0.0
         )
 
         self.env.reset(seed=42)
