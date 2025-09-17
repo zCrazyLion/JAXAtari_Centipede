@@ -134,6 +134,7 @@ class CentipedeState(NamedTuple):
     player_spell: chex.Array  # (1, 3): x, y, is_alive
     mushroom_positions: chex.Array # (304, 4): x, y, is_poisoned, lives; 304 mushrooms in total
     centipede_position: chex.Array # (9, 5): x, y, speed(horizontal), movement(vertical), status/is_head; 9 segments in total
+    centipede_spawn_timer: chex.Array # Frames until new centipede head spawns
     spider_position: chex.Array # (1, 3): x, y, direction
     spider_spawn_timer: chex.Array # Frames until new spider spawns
     spider_points: chex.Array # (1, 2): sprite, timeout
@@ -560,6 +561,27 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             return jnp.where(split == 1, seg.at[4].set(1.5), seg)
 
         return jax.vmap(set_new_status)(new_state, segment_split)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def handle_centipede_spawn_timer(self, centipede_timer, centipede_position) -> chex.Array:
+        timer_threshold = 192 - (centipede_timer // 1000) * 8
+        return jnp.where(
+            jnp.sum(centipede_position[:, 4]) < 12,
+            jnp.where(
+                centipede_timer == 0,
+                jnp.where(
+                    jnp.max(centipede_position[:, 1]) >= 176,
+                    jnp.array(1),
+                    jnp.array(0),
+                ),
+                jnp.where(
+                    centipede_timer % 1000 >= timer_threshold,
+                    (centipede_timer // 1000 + 1) * 1000,
+                    jnp.array(centipede_timer + 1),
+                )
+            ),
+            jnp.array(0),
+        )
 
     ## -------- Spell Mushroom Collision Logic -------- ##
     @partial(jax.jit, static_argnums=(0, ))
@@ -1212,6 +1234,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             player_spell=jnp.zeros(3),
             mushroom_positions=self.initialize_mushroom_positions(),
             centipede_position=self.initialize_centipede_positions(jnp.array([0, 0])),
+            centipede_spawn_timer=jnp.array(0),
             spider_position=jnp.zeros(3),
             spider_spawn_timer=initial_spider_timer,
             spider_points=jnp.array([0, 0]),
@@ -1276,7 +1299,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             )
 
         def normal_game_step():
-            new_death_counter = jnp.array(-1)  # check_player_mob_collision(state.player_x, state.player_y, state.centipede_position, state.spider_position) # TODO: implement
+            new_death_counter = jnp.array(0)  # check_player_mob_collision(state.player_x, state.player_y, state.centipede_position, state.spider_position) # TODO: implement
 
             # --- Player Movement ---
             new_player_x, new_player_y, new_velocity_x = self.player_step(
@@ -1307,6 +1330,10 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             # --- Centipede Step & Wave ---
             new_centipede_position = self.centipede_step(new_centipede_position, state.mushroom_positions)
             new_centipede_position, new_wave = self.process_wave(new_centipede_position, state.wave, state.score)
+
+            # --- Centipede Head Spawn Timer ---
+            new_centipede_timer = self.handle_centipede_spawn_timer(state.centipede_spawn_timer, new_centipede_position)
+            jax.debug.print("{}", new_centipede_timer)
 
             # --- Spider Collision ---
             new_player_spell_state, new_spider_position, new_score, new_spider_points_pre = self.check_spell_spider_collision(
@@ -1346,6 +1373,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 player_spell=new_player_spell_state,
                 mushroom_positions=updated_mushrooms,
                 centipede_position=new_centipede_position,
+                centipede_spawn_timer=new_centipede_timer,
                 spider_position=new_spider_position,
                 spider_spawn_timer=new_spider_timer,
                 spider_points=new_spider_points,
