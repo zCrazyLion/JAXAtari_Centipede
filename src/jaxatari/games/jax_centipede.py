@@ -28,7 +28,7 @@ class CentipedeConstants:
 
     ## -------- Player constants --------
     PLAYER_START_X = 76.0
-    PLAYER_START_Y = 172.0
+    PLAYER_START_Y = 172
     PLAYER_BOUNDS = (16, 140), (141, 172)
 
     PLAYER_SIZE = (4, 9)
@@ -36,11 +36,11 @@ class CentipedeConstants:
     # MAX_VELOCITY_X = 1 # Default: 6 | Maximum speed in x direction (pixels per frame)
     # ACCELERATION_X = 1 # Default: 0.2 | How fast player accelerates
     # FRICTION_X = 1 # Default: 1 | 1 = 100% -> player stops immediately, 0 = 0% -> player does not stop, 0.5 = 50 % -> player loses 50% of its velocity every frame
-    PLAYER_Y_VALUES = jnp.array([141, 145, 145.5, 147, 147.5, 150, 150.5, 154, 154.5, 156, 156.5, 159, 159.5, 163, 163.5, 165, 165.5, 168, 168.5, 172])      # Double to not need extra state value
+    PLAYER_Y_VALUES = jnp.array([141, 145, 147, 150, 154, 156, 159, 163, 165, 168, 172])      # Double to not need extra state value
     # MAX_VELOCITY_Y = 0.25
 
     ## -------- Player spell constants --------
-    PLAYER_SPELL_SPEED = 4.5
+    PLAYER_SPELL_SPEED = 9
 
     PLAYER_SPELL_SIZE = (0, 8) # (0, 8) because of collision logic of spell
 
@@ -93,7 +93,7 @@ class CentipedeConstants:
     SPIDER_MID_RANGE = 32
 
     ## -------- Death animation constants --------
-    DEATH_ANIMATION_MUSHROOM_THRESHOLD = 128        # 8 Frames * 4 Sprites * 4 Repetitions
+    DEATH_ANIMATION_MUSHROOM_THRESHOLD = 64        # 8 Frames * 4 Sprites * 2 Repetitions
 
     ## -------- Color constants --------
     ORANGE = jnp.array([181, 83, 40])#B55328    # Mushrooms lvl1
@@ -488,7 +488,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             moving_left = segment[2] < 0
 
             def step_horizontal():
-                speed = segment[2] * 0.25    # should be 0.21875 but see yourself
+                speed = segment[2] * 0.5    # should be 0.4375 but see yourself
                 new_x = segment[0] + speed
                 return jnp.array([new_x, segment[1],segment[2], segment[3], segment[4]]), jnp.array(0)
 
@@ -513,7 +513,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
             def step_turn_around():
                 new_speed = -segment[2]
-                speed = new_speed * 0.25    # should be 0.21875 but see yourself
+                speed = new_speed * 0.5    # should be 0.4375 but see yourself
                 new_x = segment[0] + speed
                 return jnp.array([new_x, segment[1], new_speed, segment[3], segment[4]]), jnp.array(1)
 
@@ -1033,7 +1033,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             jnp.logical_and(jnp.less(player_velocity_x, -1/32), right),
         )
 
-        raw_vel_x = jnp.fix(player_velocity_x) * 0.5
+        raw_vel_x = jnp.fix(player_velocity_x)
         new_velocity_x = jnp.where(
             no_horiz_op,
             jnp.where(
@@ -1045,14 +1045,14 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 turn_around,
                 1/32 * jnp.sign(player_velocity_x),
                 jnp.clip(
-                    jnp.where(jnp.abs(raw_vel_x) * 2 < 1, player_velocity_x + 1/8 * acc_dir, player_velocity_x + 1/16 * acc_dir),
+                    jnp.where(jnp.abs(raw_vel_x) * 2 < 1, player_velocity_x + 1/4 * acc_dir, player_velocity_x + 1/8 * acc_dir),
                     -3, 3,
                 ),
             )
         )
         new_player_x = jnp.where(
             jnp.logical_and(no_horiz_op, player_x % 4 != 0),
-            player_x + jnp.sign(new_velocity_x) * 0.5,
+            player_x + jnp.sign(new_velocity_x),
             jnp.clip(player_x + raw_vel_x, self.consts.PLAYER_BOUNDS[0][0], self.consts.PLAYER_BOUNDS[0][1])
         )
 
@@ -1233,7 +1233,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         def handle_death_animation():
             def compute_mushroom_frames():
                 mush_alive = jnp.count_nonzero(state.mushroom_positions[:, 3])
-                return mush_alive * 8
+                return mush_alive * 4
 
             new_death_counter = jax.lax.cond(
                 state.death_counter <= -self.consts.DEATH_ANIMATION_MUSHROOM_THRESHOLD,
@@ -1242,7 +1242,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             )
 
             new_score = jnp.where(
-                jnp.logical_and(new_death_counter > 0, new_death_counter % 16 == 0),
+                jnp.logical_and(new_death_counter > 0, new_death_counter % 8 == 0),
                 state.score + 5,
                 state.score
             )
@@ -1276,7 +1276,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             )
 
         def normal_game_step():
-            new_death_counter = jnp.array(0)  # check_player_mob_collision(state.player_x, state.player_y, state.centipede_position, state.spider_position) # TODO: implement
+            new_death_counter = jnp.array(-1)  # check_player_mob_collision(state.player_x, state.player_y, state.centipede_position, state.spider_position) # TODO: implement
 
             # --- Player Movement ---
             new_player_x, new_player_y, new_velocity_x = self.player_step(
@@ -1324,11 +1324,11 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             spider_alive = spider_dir != 0
 
             new_spider_position, new_spider_timer = jax.lax.cond(
-            spider_alive,
-            lambda _: self.spider_alive_step(spider_x, spider_y, spider_dir, state.step_counter, key_step,
-                                             state.spider_spawn_timer),
-            lambda _: self.spider_dead_step(state.spider_position, state.spider_spawn_timer, key_spawn),
-            operand=None
+                spider_alive,
+                lambda _: self.spider_alive_step(spider_x, spider_y, spider_dir, state.step_counter, key_step,
+                                                 state.spider_spawn_timer),
+                lambda _: self.spider_dead_step(state.spider_position, state.spider_spawn_timer, key_spawn),
+                operand=None
             )
 
             # --- Spider points ---
@@ -1443,8 +1443,8 @@ class CentipedeRenderer(JAXGameRenderer):
                 ])
                 return jnp.where(
                     death_counter < 0,
-                    sprites[-(death_counter // 8) % 4],
-                    sprites[-jnp.mod(jnp.ceil(death_counter / 2), 4).astype(jnp.int32)],      # placeholder
+                    sprites[-(death_counter // 4 + 1) % 4],
+                    sprites[-jnp.mod(death_counter, 4).astype(jnp.int32)],      # placeholder
                 )
 
 
@@ -1724,7 +1724,7 @@ class CentipedeRenderer(JAXGameRenderer):
 
             def mushroom_sparks():
                 mush_alive = jnp.count_nonzero(mush_pos[:, 3])
-                alive_idx = mush_alive - jnp.ceil(death_counter / 8)
+                alive_idx = mush_alive - jnp.ceil(death_counter / 4)
 
                 def get_mushroom():
                     idx_y = jnp.argsort(mush_pos[:, 1])
@@ -1774,7 +1774,7 @@ class CentipedeRenderer(JAXGameRenderer):
                     death_counter < 0,
                     lambda: player_sparks(),
                     lambda: jax.lax.cond(
-                        (death_counter - 1) % 8 >= 4,
+                        (death_counter - 1) % 4 >= 2,
                         lambda: mushroom_sparks(),
                         lambda: no_render(),
                     ),
