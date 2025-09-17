@@ -27,17 +27,17 @@ class CentipedeConstants:
     SCALING_FACTOR = 6
 
     ## -------- Player constants --------
-    PLAYER_START_X = 76
-    PLAYER_START_Y = 172
+    PLAYER_START_X = 76.0
+    PLAYER_START_Y = 172.0
     PLAYER_BOUNDS = (16, 140), (141, 172)
 
     PLAYER_SIZE = (4, 9)
 
-    MAX_VELOCITY_X = 1 # Default: 6 | Maximum speed in x direction (pixels per frame)
-    ACCELERATION_X = 1 # Default: 0.2 | How fast player accelerates
-    FRICTION_X = 1 # Default: 1 | 1 = 100% -> player stops immediately, 0 = 0% -> player does not stop, 0.5 = 50 % -> player loses 50% of its velocity every frame
+    # MAX_VELOCITY_X = 1 # Default: 6 | Maximum speed in x direction (pixels per frame)
+    # ACCELERATION_X = 1 # Default: 0.2 | How fast player accelerates
+    # FRICTION_X = 1 # Default: 1 | 1 = 100% -> player stops immediately, 0 = 0% -> player does not stop, 0.5 = 50 % -> player loses 50% of its velocity every frame
     PLAYER_Y_VALUES = jnp.array([141, 145, 145.5, 147, 147.5, 150, 150.5, 154, 154.5, 156, 156.5, 159, 159.5, 163, 163.5, 165, 165.5, 168, 168.5, 172])      # Double to not need extra state value
-    MAX_VELOCITY_Y = 0.25
+    # MAX_VELOCITY_Y = 0.25
 
     ## -------- Player spell constants --------
     PLAYER_SPELL_SPEED = 4.5
@@ -247,9 +247,6 @@ def load_sprites():
         ]
     )
     SPRITE_BOTTOM_BORDER = jnp.expand_dims(bottom_border, 0)
-
-    jax.debug.print("{}", SPRITE_SPARKS[0].shape)
-
 
     DIGITS = jru.load_and_pad_digits(os.path.join(MODULE_DIR, "sprites/centipede/big_numbers/{}.npy"))
     LIFE_INDICATOR = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/ui/wand.npy"))
@@ -627,7 +624,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         spider_alive = spider_dir != 0
 
         def no_collision():
-            return mushroom_positions.astype(jnp.float32)
+            return mushroom_positions
 
         def check_hit():
             # Prüfe pro Mushroom Kollision mit der Spinne
@@ -642,9 +639,9 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 )
 
                 # Bei Kollision direkt lives auf 0 setzen
-                new_lives = jnp.where(collision, 0.0, lives)
+                new_lives = jnp.where(collision, 0, lives)
 
-                return jnp.array([x, y, is_poisoned, new_lives], dtype=jnp.float32)
+                return jnp.array([x, y, is_poisoned, new_lives])
 
             new_mushrooms = jax.vmap(collide_single)(mushroom_positions)
             return new_mushrooms
@@ -1211,7 +1208,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         reset_state = CentipedeState(
             player_x=jnp.array(self.consts.PLAYER_START_X),
             player_y=jnp.array(self.consts.PLAYER_START_Y),
-            player_velocity_x=jnp.array(0),
+            player_velocity_x=jnp.array(0.0),
             player_spell=jnp.zeros(3),
             mushroom_positions=self.initialize_mushroom_positions(),
             centipede_position=self.initialize_centipede_positions(jnp.array([0, 0])),
@@ -1268,7 +1265,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 state.lives
             )
 
-            jax.debug.print("{x}, {y}", x=new_death_counter, y=new_score)
+            # jax.debug.print("{x}, {y}", x=new_death_counter, y=new_score)
 
             return state._replace(
                 player_x=new_player_x,
@@ -1279,7 +1276,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             )
 
         def normal_game_step():
-            new_death_counter = jnp.array(0)  # check_player_mob_collision(state.player_x, state.player_y, state.centipede_position, state.spider_position)
+            new_death_counter = jnp.array(0)  # check_player_mob_collision(state.player_x, state.player_y, state.centipede_position, state.spider_position) # TODO: implement
 
             # --- Player Movement ---
             new_player_x, new_player_y, new_velocity_x = self.player_step(
@@ -1359,18 +1356,9 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 rng_key=new_rng_key
             )
 
-        normal_step_state = jax.tree.map(
-            lambda new, old: new.astype(old.dtype),
-            normal_game_step(),
-            state,
-        )
-        death_animation_state = jax.tree.map(
-            lambda new, old: new.astype(old.dtype),
-            handle_death_animation(),
-             state,
-        )
+        normal_step_state = normal_game_step()
+        death_animation_state = handle_death_animation()
 
-        # return_state = handle_death_animation()
         return_state = jax.lax.cond(
             state.lives == 0,       # If no more lives
             lambda: state,
