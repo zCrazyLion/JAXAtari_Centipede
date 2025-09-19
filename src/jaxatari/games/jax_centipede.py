@@ -138,7 +138,8 @@ class CentipedeState(NamedTuple):
     spider_position: chex.Array # (1, 3): x, y, direction
     spider_spawn_timer: chex.Array # Frames until new spider spawns
     spider_points: chex.Array # (1, 2): sprite, timeout
-    # flea_position: chex.Array # (1, 3) array for flea: (x, y, lives), 2 lives, speed doubles after 1 hit
+    flea_position: chex.Array # (1, 3) array for flea: (x, y, lives), 2 lives, speed doubles after 1 hit
+    flea_spawn_timer: chex.Array # Frames until new flea spawns
     # scorpion_position: chex.Array # (1, 3) array for scorpion: (x, y, direction)
     score: chex.Array
     lives: chex.Array
@@ -597,6 +598,95 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         return new_timer, jax.lax.cond(spawn, spawn_new_segment, lambda: centipede_position)
 
+    ## -------- Spider Move Logic -------- ##
+    def spider_step(
+            self,
+            spider_x: chex.Array,
+            spider_y: chex.Array,
+            spider_direction: chex.Array,
+            step_counter: chex.Array,
+            key: chex.PRNGKey
+    ) -> chex.Array:
+        """Moves Spider one Step further with random x-movement and periodic y-movement"""
+
+        # Split key in two parts, one for x and one for y
+        key_x, key_y = jax.random.split(key)
+
+        # X movement of spider
+        move_x = jax.random.bernoulli(key_x, self.consts.SPIDER_MOVE_PROBABILITY)  # True = bewegen
+        new_x = jnp.where(move_x, spider_x + spider_direction, spider_x)
+
+        # Check if left or right border is reached
+        stop_left = (spider_direction == -1) & (new_x < 16)
+        stop_right = (spider_direction == +1) & (new_x > 133)
+
+        new_direction = jnp.where(stop_left | stop_right, 0, spider_direction)
+
+        # Y movement of spider
+        move_y = (step_counter % 8 == 7)
+
+        def update_y(spider_y):
+            idx = jnp.argwhere(self.consts.SPIDER_Y_POSITIONS == spider_y, size=1).squeeze()
+
+            can_go_up = idx > 0
+            can_go_down = idx < len(self.consts.SPIDER_Y_POSITIONS) - 1
+
+            rand = jax.random.bernoulli(key_y)
+
+            dy = jnp.where(~can_go_down, -1,
+                           jnp.where(~can_go_up, +1,
+                                     jnp.where(rand, -1, +1)))
+
+            new_idx = idx + dy
+            return self.consts.SPIDER_Y_POSITIONS[new_idx].astype(jnp.float32)
+
+        new_y = jax.lax.cond(
+            move_y,
+            update_y,
+            lambda y: y.astype(jnp.float32),
+            spider_y
+        )
+
+        return jnp.stack([new_x, new_y, new_direction])
+
+    def spider_alive_step(
+            self,
+            spider_x: chex.Array,
+            spider_y: chex.Array,
+            spider_dir: chex.Array,
+            step_counter: chex.Array,
+            key_step: chex.PRNGKey,
+            spawn_timer: chex.Array,
+    ) -> tuple[chex.Array, int]:
+        new_spider = self.spider_step(spider_x, spider_y, spider_dir, step_counter, key_step)
+        return new_spider, spawn_timer
+
+    def spider_dead_step(
+            self,
+            spider_position: chex.Array,
+            spawn_timer: int,
+            key_spawn: chex.PRNGKey,
+    ) -> tuple[chex.Array, int]:
+        new_timer = spawn_timer - 1
+
+        def respawn():
+            new_spider = self.initialize_spider_position(key_spawn).astype(jnp.float32)
+            next_timer = jax.random.randint(
+                key_spawn,
+                (),
+                self.consts.SPIDER_MIN_SPAWN_FRAMES,
+                self.consts.SPIDER_MAX_SPAWN_FRAMES + 1
+            )
+            return new_spider, next_timer
+
+        def wait():
+            return jnp.array([spider_position[0], spider_position[1], 0], dtype=jnp.float32), new_timer
+
+        return jax.lax.cond(new_timer <= 0, respawn, wait)
+
+    def flea_step(self, flea_position: chex.Array, flea_spawn_timer: chex.Array) -> tuple[chex.Array, chex.Array]:
+        return flea_position, flea_spawn_timer
+
     ## -------- Spell Mushroom Collision Logic -------- ##
     @partial(jax.jit, static_argnums=(0, ))
     def check_spell_mushroom_collision(
@@ -767,7 +857,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
     ## -------- Centipede Spell Collision Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
-    def check_centipede_spell_collision(
+    def check_centipede_spell_collision(        # TODO: fix
             self,
             spell_state: chex.Array,
             centipede_position: chex.Array,
@@ -1101,92 +1191,6 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         return new_player_x, new_player_y, new_velocity_x
 
-    ## -------- Spider Move Logic -------- ##
-    def spider_step(
-            self,
-            spider_x: chex.Array,
-            spider_y: chex.Array,
-            spider_direction: chex.Array,
-            step_counter: chex.Array,
-            key: chex.PRNGKey
-    ) -> chex.Array:
-        """Moves Spider one Step further with random x-movement and periodic y-movement"""
-
-        # Split key in two parts, one for x and one for y
-        key_x, key_y = jax.random.split(key)
-
-        # X movement of spider
-        move_x = jax.random.bernoulli(key_x, self.consts.SPIDER_MOVE_PROBABILITY)  # True = bewegen
-        new_x = jnp.where(move_x, spider_x + spider_direction, spider_x)
-
-        # Check if left or right border is reached
-        stop_left = (spider_direction == -1) & (new_x < 16)
-        stop_right = (spider_direction == +1) & (new_x > 133)
-
-        new_direction = jnp.where(stop_left | stop_right, 0, spider_direction)
-
-        # Y movement of spider
-        move_y = (step_counter % 8 == 7)
-
-        def update_y(spider_y):
-            idx = jnp.argwhere(self.consts.SPIDER_Y_POSITIONS == spider_y, size=1).squeeze()
-
-            can_go_up = idx > 0
-            can_go_down = idx < len(self.consts.SPIDER_Y_POSITIONS) - 1
-
-            rand = jax.random.bernoulli(key_y)
-
-            dy = jnp.where(~can_go_down, -1,
-                           jnp.where(~can_go_up, +1,
-                                     jnp.where(rand, -1, +1)))
-
-            new_idx = idx + dy
-            return self.consts.SPIDER_Y_POSITIONS[new_idx].astype(jnp.float32)
-
-        new_y = jax.lax.cond(
-            move_y,
-            update_y,
-            lambda y: y.astype(jnp.float32),
-            spider_y
-        )
-
-        return jnp.stack([new_x, new_y, new_direction])
-
-    def spider_alive_step(
-            self,
-            spider_x: chex.Array,
-            spider_y: chex.Array,
-            spider_dir: chex.Array,
-            step_counter: chex.Array,
-            key_step: chex.PRNGKey,
-            spawn_timer: chex.Array,
-    ) -> tuple[chex.Array, int]:
-        new_spider = self.spider_step(spider_x, spider_y, spider_dir, step_counter, key_step)
-        return new_spider, spawn_timer
-
-    def spider_dead_step(
-            self,
-            spider_position: chex.Array,
-            spawn_timer: int,
-            key_spawn: chex.PRNGKey,
-    ) -> tuple[chex.Array, int]:
-        new_timer = spawn_timer - 1
-
-        def respawn():
-            new_spider = self.initialize_spider_position(key_spawn).astype(jnp.float32)
-            next_timer = jax.random.randint(
-                key_spawn,
-                (),
-                self.consts.SPIDER_MIN_SPAWN_FRAMES,
-                self.consts.SPIDER_MAX_SPAWN_FRAMES + 1
-            )
-            return new_spider, next_timer
-
-        def wait():
-            return jnp.array([spider_position[0], spider_position[1], 0], dtype=jnp.float32), new_timer
-
-        return jax.lax.cond(new_timer <= 0, respawn, wait)
-
     ## -------- Player Spell Logic -------- ##
     def player_spell_step(      # TODO: fix behaviour for close objects (add cooldown)
             self,
@@ -1252,6 +1256,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             spider_position=jnp.zeros(3),
             spider_spawn_timer=initial_spider_timer,
             spider_points=jnp.array([0, 0]),
+            flea_position=jnp.zeros(3),
+            flea_spawn_timer=jnp.array(0),
             score=jnp.array(0),
             lives=jnp.array(3),
             step_counter=jnp.array(0),
@@ -1361,7 +1367,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             )
 
             # --- Spider Movement & Spawn Timer ---
-            new_rng_key, key_spawn, key_step = jax.random.split(state.rng_key, 3)
+            new_rng_key, key_spawn, key_step = jax.random.split(state.rng_key, 3)       # TODO: (maybe) tidy up
 
             spider_x, spider_y, spider_dir = new_spider_position
             spider_alive = spider_dir != 0
@@ -1381,7 +1387,10 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 new_spider_points_pre
             )
 
-            # Additional Live Every 10.000 points
+            # --- Flea Handling
+            new_flea_position, new_flea_timer = self.flea_step(state.flea_position, state.flea_spawn_timer)
+
+            # Additional Life Every 10.000 points
             new_lives = jnp.where(
                 jnp.logical_or(
                     new_score // 10000 == state.score // 10000,
@@ -1406,6 +1415,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 spider_position=new_spider_position,
                 spider_spawn_timer=new_spider_timer,
                 spider_points=new_spider_points,
+                flea_position=new_flea_position,
+                flea_spawn_timer=new_flea_timer,
                 score=new_score,
                 lives=new_lives,
                 step_counter=state.step_counter + 1,
