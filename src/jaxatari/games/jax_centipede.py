@@ -1365,6 +1365,19 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 new_spider_points_pre
             )
 
+            # Additional Live Every 10.000 points
+            new_lives = jnp.where(
+                jnp.logical_or(
+                    new_score // 10000 == state.score // 10000,
+                    state.lives >= 6
+                ),
+                state.lives,
+                state.lives + 1
+            )
+
+            # --- New wave ---
+            new_centipede_timer = jnp.where(state.wave[0] == new_wave[0], new_centipede_timer, 0)
+
             # --- Return State ---
             return state._replace(
                 player_x=new_player_x,
@@ -1378,6 +1391,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 spider_spawn_timer=new_spider_timer,
                 spider_points=new_spider_points,
                 score=new_score,
+                lives=new_lives,
                 step_counter=state.step_counter + 1,
                 wave=new_wave,
                 death_counter=new_death_counter,
