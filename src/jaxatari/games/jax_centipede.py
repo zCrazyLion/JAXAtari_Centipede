@@ -563,10 +563,11 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return jax.vmap(set_new_status)(new_state, segment_split)
 
     @partial(jax.jit, static_argnums=(0,))
-    def handle_centipede_spawn_timer(self, centipede_timer, centipede_position) -> chex.Array:
+    def handle_centipede_segment_spawn(self, centipede_timer, centipede_position) -> tuple[chex.Array, chex.Array]:
         timer_threshold = 192 - (centipede_timer // 1000) * 8
-        return jnp.where(
-            jnp.sum(centipede_position[:, 4]) < 12,
+        spawn = centipede_timer % 1000 >= timer_threshold
+        new_timer = jnp.where(
+            jnp.sum(jnp.clip(centipede_position[:, 4], 0, 1)) < 9,
             jnp.where(
                 centipede_timer == 0,
                 jnp.where(
@@ -575,13 +576,26 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                     jnp.array(0),
                 ),
                 jnp.where(
-                    centipede_timer % 1000 >= timer_threshold,
+                    spawn,
                     (centipede_timer // 1000 + 1) * 1000,
                     jnp.array(centipede_timer + 1),
                 )
             ),
             jnp.array(0),
         )
+
+        def spawn_new_segment():
+            min_idx = jnp.argmin(centipede_position[:, 4])      # when called, this should be guaranteed to point to a zero element
+            direction = jnp.sum(jnp.clip(centipede_position[:, 2], -1, 1)) < 0     # true = dir.left, false = dir.right
+            return centipede_position.at[min_idx].set(
+                jnp.where(
+                    direction,
+                    jnp.array([140, 131, -2, 1, 2]),
+                    jnp.array([16, 131, 2, 1, 2]),
+                )
+            )
+
+        return new_timer, jax.lax.cond(spawn, spawn_new_segment, lambda: centipede_position)
 
     ## -------- Spell Mushroom Collision Logic -------- ##
     @partial(jax.jit, static_argnums=(0, ))
@@ -1332,8 +1346,10 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             new_centipede_position, new_wave = self.process_wave(new_centipede_position, state.wave, state.score)
 
             # --- Centipede Head Spawn Timer ---
-            new_centipede_timer = self.handle_centipede_spawn_timer(state.centipede_spawn_timer, new_centipede_position)
-            jax.debug.print("{}", new_centipede_timer)
+            new_centipede_timer, new_centipede_position = self.handle_centipede_segment_spawn(      # Spawn new heads once centipede has reached bottom of screen
+                state.centipede_spawn_timer,
+                new_centipede_position
+            )
 
             # --- Spider Collision ---
             new_player_spell_state, new_spider_position, new_score, new_spider_points_pre = self.check_spell_spider_collision(
