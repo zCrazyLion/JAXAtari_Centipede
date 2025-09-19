@@ -1673,6 +1673,30 @@ class CentipedeRenderer(JAXGameRenderer):
             frame_bottom_border,
         ) = get_sprite_frames(state.wave, state.step_counter)
 
+        ### -------- Render player -------- ###
+        raster = jnp.where(
+            state.death_counter >= 0,
+            jru.render_at(
+                raster,
+                state.player_x,
+                state.player_y,
+                frame_player,
+            ),
+            raster
+        )
+
+        ### -------- Render player spell -------- ###
+        raster = jnp.where(
+            state.player_spell[2] != 0,
+            jru.render_at(
+                raster,
+                state.player_spell[0],
+                state.player_spell[1],
+                frame_player_spell,
+            ),
+            raster
+        )
+
         ### -------- Render mushrooms -------- ###
         def render_mushrooms(i, raster_base):
             should_render = state.mushroom_positions[i][3] > 0
@@ -1704,30 +1728,6 @@ class CentipedeRenderer(JAXGameRenderer):
                 raster_base
             )
         raster = jax.lax.fori_loop(0, self.consts.MAX_SEGMENTS, render_centipede_segment, raster)
-
-        ### -------- Render player -------- ###
-        raster = jnp.where(
-            state.death_counter >= 0,
-            jru.render_at(
-                raster,
-                state.player_x,
-                state.player_y,
-                frame_player,
-            ),
-            raster
-        )
-
-        ### -------- Render player spell -------- ###
-        raster = jnp.where(
-            state.player_spell[2] != 0,
-            jru.render_at(
-                raster,
-                state.player_spell[0],
-                state.player_spell[1],
-                frame_player_spell,
-            ),
-        raster
-        )
 
         ### -------- Render spider -------- ###
         raster = jnp.where(
