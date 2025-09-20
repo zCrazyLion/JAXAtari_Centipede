@@ -17,6 +17,9 @@ from typing import NamedTuple, Tuple
 from jaxatari import spaces
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 from jaxatari.renderers import JAXGameRenderer
+from jaxatari.rendering.jax_rendering_utils import recolor_sprite
+
+
 #from jaxatari.rendering.jax_rendering_utils import recolor_sprite
 
 
@@ -44,7 +47,7 @@ class CentipedeConstants:
 
     PLAYER_SPELL_SIZE = (0, 8) # (0, 8) because of collision logic of spell
 
-    ## -------- Starting Pattern (X -> placed, O -> not placed) --------
+    ## -------- Starting Pattern (X -> placed, O -> not placed, P -> placed and poisoned) --------
     MUSHROOM_STARTING_PATTERN = [
         "OOOOOOOOOOOOOOOO",
         "OOOOOOOOXOOOOXOO",
@@ -124,6 +127,7 @@ class CentipedeConstants:
     SPRITE_SCORPION_FRAMES = 2
     SPRITE_SPARKS_FRAMES = 4
     SPRITE_BOTTOM_BORDER_FRAMES = 1
+    SPRITE_POISONED_MUSHROOMS_FRAMES = 16
 
     # -------- Centipede States --------
 
@@ -205,16 +209,60 @@ def load_sprites():
     sparks4 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/sparks/4.npy"))
     bottom_border = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/ui/bottom_border.npy"))
 
+    ## -------- poisoned mushrooms --------
+    pMush1 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/1.npy"))
+    pMush2 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/2.npy"))
+    pMush3 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/3.npy"))
+    pMush4 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/4.npy"))
+    pMush5 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/5.npy"))
+    pMush6 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/6.npy"))
+    pMush7= jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/7.npy"))
+    pMush8 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/8.npy"))
+    pMush9 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/9.npy"))
+    pMush10 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/10.npy"))
+    pMush11 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/11.npy"))
+    pMush12 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/12.npy"))
+    pMush13 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/13.npy"))
+    pMush14 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/14.npy"))
+    pMush15 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/15.npy"))
+    pMush16 = jru.loadFrame(os.path.join(MODULE_DIR, "sprites/centipede/poisoned_mushrooms/16.npy"))
+
+
     sparks_sprites, _ = jru.pad_to_match([sparks1, sparks2, sparks3, sparks4])
     spider_sprites, _ = jru.pad_to_match([spider1, spider2, spider3, spider4])
     flea_sprites, _ = jru.pad_to_match([flea1, flea2])
     scorpion_sprites, _ = jru.pad_to_match([scorpion1, scorpion2])
+    poisoned_mushroom_sprites, _ = jru.pad_to_match([pMush1, pMush2, pMush3, pMush4,
+                                                     pMush5, pMush6, pMush7, pMush8,
+                                                     pMush9, pMush10, pMush11, pMush12,
+                                                     pMush13, pMush14, pMush15, pMush16])
 
     SPRITE_PLAYER = jnp.expand_dims(player, 0)
     SPRITE_PLAYER_SPELL = jnp.expand_dims(player_spell, 0)
 
     SPRITE_CENTIPEDE = jnp.expand_dims(centipede, 0)
     SPRITE_MUSHROOM = jnp.expand_dims(mushroom, 0)
+
+    SPRITE_POISONED_MUSHROOM = jnp.concatenate(
+        [
+            jnp.repeat(poisoned_mushroom_sprites[0][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[1][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[2][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[3][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[4][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[5][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[6][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[7][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[8][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[9][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[10][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[11][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[12][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[13][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[14][None], 4, axis=0),
+            jnp.repeat(poisoned_mushroom_sprites[15][None], 4, axis=0),
+        ]
+    )
 
     SPRITE_SPIDER = jnp.concatenate(
         [
@@ -258,6 +306,7 @@ def load_sprites():
         SPRITE_PLAYER_SPELL,
         SPRITE_CENTIPEDE,
         SPRITE_MUSHROOM,
+        SPRITE_POISONED_MUSHROOM,
         SPRITE_SPIDER,
         SPRITE_SPIDER_300,
         SPRITE_SPIDER_600,
@@ -275,6 +324,7 @@ def load_sprites():
     SPRITE_PLAYER_SPELL,
     SPRITE_CENTIPEDE,
     SPRITE_MUSHROOM,
+    SPRITE_POISONED_MUSHROOM,
     SPRITE_SPIDER,
     SPRITE_SPIDER_300,
     SPRITE_SPIDER_600,
@@ -960,33 +1010,50 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         )
 
     ## -------- Mushroom Spawn Logic -------- ##
-    @partial(jax.jit, static_argnums=(0, ))
+    @partial(jax.jit, static_argnums=(0,))
     def initialize_mushroom_positions(self) -> chex.Array:
         # Create row and column indices
-        row_indices = jnp.repeat(jnp.arange(self.consts.MUSHROOM_NUMBER_OF_ROWS), self.consts.MUSHROOM_NUMBER_OF_COLS)
-        col_indices = jnp.tile(jnp.arange(self.consts.MUSHROOM_NUMBER_OF_COLS), self.consts.MUSHROOM_NUMBER_OF_ROWS)
+        row_indices = jnp.repeat(
+            jnp.arange(self.consts.MUSHROOM_NUMBER_OF_ROWS),
+            self.consts.MUSHROOM_NUMBER_OF_COLS
+        )
+        col_indices = jnp.tile(
+            jnp.arange(self.consts.MUSHROOM_NUMBER_OF_COLS),
+            self.consts.MUSHROOM_NUMBER_OF_ROWS
+        )
 
         # Compute row parity
         row_is_even = row_indices % 2 == 0
-        column_start = jnp.where(row_is_even, self.consts.MUSHROOM_COLUMN_START_EVEN, self.consts.MUSHROOM_COLUMN_START_ODD)
+        column_start = jnp.where(
+            row_is_even,
+            self.consts.MUSHROOM_COLUMN_START_EVEN,
+            self.consts.MUSHROOM_COLUMN_START_ODD
+        )
         x = column_start + self.consts.MUSHROOM_X_SPACING * col_indices
         x = x.astype(jnp.int32)
 
         y = (row_indices * self.consts.MUSHROOM_Y_SPACING + 7).astype(jnp.int32)
 
-        # Build full pattern as array
-        pattern_array = jnp.array([
-            [1 if c.upper() == 'X' else 0 for c in row.ljust(self.consts.MUSHROOM_NUMBER_OF_COLS, 'O')]
+        # Build full pattern as arrays
+        # Lives: 3 for 'X' or 'P', 0 otherwise
+        lives_pattern = jnp.array([
+            [3 if c.upper() in ("X", "P") else 0 for c in row.ljust(self.consts.MUSHROOM_NUMBER_OF_COLS, "O")]
             for row in self.consts.MUSHROOM_STARTING_PATTERN
         ])
-        pattern_array = jnp.pad(
-            pattern_array,
-            ((0, max(0, self.consts.MUSHROOM_NUMBER_OF_ROWS - pattern_array.shape[0])), (0, 0)),
-            constant_values=0
-        )
 
-        lives = pattern_array[row_indices, col_indices] * 3  # 3 lives if visible, 0 if not
-        is_poisoned = jnp.zeros_like(lives)
+        # Poison: 1 for 'P', 0 otherwise
+        poison_pattern = jnp.array([
+            [1 if c.upper() == "P" else 0 for c in row.ljust(self.consts.MUSHROOM_NUMBER_OF_COLS, "O")]
+            for row in self.consts.MUSHROOM_STARTING_PATTERN
+        ])
+
+        # Pad patterns to required size
+        pad_rows = max(0, self.consts.MUSHROOM_NUMBER_OF_ROWS - lives_pattern.shape[0])
+        lives_pattern = jnp.pad(lives_pattern, ((0, pad_rows), (0, 0)), constant_values=0)
+        poison_pattern = jnp.pad(poison_pattern, ((0, pad_rows), (0, 0)), constant_values=0)
+
+        lives = lives_pattern[row_indices, col_indices]
+        is_poisoned = poison_pattern[row_indices, col_indices]
 
         return jnp.stack([x, y, is_poisoned, lives], axis=1)
 
@@ -1403,6 +1470,9 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             # --- New wave ---
             new_centipede_timer = jnp.where(state.wave[0] == new_wave[0], new_centipede_timer, 0)
 
+
+            #jax.debug.print("{x}", x=updated_mushrooms)
+
             # --- Return State ---
             return state._replace(
                 player_x=new_player_x,
@@ -1522,6 +1592,7 @@ class CentipedeRenderer(JAXGameRenderer):
             frame_player_spell_idx = get_frame(SPRITE_PLAYER_SPELL, self.consts.SPRITE_PLAYER_SPELL_FRAMES, step_counter)
             frame_centipede_idx = get_frame(SPRITE_CENTIPEDE, self.consts.SPRITE_CENTIPEDE_FRAMES, step_counter)
             frame_mushroom_idx = get_frame(SPRITE_MUSHROOM, self.consts.SPRITE_MUSHROOM_FRAMES, step_counter)
+            frame_poisoned_mushroom_idx = get_frame(SPRITE_POISONED_MUSHROOM, self.consts.SPRITE_POISONED_MUSHROOMS_FRAMES, step_counter)
             frame_spider_idx = get_frame(SPRITE_SPIDER, self.consts.SPRITE_SPIDER_FRAMES, step_counter)
             frame_spider300_idx = get_frame(SPRITE_SPIDER_300, self.consts.SPRITE_SPIDER_300_FRAMES, step_counter)
             frame_spider600_idx = get_frame(SPRITE_SPIDER_600, self.consts.SPRITE_SPIDER_600_FRAMES, step_counter)
@@ -1540,6 +1611,7 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_player_spell_idx, self.consts.ORANGE),
                     recolor_sprite(frame_centipede_idx, self.consts.PINK),
                     recolor_sprite(frame_mushroom_idx, self.consts.ORANGE),
+                    frame_poisoned_mushroom_idx,
                     recolor_sprite(frame_spider_idx, self.consts.PURPLE),
                     recolor_sprite(frame_spider300_idx, self.consts.PURPLE),
                     recolor_sprite(frame_spider600_idx, self.consts.GREEN),
@@ -1556,6 +1628,7 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_player_spell_idx, self.consts.DARK_BLUE),
                     recolor_sprite(frame_centipede_idx, self.consts.RED),
                     recolor_sprite(frame_mushroom_idx, self.consts.DARK_BLUE),
+                    frame_poisoned_mushroom_idx,
                     recolor_sprite(frame_spider_idx, self.consts.GREEN),
                     recolor_sprite(frame_spider300_idx, self.consts.GREEN),
                     recolor_sprite(frame_spider600_idx, self.consts.LIGHT_BLUE),
@@ -1572,6 +1645,7 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_player_spell_idx, self.consts.YELLOW),
                     recolor_sprite(frame_centipede_idx, self.consts.PURPLE),
                     recolor_sprite(frame_mushroom_idx, self.consts.YELLOW),
+                    frame_poisoned_mushroom_idx,
                     recolor_sprite(frame_spider_idx, self.consts.LIGHT_BLUE),
                     recolor_sprite(frame_spider300_idx, self.consts.LIGHT_BLUE),
                     recolor_sprite(frame_spider600_idx, self.consts.ORANGE),
@@ -1588,6 +1662,7 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_player_spell_idx, self.consts.PINK),
                     recolor_sprite(frame_centipede_idx, self.consts.GREEN),
                     recolor_sprite(frame_mushroom_idx, self.consts.PINK),
+                    frame_poisoned_mushroom_idx,
                     recolor_sprite(frame_spider_idx, self.consts.ORANGE),
                     recolor_sprite(frame_spider300_idx, self.consts.ORANGE),
                     recolor_sprite(frame_spider600_idx, self.consts.DARK_PURPLE),
@@ -1604,6 +1679,7 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_player_spell_idx, self.consts.RED),
                     recolor_sprite(frame_centipede_idx, self.consts.LIGHT_BLUE),
                     recolor_sprite(frame_mushroom_idx, self.consts.RED),
+                    frame_poisoned_mushroom_idx,
                     recolor_sprite(frame_spider_idx, self.consts.DARK_BLUE),
                     recolor_sprite(frame_spider300_idx, self.consts.DARK_BLUE),
                     recolor_sprite(frame_spider600_idx, self.consts.DARK_YELLOW),
@@ -1620,6 +1696,7 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_player_spell_idx, self.consts.PURPLE),
                     recolor_sprite(frame_centipede_idx, self.consts.ORANGE),
                     recolor_sprite(frame_mushroom_idx, self.consts.PURPLE),
+                    frame_poisoned_mushroom_idx,
                     recolor_sprite(frame_spider_idx, self.consts.YELLOW),
                     recolor_sprite(frame_spider300_idx, self.consts.YELLOW),
                     recolor_sprite(frame_spider600_idx, self.consts.PINK),
@@ -1636,6 +1713,7 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_player_spell_idx, self.consts.GREEN),
                     recolor_sprite(frame_centipede_idx, self.consts.DARK_BLUE),
                     recolor_sprite(frame_mushroom_idx, self.consts.GREEN),
+                    frame_poisoned_mushroom_idx,
                     recolor_sprite(frame_spider_idx, self.consts.PINK),
                     recolor_sprite(frame_spider300_idx, self.consts.PINK),
                     recolor_sprite(frame_spider600_idx, self.consts.RED),
@@ -1652,6 +1730,7 @@ class CentipedeRenderer(JAXGameRenderer):
                     recolor_sprite(frame_player_spell_idx, self.consts.LIGHT_BLUE),
                     recolor_sprite(frame_centipede_idx, self.consts.YELLOW),
                     recolor_sprite(frame_mushroom_idx, self.consts.LIGHT_BLUE),
+                    frame_poisoned_mushroom_idx,
                     recolor_sprite(frame_spider_idx, self.consts.RED),
                     recolor_sprite(frame_spider300_idx, self.consts.RED),
                     recolor_sprite(frame_spider600_idx, self.consts.RED),
@@ -1674,6 +1753,7 @@ class CentipedeRenderer(JAXGameRenderer):
             frame_player_spell,
             frame_centipede,
             frame_mushroom,
+            frame_poisoned_mushroom,
             frame_spider,
             frame_spider300,
             frame_spider600,
@@ -1710,14 +1790,26 @@ class CentipedeRenderer(JAXGameRenderer):
 
         ### -------- Render mushrooms -------- ###
         def render_mushrooms(i, raster_base):
-            should_render = state.mushroom_positions[i][3] > 0
+            alive = state.mushroom_positions[i][3] > 0
+            poisoned = state.mushroom_positions[i][2] == 1
+
             return jax.lax.cond(
-                should_render,
-                lambda r: jru.render_at(
+                alive,
+                lambda r: jax.lax.cond(
+                    poisoned,
+                    lambda r2: jru.render_at(
+                        r2,
+                        state.mushroom_positions[i][0],
+                        state.mushroom_positions[i][1],
+                        frame_poisoned_mushroom,
+                    ),
+                    lambda r2: jru.render_at(
+                        r2,
+                        state.mushroom_positions[i][0],
+                        state.mushroom_positions[i][1],
+                        frame_mushroom,
+                    ),
                     r,
-                    state.mushroom_positions[i][0],
-                    state.mushroom_positions[i][1],
-                    frame_mushroom,
                 ),
                 lambda r: r,
                 raster_base,
