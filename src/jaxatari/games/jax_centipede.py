@@ -95,6 +95,14 @@ class CentipedeConstants:
     SPIDER_CLOSE_RANGE = 16
     SPIDER_MID_RANGE = 32
 
+    ## -------- Scorpion constants --------
+    SCORPION_X_POSITIONS = jnp.array([16, 133])
+    SCORPION_Y_POSITIONS = jnp.array([7, 16, 25, 34, 43, 52, 61, 70, 79, 88, 97, 106, 115, 124, 133, 142, 151, 160, 169])
+    SCORPION_MIN_SPAWN_FRAMES = 50#355 #TODO: prob. not accurate
+    SCORPION_MAX_SPAWN_FRAMES = 100#2000 #TODO: prob. not accurate
+    SCORPION_SIZE = (8, 6)
+    SCORPION_POINTS = 1000
+
     ## -------- Death animation constants --------
     DEATH_ANIMATION_MUSHROOM_THRESHOLD = 64        # 8 Frames * 4 Sprites * 2 Repetitions
 
@@ -112,7 +120,6 @@ class CentipedeConstants:
     RED = jnp.array([184, 50, 50])#B83232       # Centipede lvl2
     YELLOW = jnp.array([187, 187, 53])#BBBB35
     DARK_YELLOW = jnp.array([162, 162, 42])#A2A22A
-    # POISONED_RAINBOW = ?
 
     ## -------- Sprite Frames --------
     SPRITE_PLAYER_FRAMES = 1
@@ -144,7 +151,8 @@ class CentipedeState(NamedTuple):
     spider_points: chex.Array # (1, 2): sprite, timeout
     flea_position: chex.Array # (1, 3) array for flea: (x, y, lives), 2 lives, speed doubles after 1 hit
     flea_spawn_timer: chex.Array # Frames until new flea spawns
-    # scorpion_position: chex.Array # (1, 3) array for scorpion: (x, y, direction)
+    scorpion_position: chex.Array # (1, 3) array for scorpion: (x, y, direction)
+    scorpion_spawn_timer: chex.Array
     score: chex.Array
     lives: chex.Array
     wave: chex.Array # (1, 2): logical wave, ui wave
@@ -734,6 +742,142 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         return jax.lax.cond(new_timer <= 0, respawn, wait)
 
+    ## -------- Scorpion Move Logic -------- ##
+    def scorpion_step(
+            self,
+            scorpion_x: chex.Array,
+            scorpion_y: chex.Array,
+            scorpion_direction: chex.Array
+    ) -> tuple[chex.Array, chex.Array]:
+
+        new_x = scorpion_x + scorpion_direction
+
+        stop_left = (scorpion_direction == -1) & (new_x < self.consts.SCORPION_X_POSITIONS[0])
+        stop_right = (scorpion_direction == +1) & (new_x > self.consts.SCORPION_X_POSITIONS[1])
+
+        vanished = (stop_left | stop_right).astype(jnp.int32)
+
+        new_direction = jnp.where(vanished == 1, 0, scorpion_direction)
+
+        new_scorpion = jnp.stack([new_x, scorpion_y, new_direction]).astype(jnp.float32)
+
+        return new_scorpion, vanished
+
+    def scorpion_alive_step(self,
+            scorpion_x: chex.Array,
+            scorpion_y: chex.Array,
+            scorpion_dir: chex.Array,
+            key_step: chex.PRNGKey,
+            spawn_timer: chex.Array,
+            mushroom_positions: chex.Array,
+            poison_stop_flag: chex.Array,
+    ) -> tuple[chex.Array, chex.Array, chex.Array]:
+
+        new_scorpion, vanished = self.scorpion_step(scorpion_x, scorpion_y, scorpion_dir)
+
+        def on_vanish(args):
+            new_scorpion, old_spawn_timer, mushrooms = args
+
+            key_local = key_step
+            next_timer = jax.random.randint(
+                key_local,
+                (),
+                self.consts.SCORPION_MIN_SPAWN_FRAMES,
+                self.consts.SCORPION_MAX_SPAWN_FRAMES + 1
+            )
+
+            updated_mush = jax.lax.cond(
+                poison_stop_flag == 0,  # direction != 0
+                lambda: self.poison_mushrooms(mushrooms, new_scorpion[1]),
+                lambda: mushrooms
+            )
+
+            dead_scorpion = jnp.array([new_scorpion[0], new_scorpion[1], 0.0], dtype=jnp.float32)
+
+            return dead_scorpion, next_timer, updated_mush
+
+        def no_vanish(args):
+            new_scorpion, old_spawn_timer, mushrooms = args
+            return new_scorpion, old_spawn_timer, mushrooms
+
+        result = jax.lax.cond(
+            vanished == 1,
+            on_vanish,
+            no_vanish,
+            operand=(new_scorpion, spawn_timer, mushroom_positions)
+        )
+
+        return result
+
+    def scorpion_dead_step(self,
+           scorpion_position: chex.Array,
+           spawn_timer: chex.Array,
+           key_spawn: chex.PRNGKey,
+           wave: chex.Array,
+           mushroom_positions: chex.Array,
+    ) -> tuple[chex.Array, chex.Array, chex.Array]:
+
+        new_timer = spawn_timer - 1
+
+        def respawn():
+            def do_spawn():
+                key_pos, key_rand = jax.random.split(key_spawn)
+                new_scorpion = self.initialize_scorpion_position(key_pos).astype(jnp.float32)
+                next_timer = jax.random.randint(
+                    key_rand, (),
+                    self.consts.SCORPION_MIN_SPAWN_FRAMES,
+                    self.consts.SCORPION_MAX_SPAWN_FRAMES + 1
+                )
+                return new_scorpion, next_timer, mushroom_positions
+
+            def skip_spawn():
+                key_rand = key_spawn
+                next_timer = jax.random.randint(
+                    key_rand, (),
+                    self.consts.SCORPION_MIN_SPAWN_FRAMES,
+                    self.consts.SCORPION_MAX_SPAWN_FRAMES + 1
+                )
+                return jnp.array([scorpion_position[0], scorpion_position[1], 0.0],
+                                 dtype=jnp.float32), next_timer, mushroom_positions
+
+            return jax.lax.cond(
+                True, #wave[1] >= 3,
+                do_spawn,
+                skip_spawn
+            )
+
+        def wait():
+            return jnp.array([scorpion_position[0], scorpion_position[1], 0.0],
+                             dtype=jnp.float32), new_timer, mushroom_positions
+
+        #jax.debug.print("Scorpion spawn_timer={t} dir={d}", t=spawn_timer, d=scorpion_position[2])
+
+        return jax.lax.cond(new_timer <= 0, respawn, wait)
+
+    ## -------- Scorpion Poison Logic -------- ##
+    def poison_mushrooms(
+            self,
+            mushroom_positions: chex.Array,
+            scorpion_y: float
+    ) -> chex.Array:
+
+        same_row = mushroom_positions[:, 1] == scorpion_y
+        alive = mushroom_positions[:, 3] > 0
+        to_poison = same_row & alive
+
+
+        poisoned_col = jnp.where(to_poison, 1, mushroom_positions[:, 2])
+
+
+        updated = jnp.concatenate([
+            mushroom_positions[:, :2],
+            poisoned_col.reshape(-1, 1),
+            mushroom_positions[:, 3:]
+        ], axis=1)
+
+        return updated
+
+    ## -------- Flea Move Logic -------- ##
     def flea_step(self, flea_position: chex.Array, flea_spawn_timer: chex.Array) -> tuple[chex.Array, chex.Array]:
         return flea_position, flea_spawn_timer
 
@@ -905,6 +1049,61 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             no_collision,
         )
 
+    ## -------- Scorpion Spell Collision Logic -------- ##
+    @partial(jax.jit, static_argnums=(0,))
+    def check_spell_scorpion_collision(
+            self,
+            spell_state: chex.Array,
+            scorpion_position: chex.Array,
+            score: chex.Array,
+    ) -> tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
+        """
+        Detects collision between spell and scorpion.
+        No sprite is returned.
+        If hit:
+          - scorpion dir is set to 0
+          - poisoning is stopped for this frame (poison_stop_flag=1)
+          - score is increased by SCORPION_POINTS
+        Returns:
+          spell_state, new_scorpion_position, new_score, poison_stop_flag
+        """
+
+        # Spell info
+        spell_pos_x = spell_state[0]
+        spell_pos_y = spell_state[1]
+        spell_is_alive = spell_state[2] != 0
+
+        # Scorpion info
+        scorpion_x, scorpion_y, scorpion_dir = scorpion_position
+        scorpion_alive = scorpion_dir != 0
+
+        # Default: no collision
+        def no_collision():
+            return spell_state, scorpion_position, score, jnp.array(0, dtype=jnp.int32)
+
+        def check_hit():
+            # Collision check
+            collision = self.check_collision_single(
+                pos1=jnp.array([spell_pos_x, spell_pos_y]),
+                size1=self.consts.PLAYER_SPELL_SIZE,
+                pos2=jnp.array([scorpion_x, scorpion_y]),
+                size2=self.consts.SCORPION_SIZE,
+            )
+
+            def on_hit():
+                new_spell = spell_state.at[2].set(0)
+                new_scorpion = jnp.array([scorpion_x, scorpion_y, 0.0], dtype=jnp.float32)
+                new_score = score + self.consts.SCORPION_POINTS
+                return new_spell, new_scorpion, new_score, jnp.array(1, dtype=jnp.int32)  # poison_stop_flag
+
+            return jax.lax.cond(collision, on_hit, no_collision)
+
+        return jax.lax.cond(
+            jnp.logical_and(spell_is_alive, scorpion_alive),
+            check_hit,
+            no_collision
+        )
+
     ## -------- Centipede Spell Collision Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
     def check_centipede_spell_collision(        # TODO: fix
@@ -932,7 +1131,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 pos1=jnp.array([spell_state[0], spell_state[1]]),
                 size1=self.consts.PLAYER_SPELL_SIZE,
                 pos2=seg_pos,
-                size2=self.consts.MUSHROOM_SIZE,
+                size2=self.consts.SEGMENT_SIZE, # TODO: maybe change from SEGMENT_SIZE to (4, 7) or (4, 8) for better collision detection
             )
 
             def on_hit():
@@ -1063,10 +1262,23 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         idx_x = jax.random.randint(key, (), 0, 2)
         x = self.consts.SPIDER_X_POSITIONS[idx_x]
 
-        direction = jnp.where(x == 133, -1, +1)
+        direction = jnp.where(x == self.consts.SPIDER_X_POSITIONS[1], -1, +1)
 
         idx_y = jax.random.randint(key, (), 0, len(self.consts.SPIDER_Y_POSITIONS))
         y = self.consts.SPIDER_Y_POSITIONS[idx_y]
+
+        return jnp.stack([x, y, direction]).astype(jnp.float32)
+
+    ## -------- Scorpion Spawn Logic -------- ##
+    @partial(jax.jit, static_argnums=(0,))
+    def initialize_scorpion_position(self, key: chex.PRNGKey) -> chex.Array:
+        idx_x = jax.random.randint(key, (), 0, 2)
+        x = self.consts.SCORPION_X_POSITIONS[idx_x]
+
+        direction = jnp.where(x == self.consts.SCORPION_X_POSITIONS[1], -1, +1)
+
+        idx_y = jax.random.randint(key, (), 0, len(self.consts.SCORPION_Y_POSITIONS))
+        y = self.consts.SCORPION_Y_POSITIONS[idx_y]
 
         return jnp.stack([x, y, direction]).astype(jnp.float32)
 
@@ -1308,9 +1520,10 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         """Initialize game state"""
 
         key = jax.random.PRNGKey(time.time_ns() % (2 ** 32))  # Pseudo random number generator seed key, based on current system time.
-        new_key0, key_spider = jax.random.split(key, 2)
+        new_key0, key_spider, key_scorpion = jax.random.split(key, 3)
 
         initial_spider_timer = jax.random.randint(key_spider, (), self.consts.SPIDER_MIN_SPAWN_FRAMES, self.consts.SPIDER_MAX_SPAWN_FRAMES + 1)
+        initial_scorpion_timer = jax.random.randint(key_scorpion, (), self.consts.SCORPION_MIN_SPAWN_FRAMES, self.consts.SCORPION_MAX_SPAWN_FRAMES + 1)
 
         reset_state = CentipedeState(
             player_x=jnp.array(self.consts.PLAYER_START_X),
@@ -1325,6 +1538,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             spider_points=jnp.array([0, 0]),
             flea_position=jnp.zeros(3),
             flea_spawn_timer=jnp.array(0),
+            scorpion_position=jnp.zeros(3),
+            scorpion_spawn_timer=initial_scorpion_timer,
             score=jnp.array(0),
             lives=jnp.array(3),
             step_counter=jnp.array(0),
@@ -1375,8 +1590,6 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 state.lives
             )
 
-            # jax.debug.print("{x}, {y}", x=new_death_counter, y=new_score)
-
             return state._replace(
                 player_x=new_player_x,
                 player_y=new_player_y,
@@ -1386,7 +1599,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             )
 
         def normal_game_step():
-            new_death_counter = jnp.array(0)  # check_player_mob_collision(state.player_x, state.player_y, state.centipede_position, state.spider_position) # TODO: implement
+            new_death_counter = jnp.array(0)  # TODO: implement player-mob collision
 
             # --- Player Movement ---
             new_player_x, new_player_y, new_velocity_x = self.player_step(
@@ -1419,7 +1632,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             new_centipede_position, new_wave = self.process_wave(new_centipede_position, state.wave, state.score)
 
             # --- Centipede Head Spawn Timer ---
-            new_centipede_timer, new_centipede_position = self.handle_centipede_segment_spawn(      # Spawn new heads once centipede has reached bottom of screen
+            new_centipede_timer, new_centipede_position = self.handle_centipede_segment_spawn(
                 state.centipede_spawn_timer,
                 new_centipede_position
             )
@@ -1433,17 +1646,60 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 state.spider_points,
             )
 
-            # --- Spider Movement & Spawn Timer ---
-            new_rng_key, key_spawn, key_step = jax.random.split(state.rng_key, 3)       # TODO: (maybe) tidy up
+            # --- Scorpion Collision ---
+            new_player_spell_state, scorpion_after_hit, new_score, poison_stop_flag = self.check_spell_scorpion_collision(
+                new_player_spell_state,
+                state.scorpion_position,
+                new_score
+            )
 
+            # --- Create new keys for next frame ---
+            new_rng_key, spider_spawn_key, spider_step_key, scorpion_spawn_key, scorpion_step_key = jax.random.split(
+                state.rng_key, 5)
+
+            # --- Spider Movement & Spawn Timer ---
             spider_x, spider_y, spider_dir = new_spider_position
             spider_alive = spider_dir != 0
 
             new_spider_position, new_spider_timer = jax.lax.cond(
                 spider_alive,
-                lambda _: self.spider_alive_step(spider_x, spider_y, spider_dir, state.step_counter, key_step,
-                                                 state.spider_spawn_timer),
-                lambda _: self.spider_dead_step(state.spider_position, state.spider_spawn_timer, key_spawn),
+                lambda _: self.spider_alive_step(
+                    spider_x,
+                    spider_y,
+                    spider_dir,
+                    state.step_counter,
+                    spider_step_key,
+                    state.spider_spawn_timer
+                ),
+                lambda _: self.spider_dead_step(
+                    state.spider_position,
+                    state.spider_spawn_timer,
+                    spider_spawn_key),
+                operand=None
+            )
+
+            # --- Scorpion Movement & Spawn Timer ---
+            scorpion_x, scorpion_y, scorpion_dir = scorpion_after_hit
+            scorpion_alive = scorpion_dir != 0
+
+            new_scorpion_position, new_scorpion_timer, updated_mushrooms = jax.lax.cond(
+                scorpion_alive,
+                lambda _: self.scorpion_alive_step(
+                    scorpion_x,
+                    scorpion_y,
+                    scorpion_dir,
+                    scorpion_step_key,
+                    state.scorpion_spawn_timer,
+                    updated_mushrooms,
+                    poison_stop_flag
+                ),
+                lambda _: self.scorpion_dead_step(
+                    scorpion_after_hit,
+                    state.scorpion_spawn_timer,
+                    scorpion_spawn_key,
+                    new_wave,
+                    updated_mushrooms,
+                ),
                 operand=None
             )
 
@@ -1454,7 +1710,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 new_spider_points_pre
             )
 
-            # --- Flea Handling
+            # --- Flea Handling ---
             new_flea_position, new_flea_timer = self.flea_step(state.flea_position, state.flea_spawn_timer)
 
             # Additional Life Every 10.000 points
@@ -1470,10 +1726,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             # --- New wave ---
             new_centipede_timer = jnp.where(state.wave[0] == new_wave[0], new_centipede_timer, 0)
 
+            jax.debug.print("{x}", x=new_scorpion_position)
 
-            #jax.debug.print("{x}", x=updated_mushrooms)
-
-            # --- Return State ---
             return state._replace(
                 player_x=new_player_x,
                 player_y=new_player_y,
@@ -1485,6 +1739,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 spider_position=new_spider_position,
                 spider_spawn_timer=new_spider_timer,
                 spider_points=new_spider_points,
+                scorpion_position=new_scorpion_position,
+                scorpion_spawn_timer=new_scorpion_timer,
                 flea_position=new_flea_position,
                 flea_spawn_timer=new_flea_timer,
                 score=new_score,
@@ -1499,10 +1755,10 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         death_animation_state = handle_death_animation()
 
         return_state = jax.lax.cond(
-            state.lives == 0,       # If no more lives
+            state.lives == 0,
             lambda: state,
             lambda: jax.lax.cond(
-                state.death_counter == 0,       # If not dead
+                state.death_counter == 0,
                 lambda: normal_step_state,
                 lambda: death_animation_state,
             )
@@ -1860,6 +2116,19 @@ class CentipedeRenderer(JAXGameRenderer):
                         frame_spider900,
                     )
                 )
+            ),
+            raster
+        )
+
+        ### -------- Render Scorpion -------- ###
+        raster = jnp.where(
+            state.scorpion_position[2] != 0,
+            jru.render_at(
+                raster,
+                state.scorpion_position[0] + 2,
+                state.scorpion_position[1] - 2,
+                frame_scorpion,
+                flip_horizontal=state.scorpion_position[2] == -1,
             ),
             raster
         )
