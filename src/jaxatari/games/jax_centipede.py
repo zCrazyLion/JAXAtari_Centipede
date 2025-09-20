@@ -45,7 +45,7 @@ class CentipedeConstants:
     ## -------- Player spell constants --------
     PLAYER_SPELL_SPEED = 9
 
-    PLAYER_SPELL_SIZE = (0, 8) # (0, 8) because of collision logic of spell
+    PLAYER_SPELL_SIZE = (1, 8)
 
     ## -------- Starting Pattern (X -> placed, O -> not placed, P -> placed and poisoned) --------
     MUSHROOM_STARTING_PATTERN = [
@@ -1150,7 +1150,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 pos1=jnp.array([spell_state[0], spell_state[1]]),
                 size1=self.consts.PLAYER_SPELL_SIZE,
                 pos2=seg_pos,
-                size2=self.consts.SEGMENT_SIZE, # TODO: maybe change from SEGMENT_SIZE to (4, 7) or (4, 8) for better collision detection
+                size2=self.consts.SEGMENT_SIZE,
             )
 
             def on_hit():
