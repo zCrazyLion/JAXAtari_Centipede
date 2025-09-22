@@ -1260,32 +1260,51 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         def check_hit():
 
             # Check Centipede Player collision
-            def single_collision(c_xy):
-                return self.check_collision_single(
-                    pos1=jnp.array([player_x, player_y + 1]),
-                    size1=(4, 8),
-                    pos2=c_xy,
-                    size2=self.consts.SEGMENT_SIZE,
+            def single_collision(c_xy, active):
+                return jnp.where(
+                    active != 0,
+                    self.check_collision_single(
+                        pos1=jnp.array([player_x, player_y + 1]),
+                        size1=(4, 8),
+                        pos2=c_xy,
+                        size2=self.consts.SEGMENT_SIZE,
+                    ),
+                    False
                 )
-            centipede_collision = jax.vmap(single_collision)(centipede_position[:, :2])
+
+            centipede_collision = jax.vmap(single_collision)(
+                centipede_position[:, :2],
+                centipede_position[:, 3]
+            )
 
             centipede_collision_any = jnp.any(centipede_collision)
 
             # Check Spider Player collision
-            spider_collision = self.check_collision_single(
-                pos1=jnp.array([player_x, player_y]),
-                size1=self.consts.PLAYER_SIZE,
-                pos2=jnp.array([spider_x + 2, spider_y - 2]),
-                size2=self.consts.SPIDER_SIZE,
+            spider_collision = jnp.where(
+                spider_is_alive,
+                self.check_collision_single(
+                    pos1=jnp.array([player_x, player_y]),
+                    size1=self.consts.PLAYER_SIZE,
+                    pos2=jnp.array([spider_x + 2, spider_y - 2]),
+                    size2=self.consts.SPIDER_SIZE,
+                ),
+                False
             )
 
             # Check Flea Player collision
-            flea_collision = self.check_collision_single(
-                pos1=jnp.array([player_x, player_y]),
-                size1=self.consts.PLAYER_SIZE,
-                pos2=jnp.array([flea_x, flea_y]),
-                size2=self.consts.FLEA_SIZE,
+            flea_collision = jnp.where(
+                flea_is_alive,
+                self.check_collision_single(
+                    pos1=jnp.array([player_x, player_y]),
+                    size1=self.consts.PLAYER_SIZE,
+                    pos2=jnp.array([flea_x, flea_y]),
+                    size2=self.consts.FLEA_SIZE,
+                ),
+                False
             )
+
+
+
 
             collision = jnp.logical_or(centipede_collision_any, jnp.logical_or(flea_collision, spider_collision))
 
