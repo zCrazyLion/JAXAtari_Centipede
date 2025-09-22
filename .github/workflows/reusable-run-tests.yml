@@ -95,7 +95,7 @@ jobs:
           matrix-step-name: ${{ github.job }}
           matrix-key: ${{ matrix.game }}
           outputs: |-
-            test_outcome: ${{ steps.run_tests.outputs.outcome }}
+            test_outcome: ${{ steps.run_tests.outcome }}
 
       - name: Upload report artifact
         if: always()
