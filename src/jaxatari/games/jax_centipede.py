@@ -517,109 +517,142 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     ## -------- Centipede Move Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
     def centipede_step(
-        self,
-        centipede_state: chex.Array,
-        mushrooms_positions: chex.Array,
+            self,
+            centipede_state: chex.Array,
+            mushrooms_positions: chex.Array,
     ) -> chex.Array:
 
-        def should_turn_around(i, carry):
-            groups, same_group = carry
-            this_seg = centipede_state[i]
-            next_seg = centipede_state[i + 1]
+        # --- Utility: detect collision with mushroom ---
+        def check_mushroom_collision(segment, mushroom, seg_speed):
+            direction = jnp.where(seg_speed > 0, 6, -6)
+            collision = jnp.logical_and(
+                self.check_collision_single(
+                    pos1=jnp.array([segment[0], segment[1]]),
+                    size1=self.consts.SEGMENT_SIZE,
+                    pos2=mushroom[:2],
+                    size2=self.consts.MUSHROOM_SIZE,
+                ),
+                self.check_collision_single(
+                    pos1=jnp.array([segment[0] + direction, segment[1]]),
+                    size1=self.consts.SEGMENT_SIZE,
+                    pos2=mushroom[:2],
+                    size2=self.consts.MUSHROOM_SIZE,
+                ),
+            )
+            return jnp.where(mushroom[3] > 0, collision, False)  # mushroom alive?
 
-            is_head = jnp.where(this_seg[4] == 2, True, False)
+        # --- Poisoned zig-zag behaviour ---
+        def poisoned_step(segment):
+            speed = segment[2] * 0.5
+            new_x = segment[0] + speed
+            new_y = segment[1]
 
-            def head_case():
-                def same_group_head():
-                    return groups.at[i].set(1), True
+            # check walls & mushrooms
+            hit_left = jnp.logical_and(new_x <= self.consts.PLAYER_BOUNDS[0][0], segment[2] < 0)
+            hit_right = jnp.logical_and(new_x >= self.consts.PLAYER_BOUNDS[0][1], segment[2] > 0)
+            mushroom_collision = jnp.any(
+                jax.vmap(lambda m: check_mushroom_collision(segment, m, segment[2]))(mushrooms_positions))
 
-                def dif_group():
-                    return groups, False
+            move_down = jnp.logical_or(hit_left, jnp.logical_or(hit_right, mushroom_collision))
 
-                dist = jnp.linalg.norm(this_seg[:2] - next_seg[:2])
-                return jax.lax.cond(jnp.less_equal(dist, 10), same_group_head, dif_group)
+            def descend():
+                new_y = segment[1] + self.consts.MUSHROOM_Y_SPACING
+                new_vertical = jnp.where(new_y >= 176, -2, 2)
+                return new_x, new_y, segment[2], new_vertical
 
-            def same_group_tail():
-                return groups, True
+            def keep_horizontal():
+                return new_x, new_y, segment[2], segment[3].astype(jnp.int32)
 
-            return jax.lax.cond(is_head, head_case, same_group_tail)
+            # if diving down
+            def poisoned_down():
+                new_x2, new_y2, new_horiz, new_vertical = jax.lax.cond(move_down, descend, keep_horizontal)
+                return new_x2, new_y2, new_horiz, new_vertical
 
-        init_carry = jnp.zeros_like(centipede_state[:, 0], dtype=jnp.int32), False
-        turn_around, _ = jax.lax.fori_loop(0, centipede_state.shape[0] - 1, should_turn_around, init_carry)
+            # if climbing up after bottom
+            def poisoned_up():
+                new_y = segment[1] - self.consts.MUSHROOM_Y_SPACING
+                new_vertical = jnp.where(new_y <= 131, 2, -2)  # bounce at top of player zone
+                return segment[0], new_y, segment[2], new_vertical
 
-        def move_segment(segment, turn_around):
+            new_x, new_y, new_horiz, new_vertical = jax.lax.cond(
+                segment[3] == 2, poisoned_down, poisoned_up
+            )
+
+            new_status = jnp.where(segment[4] == 1.5, 2, segment[4])
+            return jnp.array([new_x, new_y, new_horiz, new_vertical, new_status]), jnp.array(0)
+
+        # --- Normal centipede step (your old move_segment without poisoned branch) ---
+        def normal_step(segment, turn_around):
             moving_left = segment[2] < 0
 
             def step_horizontal():
-                speed = segment[2] * 0.5    # should be 0.4375 but see yourself
+                speed = segment[2] * 0.5
                 new_x = segment[0] + speed
-                return jnp.array([new_x, segment[1],segment[2], segment[3], segment[4]]), jnp.array(0)
+                return jnp.array([new_x, segment[1], segment[2], segment[3], segment[4]]), jnp.array(0)
 
             def step_vertical():
                 moving_down = jnp.greater(segment[3], 0)
-                y_dif = jnp.array(jnp.where(moving_down, self.consts.MUSHROOM_Y_SPACING, -self.consts.MUSHROOM_Y_SPACING))
+                y_dif = jnp.where(moving_down, self.consts.MUSHROOM_Y_SPACING, -self.consts.MUSHROOM_Y_SPACING)
                 new_y = segment[1] + y_dif
-                new_horizontal_direction = jnp.where(
-                    jnp.logical_or(jnp.greater_equal(new_y, 176), jnp.logical_and(jnp.less(segment[3], 0), jnp.less_equal(new_y, 131))),
-                    -segment[3],
-                    segment[3]
-                )
-                new_status = jnp.where(segment[4] == 1.5, 2, segment[4])    # Change to head if moved vertically
 
-                return jnp.array([
-                    segment[0],
-                    new_y,
-                    -segment[2],
-                    new_horizontal_direction,
-                    new_status,
-                ]), jnp.array(0)
+                new_vertical = jnp.where(
+                    jnp.logical_or(new_y >= 176, jnp.logical_and(segment[3] < 0, new_y <= 131)),
+                    -segment[3],
+                    segment[3],
+                )
+                new_status = jnp.where(segment[4] == 1.5, 2, segment[4])
+
+                return jnp.array([segment[0], new_y, -segment[2], new_vertical, new_status]), jnp.array(0)
 
             def step_turn_around():
                 new_speed = -segment[2]
-                speed = new_speed * 0.5    # should be 0.4375 but see yourself
+                speed = new_speed * 0.5
                 new_x = segment[0] + speed
                 return jnp.array([new_x, segment[1], new_speed, segment[3], segment[4]]), jnp.array(1)
 
-            def check_mushroom_collision(mushroom, seg_speed):
-                direction = jnp.where(seg_speed > 0, 6, -6)
-                collision = jnp.logical_and(
-                    self.check_collision_single(
-                        pos1=jnp.array([segment[0], segment[1]]),
-                        size1=self.consts.SEGMENT_SIZE,
-                        pos2=mushroom[:2],
-                        size2=self.consts.MUSHROOM_SIZE
-                    ),
-                    self.check_collision_single(
-                        pos1=jnp.array([segment[0] + direction, segment[1]]),
-                        size1=self.consts.SEGMENT_SIZE,
-                        pos2=mushroom[:2],
-                        size2=self.consts.MUSHROOM_SIZE
-                    ),
-                )
-
-                return jnp.where(mushroom[3] > 0, collision, False)
-
-            collision = jax.vmap(lambda m: check_mushroom_collision(m, segment[2]))(mushrooms_positions)
-            collision = jnp.any(collision)
+            # detect collisions
+            collision = jnp.any(
+                jax.vmap(lambda m: check_mushroom_collision(segment, m, segment[2]))(mushrooms_positions))
 
             move_down = jnp.logical_or(
                 collision,
                 jnp.logical_or(
-                    jnp.logical_and(jnp.less_equal(segment[0], self.consts.PLAYER_BOUNDS[0][0]), moving_left),
-                    jnp.logical_and(jnp.greater_equal(segment[0], self.consts.PLAYER_BOUNDS[0][1]), jnp.invert(moving_left))
-                )
+                    jnp.logical_and(segment[0] <= self.consts.PLAYER_BOUNDS[0][0], moving_left),
+                    jnp.logical_and(segment[0] >= self.consts.PLAYER_BOUNDS[0][1], jnp.invert(moving_left)),
+                ),
             )
+
             return jax.lax.cond(
                 move_down,
-                lambda: jax.lax.cond(jnp.logical_and(jnp.greater_equal(segment[1], 176), turn_around == 1),
-                                     step_turn_around,
+                lambda: jax.lax.cond(jnp.logical_and(segment[1] >= 176, turn_around == 1), step_turn_around,
                                      step_vertical),
-                step_horizontal)
+                step_horizontal,
+            )
+
+        # --- Dispatcher: poisoned overrides normal ---
+        def move_segment(segment, turn_around):
+            # check poisoned collision now
+            poisoned_collision = jnp.any(
+                jax.vmap(lambda m: jnp.logical_and(check_mushroom_collision(segment, m, segment[2]), m[2] == 1))(
+                    mushrooms_positions)
+            )
+            is_already_poisoned = jnp.logical_or(segment[3] == 2, segment[3] == -2)
+            poisoned_active = jnp.logical_or(poisoned_collision, is_already_poisoned)
+
+            return jax.lax.cond(
+                poisoned_active,
+                lambda: poisoned_step(segment),
+                lambda: normal_step(segment, turn_around),
+            )
+
+        # --- Run update over all segments ---
+        init_carry = jnp.zeros_like(centipede_state[:, 0], dtype=jnp.int32), False
+        turn_around, _ = jax.lax.fori_loop(0, centipede_state.shape[0] - 1, lambda i, carry: carry, init_carry)
 
         new_state, segment_split = jax.vmap(move_segment)(centipede_state, turn_around)
-
         segment_split = jnp.roll(segment_split, 1)
-        def set_new_status(seg, split):     # change value of split following segment so this can be set as head later
+
+        def set_new_status(seg, split):
             return jnp.where(split == 1, seg.at[4].set(1.5), seg)
 
         return jax.vmap(set_new_status)(new_state, segment_split)
@@ -1747,8 +1780,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                     spider_position=jnp.zeros(3),
                     spider_spawn_timer=initial_spider_timer,
                     spider_points=jnp.array([0, 0]),
-                    flea_position=jnp.zeros(3),     # TODO: implement as in the normal reset (Vincent)
-                    flea_spawn_timer=jnp.array(0),  # TODO: implement as in the normal reset (Vincent)
+                    flea_position=jnp.zeros(3),
+                    flea_spawn_timer=jnp.array(0),
                     scorpion_position=jnp.zeros(4),
                     scorpion_spawn_timer=initial_scorpion_timer,
                     score=state.score,
