@@ -1262,8 +1262,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             # Check Centipede Player collision
             def single_collision(c_xy):
                 return self.check_collision_single(
-                    pos1=jnp.array([player_x, player_y]),
-                    size1=self.consts.PLAYER_SIZE,
+                    pos1=jnp.array([player_x, player_y + 1]),
+                    size1=(4, 8),
                     pos2=c_xy,
                     size2=self.consts.SEGMENT_SIZE,
                 )
@@ -1712,6 +1712,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             )
 
             state_during_animation = state._replace(
+                player_spell=jnp.zeros(3),
                 spider_position=jnp.zeros(3),
                 centipede_position=jnp.zeros_like(state.centipede_position),
                 scorpion_position=jnp.zeros(4),
