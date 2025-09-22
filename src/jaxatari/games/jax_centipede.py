@@ -807,6 +807,15 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 new_y = jnp.where(jnp.equal(jnp.floor(old_y) + 0.5, old_y), old_y + 8.5, old_y + 0.125)
                 return jnp.where(new_y < 185, flea_position.at[1].set(new_y), jnp.zeros_like(flea_position))
 
+            """
+            velocity = jnp.where(flea_position[2] == 2, 0.125, 0.25)
+                new_y = jnp.where(
+                    jnp.greater_equal(jnp.floor(old_y) + 0.5, old_y),
+                    jnp.floor(old_y + 8.5),
+                    old_y + velocity
+                )
+            """
+
             return jax.lax.cond(flea_position[2] == 0, lambda: spawn_new(), lambda: move_flea())
 
         new_spawn_timer = jnp.where(
@@ -823,7 +832,19 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         )
 
         def spawn_mushroom():
-            return mushroom_positions
+            pos = jnp.array([new_position[0], jnp.floor(new_position[1]) + 2])
+            mush_idx = self.get_mushroom_index(pos)
+            can_spawn = jnp.logical_and(
+                jnp.floor(new_position[1]) == new_position[1],
+                jnp.logical_and(jnp.floor(mush_idx) == mush_idx, mush_idx < mushroom_positions.shape[0])
+            )
+            should_spawn = jax.random.randint(rng_key, (), 0, 10) < 10 * self.consts.FLEA_SPAWN_MUSHROOM_PROBABILITY
+
+            def spawn(idx):
+                mush_idx = jnp.array(idx, dtype=jnp.int32)
+                return mushroom_positions.at[mush_idx, 3].set(3)
+
+            return jax.lax.cond(jnp.logical_and(should_spawn, can_spawn), lambda: spawn(mush_idx), lambda: mushroom_positions)
 
         return new_position, new_spawn_timer, spawn_mushroom()
 
