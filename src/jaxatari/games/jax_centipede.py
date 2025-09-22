@@ -17,7 +17,6 @@ from typing import NamedTuple, Tuple
 from jaxatari import spaces
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 from jaxatari.renderers import JAXGameRenderer
-from jaxatari.rendering.jax_rendering_utils import recolor_sprite
 
 
 #from jaxatari.rendering.jax_rendering_utils import recolor_sprite
@@ -97,11 +96,14 @@ class CentipedeConstants:
 
     ## -------- Scorpion constants --------
     SCORPION_X_POSITIONS = jnp.array([16, 133])
-    SCORPION_Y_POSITIONS = jnp.array([7, 16, 25, 34, 43, 52, 61, 70, 79, 88, 97, 106, 115, 124, 133, 142, 151, 160, 169])
+    SCORPION_Y_POSITIONS = jnp.array([7, 16, 25, 34, 43, 52, 61, 70, 79, 88, 97, 106, 115, 124, 133])
     SCORPION_MIN_SPAWN_FRAMES = 355 #TODO: prob. not accurate
     SCORPION_MAX_SPAWN_FRAMES = 2000 #TODO: prob. not accurate
     SCORPION_SIZE = (8, 6)
     SCORPION_POINTS = 1000
+
+    ## -------- Flea constants --------
+    FLEA_SIZE = (0, 0)
 
     ## -------- Death animation constants --------
     DEATH_ANIMATION_MUSHROOM_THRESHOLD = 64        # 8 Frames * 4 Sprites * 2 Repetitions
@@ -1227,6 +1229,78 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             score + new_score
         )
 
+    ## -------- Player Enemy Collision Logic -------- ##
+    @partial(jax.jit, static_argnums=(0,))
+    def check_player_enemy_collision(
+            self,
+            player_x,
+            player_y,
+            centipede_position,
+            spider_position,
+            flea_position,
+    ) -> chex.Array:
+
+        # Get centipede params
+        centipede_is_alive = jnp.any(centipede_position[:, 3] != 0)
+
+        # Get spider params
+        spider_x = spider_position[0]
+        spider_y = spider_position[1]
+        spider_is_alive = jnp.where(spider_position[2] != 0, True, False)
+
+        # Get flea params
+        flea_x = flea_position[0]
+        flea_y = flea_position[1]
+        flea_is_alive = jnp.where(flea_position[2] > 0, True, False)
+
+        # Default: no collision
+        def no_collision():
+            return jnp.array(0)
+
+        def check_hit():
+
+            # Check Centipede Player collision
+            def single_collision(c_xy):
+                return self.check_collision_single(
+                    pos1=jnp.array([player_x, player_y]),
+                    size1=self.consts.PLAYER_SIZE,
+                    pos2=c_xy,
+                    size2=self.consts.SEGMENT_SIZE,
+                )
+            centipede_collision = jax.vmap(single_collision)(centipede_position[:, :2])
+
+            centipede_collision_any = jnp.any(centipede_collision)
+
+            # Check Spider Player collision
+            spider_collision = self.check_collision_single(
+                pos1=jnp.array([player_x, player_y]),
+                size1=self.consts.PLAYER_SIZE,
+                pos2=jnp.array([spider_x + 2, spider_y - 2]),
+                size2=self.consts.SPIDER_SIZE,
+            )
+
+            # Check Flea Player collision
+            flea_collision = self.check_collision_single(
+                pos1=jnp.array([player_x, player_y]),
+                size1=self.consts.PLAYER_SIZE,
+                pos2=jnp.array([flea_x, flea_y]),
+                size2=self.consts.FLEA_SIZE,
+            )
+
+            collision = jnp.logical_or(centipede_collision_any, jnp.logical_or(flea_collision, spider_collision))
+
+            def on_hit():
+                return jnp.array(-1)
+
+            return jax.lax.cond(collision, on_hit, no_collision)
+
+        return jax.lax.cond(
+            jnp.logical_or(centipede_is_alive, jnp.logical_or(spider_is_alive, flea_is_alive)),
+            check_hit,
+            no_collision
+        )
+
+
     ## -------- Mushroom Spawn Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
     def initialize_mushroom_positions(self) -> chex.Array:
@@ -1582,6 +1656,45 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         CentipedeObservation, CentipedeState, float, bool, CentipedeInfo]:
 
         def handle_death_animation():
+
+            def soft_reset():
+                new_key, key_spider, key_scorpion = jax.random.split(state.rng_key, 3)
+                initial_spider_timer = jax.random.randint(
+                    key_spider,
+                    (),
+                    self.consts.SPIDER_MIN_SPAWN_FRAMES,
+                    self.consts.SPIDER_MAX_SPAWN_FRAMES + 1
+                )
+                initial_scorpion_timer = jax.random.randint(
+                    key_scorpion,
+                    (),
+                    self.consts.SCORPION_MIN_SPAWN_FRAMES,
+                    self.consts.SCORPION_MAX_SPAWN_FRAMES + 1
+                )
+
+                return state._replace(
+                    player_x=jnp.array(self.consts.PLAYER_START_X),
+                    player_y=jnp.array(self.consts.PLAYER_START_Y),
+                    player_velocity_x=jnp.array(0.0),
+                    player_spell=jnp.zeros(3),
+                    mushroom_positions=state.mushroom_positions,
+                    centipede_position=self.initialize_centipede_positions(jnp.array([0, 0])),
+                    centipede_spawn_timer=jnp.array(0),
+                    spider_position=jnp.zeros(3),
+                    spider_spawn_timer=initial_spider_timer,
+                    spider_points=jnp.array([0, 0]),
+                    flea_position=jnp.zeros(3),     # TODO: implement as in the normal reset (Vincent)
+                    flea_spawn_timer=jnp.array(0),  # TODO: implement as in the normal reset (Vincent)
+                    scorpion_position=jnp.zeros(4),
+                    scorpion_spawn_timer=initial_scorpion_timer,
+                    score=state.score,
+                    lives=state.lives - 1,
+                    step_counter=state.step_counter,
+                    wave=state.wave,
+                    death_counter=jnp.array(0),
+                    rng_key=new_key,
+                )
+
             def compute_mushroom_frames():
                 mush_alive = jnp.count_nonzero(state.mushroom_positions[:, 3])
                 return mush_alive * 4
@@ -1598,34 +1711,29 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 state.score
             )
 
-            new_player_x = jnp.where(
-                new_death_counter == 0,
-                jnp.array(self.consts.PLAYER_START_X),
-                state.player_x
+            state_during_animation = state._replace(
+                spider_position=jnp.zeros(3),
+                centipede_position=jnp.zeros_like(state.centipede_position),
+                scorpion_position=jnp.zeros(4),
+                flea_position=jnp.zeros(3),
+                death_counter=new_death_counter,
+                score=new_score
             )
 
-            new_player_y = jnp.where(
+            return jax.lax.cond(
                 new_death_counter == 0,
-                jnp.array(self.consts.PLAYER_START_Y),
-                state.player_y
-            )
-
-            new_lives = jnp.where(
-                new_death_counter == 0,
-                state.lives - 1,
-                state.lives
-            )
-
-            return state._replace(
-                player_x=new_player_x,
-                player_y=new_player_y,
-                score=new_score,
-                lives=new_lives,
-                death_counter=new_death_counter
+                lambda: soft_reset(),
+                lambda: state_during_animation
             )
 
         def normal_game_step():
-            new_death_counter = jnp.array(0)  # TODO: implement player-mob collision
+            new_death_counter = self.check_player_enemy_collision(
+                state.player_x,
+                state.player_y,
+                state.centipede_position,
+                state.spider_position,
+                state.flea_position
+            )
 
             # --- Player Movement ---
             new_player_x, new_player_y, new_velocity_x = self.player_step(
@@ -1754,7 +1862,6 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             # --- New wave ---
             new_centipede_timer = jnp.where(state.wave[0] == new_wave[0], new_centipede_timer, 0)
 
-            jax.debug.print("{x}", x=new_scorpion_position)
 
             return state._replace(
                 player_x=new_player_x,
