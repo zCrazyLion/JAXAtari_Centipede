@@ -104,9 +104,10 @@ class CentipedeConstants:
 
     ## -------- Flea constants --------
     FLEA_SIZE = (0, 0)
+    FLEA_SPAWN_MUSHROOM_PROBABILITY = 0.5
 
     ## -------- Death animation constants --------
-    DEATH_ANIMATION_MUSHROOM_THRESHOLD = 64        # 8 Frames * 4 Sprites * 2 Repetitions
+    DEATH_ANIMATION_MUSHROOM_THRESHOLD = 64        # 4 Frames * 4 Sprites * 4 Repetitions
 
     ## -------- Color constants --------
     ORANGE = jnp.array([181, 83, 40])#B55328    # Mushrooms lvl1
@@ -709,6 +710,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         return jnp.stack([new_x, new_y, new_direction])
 
+    @partial(jax.jit, static_argnums=(0,))
     def spider_alive_step(
             self,
             spider_x: chex.Array,
@@ -721,6 +723,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         new_spider = self.spider_step(spider_x, spider_y, spider_dir, step_counter, key_step)
         return new_spider, spawn_timer
 
+    @partial(jax.jit, static_argnums=(0,))
     def spider_dead_step(
             self,
             spider_position: chex.Array,
@@ -743,6 +746,53 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             return jnp.array([spider_position[0], spider_position[1], 0], dtype=jnp.float32), new_timer
 
         return jax.lax.cond(new_timer <= 0, respawn, wait)
+
+    ## -------- Flea Move Logic -------- ##
+    @partial(jax.jit, static_argnums=(0,))
+    def flea_step(
+            self,
+            flea_position: chex.Array,
+            flea_spawn_timer: chex.Array,
+            mushroom_positions: chex.Array,
+            wave: chex.Array,
+            rng_key: chex.PRNGKey,
+    ) -> tuple[chex.Array, chex.Array, chex.Array]:
+        activate = jnp.count_nonzero(jnp.where(mushroom_positions[:, 1] > 97, mushroom_positions[:, 3], 0)) < 5
+
+        def handle_position():
+
+            def spawn_new():
+                init_x = (
+                        self.consts.MUSHROOM_COLUMN_START_ODD +
+                        jax.random.randint(rng_key, (), 0, 15) * self.consts.MUSHROOM_X_SPACING
+                )
+                init_y = 5.0
+                return jnp.array([init_x, init_y, 2], dtype=jnp.float32)
+
+            def move_flea():
+                old_y = flea_position[1]
+                new_y = jnp.where(jnp.equal(jnp.floor(old_y) + 0.5, old_y), old_y + 8.5, old_y + 0.125)
+                return jnp.where(new_y < 185, flea_position.at[1].set(new_y), jnp.zeros_like(flea_position))
+
+            return jax.lax.cond(flea_position[2] == 0, lambda: spawn_new(), lambda: move_flea())
+
+        new_spawn_timer = jnp.where(
+            jnp.logical_and(activate, jnp.logical_and(flea_position[2] == 0, wave[0] != 0)),
+            jnp.mod(flea_spawn_timer, 30) + 1,
+            0
+        )
+        # jax.debug.print("{x}, {y}", x=new_spawn_timer, y=flea_position[1])
+
+        new_position = jax.lax.cond(
+            jnp.logical_or(flea_position[2] != 0, flea_spawn_timer == 30),
+            lambda: handle_position(),
+            lambda: flea_position
+        )
+
+        def spawn_mushroom():
+            return mushroom_positions
+
+        return new_position, new_spawn_timer, spawn_mushroom()
 
     ## -------- Scorpion Move Logic -------- ##
     def scorpion_step(
@@ -898,10 +948,6 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         return updated
 
-    ## -------- Flea Move Logic -------- ##
-    def flea_step(self, flea_position: chex.Array, flea_spawn_timer: chex.Array) -> tuple[chex.Array, chex.Array]:
-        return flea_position, flea_spawn_timer
-
     ## -------- Spell Mushroom Collision Logic -------- ##
     @partial(jax.jit, static_argnums=(0, ))
     def check_spell_mushroom_collision(
@@ -988,6 +1034,110 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             return new_mushrooms
 
         return jax.lax.cond(spider_alive, check_hit, no_collision)
+
+    ## -------- Centipede Spell Collision Logic -------- ##
+    @partial(jax.jit, static_argnums=(0,))
+    def check_spell_centipede_collision(        # TODO: fix
+            self,
+            spell_state: chex.Array,
+            centipede_position: chex.Array,
+            mushroom_positions: chex.Array,
+            score: chex.Array,
+    ) -> tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
+        spell_active = spell_state[2] != 0
+
+        def no_hit():
+            return (
+                jnp.repeat(spell_active, centipede_position.shape[0]),
+                centipede_position,
+                jnp.repeat(0, centipede_position.shape[0]),
+                jnp.repeat(0, centipede_position.shape[0]),
+                jnp.repeat(-1, centipede_position.shape[0])
+            )
+
+        def check_single_segment(is_alive, seg):
+            seg_pos = seg[:2]
+
+            collision = self.check_collision_single(
+                pos1=jnp.array([spell_state[0], spell_state[1]]),
+                size1=self.consts.PLAYER_SPELL_SIZE,
+                pos2=seg_pos,
+                size2=self.consts.SEGMENT_SIZE,
+            )
+
+            def on_hit():
+                mush_y = seg[1] + 2
+                odd_mush_row = seg[1] % 2 == 0
+                mush_x = jnp.where(
+                    odd_mush_row,
+                    jnp.where(
+                        seg[2] > 0,
+                        jnp.ceil(seg[0] / 8) * 8,
+                        jnp.floor(seg[0] / 8) * 8,
+                    ),
+                    jnp.where(
+                        seg[2] > 0,
+                        jnp.ceil(seg[0] / 8) * 8 + 4,
+                        jnp.floor(seg[0] / 8) * 8 + 4,
+                    )
+                )
+                out_of_border = jnp.where(
+                    odd_mush_row,
+                    jnp.logical_or(
+                        jnp.logical_and(seg[2] > 0, mush_x > 136),
+                        jnp.logical_and(seg[2] < 0, mush_x < 16)
+                    ),
+                    jnp.logical_or(
+                        jnp.logical_and(seg[2] > 0, mush_x > 140),
+                        jnp.logical_and(seg[2] < 0, mush_x < 20)
+                    )
+                )
+                idx = jnp.where(out_of_border, -1, self.get_mushroom_index(jnp.array([mush_x, mush_y])))
+                return (
+                    False,
+                    jnp.zeros_like(seg),
+                    jnp.where(seg[4] == 2, 100, 10),
+                    jnp.array(1),
+                    jnp.array(idx, dtype=jnp.int32)
+                )
+
+            return jax.lax.cond(collision, on_hit, lambda: (is_alive, seg, 0, jnp.array(0), jnp.array(-1)))
+
+        check = jax.vmap(lambda s: check_single_segment(spell_active, s), in_axes=0)
+
+        (
+            spell_active,
+            new_centipede_position,
+            new_score,
+            segment_hit,
+            mush_idx
+        ) = jax.lax.cond(spell_active != 0, lambda: check(centipede_position), no_hit)
+        spell_active = jnp.invert(jnp.any(jnp.invert(spell_active)))
+
+        new_score = jnp.sum(new_score)
+        new_heads = jnp.roll(segment_hit, 1)
+        mush_idx = jnp.max(mush_idx)
+        new_mushroom_positions = jnp.where(
+            jnp.logical_and(
+                jnp.logical_and(
+                    mush_idx >= 0,
+                    mush_idx < self.consts.MAX_MUSHROOMS
+                ),
+                mushroom_positions[mush_idx, 3] == 0
+            ),
+            mushroom_positions.at[mush_idx, 3].set(3),
+            mushroom_positions
+        )
+
+        def set_new_status(seg, new):     # change value of hit following segment to head
+            return jnp.where(jnp.logical_and(new == 1, seg[4] != 0), seg.at[4].set(2), seg)
+
+        return (
+            spell_state.at[2].set(jnp.where(spell_active, 1, 0)),
+            jax.vmap(set_new_status)(new_centipede_position, new_heads),
+            new_mushroom_positions,
+            score + new_score
+        )
 
     ## -------- Spider Spell Collision Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
@@ -1125,110 +1275,6 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             no_collision
         )
 
-    ## -------- Centipede Spell Collision Logic -------- ##
-    @partial(jax.jit, static_argnums=(0,))
-    def check_centipede_spell_collision(        # TODO: fix
-            self,
-            spell_state: chex.Array,
-            centipede_position: chex.Array,
-            mushroom_positions: chex.Array,
-            score: chex.Array,
-    ) -> tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
-        spell_active = spell_state[2] != 0
-
-        def no_hit():
-            return (
-                jnp.repeat(spell_active, centipede_position.shape[0]),
-                centipede_position,
-                jnp.repeat(0, centipede_position.shape[0]),
-                jnp.repeat(0, centipede_position.shape[0]),
-                jnp.repeat(-1, centipede_position.shape[0])
-            )
-
-        def check_single_segment(is_alive, seg):
-            seg_pos = seg[:2]
-
-            collision = self.check_collision_single(
-                pos1=jnp.array([spell_state[0], spell_state[1]]),
-                size1=self.consts.PLAYER_SPELL_SIZE,
-                pos2=seg_pos,
-                size2=self.consts.SEGMENT_SIZE,
-            )
-
-            def on_hit():
-                mush_y = seg[1] + 2
-                odd_mush_row = seg[1] % 2 == 0
-                mush_x = jnp.where(
-                    odd_mush_row,
-                    jnp.where(
-                        seg[2] > 0,
-                        jnp.ceil(seg[0] / 8) * 8,
-                        jnp.floor(seg[0] / 8) * 8,
-                    ),
-                    jnp.where(
-                        seg[2] > 0,
-                        jnp.ceil(seg[0] / 8) * 8 + 4,
-                        jnp.floor(seg[0] / 8) * 8 + 4,
-                    )
-                )
-                out_of_border = jnp.where(
-                    odd_mush_row,
-                    jnp.logical_or(
-                        jnp.logical_and(seg[2] > 0, mush_x > 136),
-                        jnp.logical_and(seg[2] < 0, mush_x < 16)
-                    ),
-                    jnp.logical_or(
-                        jnp.logical_and(seg[2] > 0, mush_x > 140),
-                        jnp.logical_and(seg[2] < 0, mush_x < 20)
-                    )
-                )
-                idx = jnp.where(out_of_border, -1, self.get_mushroom_index(jnp.array([mush_x, mush_y])))
-                return (
-                    False,
-                    jnp.zeros_like(seg),
-                    jnp.where(seg[4] == 2, 100, 10),
-                    jnp.array(1),
-                    jnp.array(idx, dtype=jnp.int32)
-                )
-
-            return jax.lax.cond(collision, on_hit, lambda: (is_alive, seg, 0, jnp.array(0), jnp.array(-1)))
-
-        check = jax.vmap(lambda s: check_single_segment(spell_active, s), in_axes=0)
-
-        (
-            spell_active,
-            new_centipede_position,
-            new_score,
-            segment_hit,
-            mush_idx
-        ) = jax.lax.cond(spell_active != 0, lambda: check(centipede_position), no_hit)
-        spell_active = jnp.invert(jnp.any(jnp.invert(spell_active)))
-
-        new_score = jnp.sum(new_score)
-        new_heads = jnp.roll(segment_hit, 1)
-        mush_idx = jnp.max(mush_idx)
-        new_mushroom_positions = jnp.where(
-            jnp.logical_and(
-                jnp.logical_and(
-                    mush_idx >= 0,
-                    mush_idx < self.consts.MAX_MUSHROOMS
-                ),
-                mushroom_positions[mush_idx, 3] == 0
-            ),
-            mushroom_positions.at[mush_idx, 3].set(3),
-            mushroom_positions
-        )
-
-        def set_new_status(seg, new):     # change value of hit following segment to head
-            return jnp.where(jnp.logical_and(new == 1, seg[4] != 0), seg.at[4].set(2), seg)
-
-        return (
-            spell_state.at[2].set(jnp.where(spell_active, 1, 0)),
-            jax.vmap(set_new_status)(new_centipede_position, new_heads),
-            new_mushroom_positions,
-            score + new_score
-        )
-
     ## -------- Player Enemy Collision Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
     def check_player_enemy_collision(
@@ -1299,7 +1345,6 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             check_hit,
             no_collision
         )
-
 
     ## -------- Mushroom Spawn Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
@@ -1752,7 +1797,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
             # --- Centipede Collision ---
             new_player_spell_state, new_centipede_position, updated_mushrooms, new_score = \
-                self.check_centipede_spell_collision(
+                self.check_spell_centipede_collision(
                     new_player_spell_state, state.centipede_position, updated_mushrooms, new_score
                 )
 
@@ -1767,7 +1812,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             new_centipede_position, new_wave = self.process_wave(new_centipede_position, state.wave, state.score)
 
             # --- Centipede Head Spawn Timer ---
-            new_centipede_timer, new_centipede_position = self.handle_centipede_segment_spawn(
+            new_centipede_timer, new_centipede_position = self.handle_centipede_segment_spawn(      # Spawn new heads once centipede has reached bottom of screen
                 state.centipede_spawn_timer,
                 new_centipede_position
             )
@@ -1789,8 +1834,17 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             )
 
             # --- Create new keys for next frame ---
-            new_rng_key, spider_spawn_key, spider_step_key, scorpion_spawn_key, scorpion_step_key = jax.random.split(
-                state.rng_key, 5)
+            (
+                new_rng_key,
+                spider_spawn_key,
+                spider_step_key,
+                flea_rng_key,
+                scorpion_spawn_key,
+                scorpion_step_key
+            ) = jax.random.split(
+                state.rng_key,
+                6
+            )
 
             # --- Spider Movement & Spawn Timer ---
             spider_x, spider_y, spider_dir = new_spider_position
@@ -1811,6 +1865,15 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                     state.spider_spawn_timer,
                     spider_spawn_key),
                 operand=None
+            )
+
+            # --- Flea Handling
+            new_flea_position, new_flea_timer, updated_mushrooms = self.flea_step(
+                state.flea_position,
+                state.flea_spawn_timer,
+                updated_mushrooms,
+                state.wave,
+                flea_rng_key,
             )
 
             # --- Scorpion Movement & Spawn Timer ---
@@ -1847,9 +1910,6 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 new_spider_points_pre
             )
 
-            # --- Flea Handling ---
-            new_flea_position, new_flea_timer = self.flea_step(state.flea_position, state.flea_spawn_timer)
-
             # Additional Life Every 10.000 points
             new_lives = jnp.where(
                 jnp.logical_or(
@@ -1863,7 +1923,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             # --- New wave ---
             new_centipede_timer = jnp.where(state.wave[0] == new_wave[0], new_centipede_timer, 0)
 
-
+            # --- Return State ---
             return state._replace(
                 player_x=new_player_x,
                 player_y=new_player_y,
@@ -1891,10 +1951,10 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         death_animation_state = handle_death_animation()
 
         return_state = jax.lax.cond(
-            state.lives == 0,
+            state.lives == 0,       # If no more lives
             lambda: state,
             lambda: jax.lax.cond(
-                state.death_counter == 0,
+                state.death_counter == 0,       # If not dead
                 lambda: normal_step_state,
                 lambda: death_animation_state,
             )
@@ -2252,6 +2312,18 @@ class CentipedeRenderer(JAXGameRenderer):
                         frame_spider900,
                     )
                 )
+            ),
+            raster
+        )
+
+        ### -------- Render Flea -------- ###
+        raster = jnp.where(
+            state.flea_position[2] != 0,
+            jru.render_at(
+                raster,
+                state.flea_position[0],
+                state.flea_position[1],
+                frame_flea,
             ),
             raster
         )
