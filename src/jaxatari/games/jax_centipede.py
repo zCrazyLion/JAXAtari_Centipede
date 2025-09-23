@@ -101,6 +101,7 @@ class CentipedeConstants:
     ## -------- Flea constants --------
     FLEA_SIZE = (4, 6)
     FLEA_SPAWN_MUSHROOM_PROBABILITY = 0.5
+    FLEA_POINTS = 200
 
     ## -------- Death animation constants --------
     DEATH_ANIMATION_MUSHROOM_THRESHOLD = 64        # 4 Frames * 4 Sprites * 4 Repetitions
@@ -1397,6 +1398,53 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             no_collision,
         )
 
+    ## -------- Flea Spell Collision Logic -------- ##
+    @partial(jax.jit, static_argnums=(0,))
+    def check_spell_flea_collision(
+            self,
+            spell_state: chex.Array,
+            flea_position: chex.Array,
+            flea_spawn_counter: chex.Array,
+            score: chex.Array,
+    ) -> tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
+
+        # Spell info
+        spell_pos_x = spell_state[0]
+        spell_pos_y = spell_state[1]
+        spell_is_alive = spell_state[2] != 0
+
+        flea_x, flea_y, flea_lives = flea_position
+        flea_alive = flea_lives != 0
+
+        # Default: no collision
+        def no_collision():
+            return spell_state, flea_position, flea_spawn_counter, score
+
+        def check_hit():
+            # Collision check
+            collision = self.check_collision_single(
+                pos1=jnp.array([spell_pos_x, spell_pos_y]),
+                size1=self.consts.PLAYER_SPELL_SIZE,
+                pos2=jnp.array([flea_x, flea_y]),
+                size2=self.consts.FLEA_SIZE,
+            )
+
+            def on_hit():
+                new_spell = spell_state.at[2].set(0)
+                new_flea_lives = flea_lives - 1
+                new_flea = jnp.where(new_flea_lives == 0, jnp.array([0.0, 0.0, 0.0]), flea_position.at[2].set(new_flea_lives))
+                new_score = jnp.where(new_flea_lives == 0, score + self.consts.FLEA_POINTS, score)
+                return new_spell, new_flea, jnp.array(29), new_score
+
+            return jax.lax.cond(collision, on_hit, no_collision)
+
+        return jax.lax.cond(
+            jnp.logical_and(spell_is_alive, flea_alive),
+            check_hit,
+            no_collision
+        )
+
+
     ## -------- Scorpion Spell Collision Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
     def check_spell_scorpion_collision(
@@ -2024,6 +2072,14 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 state.spider_points,
             )
 
+            # --- Flea Collision ---
+            new_player_spell_state, new_flea_position, new_flea_timer, new_score = self.check_spell_flea_collision(
+                new_player_spell_state,
+                state.flea_position,
+                state.flea_spawn_timer,
+                state.score
+            )
+
             # --- Scorpion Collision ---
             new_player_spell_state, scorpion_after_hit, new_score, poison_stop_flag = self.check_spell_scorpion_collision(
                 new_player_spell_state,
@@ -2067,8 +2123,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
             # --- Flea Handling
             new_flea_position, new_flea_timer, updated_mushrooms = self.flea_step(
-                state.flea_position,
-                state.flea_spawn_timer,
+                new_flea_position,
+                new_flea_timer,
                 updated_mushrooms,
                 state.wave,
                 flea_rng_key,
@@ -2137,7 +2193,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 scorpion_spawn_timer=new_scorpion_timer,
                 flea_position=new_flea_position,
                 flea_spawn_timer=new_flea_timer,
-                score=jnp.where(new_score <= 999999, new_score, state.score),
+                score=new_score,
                 lives=new_lives,
                 step_counter=state.step_counter + 1,
                 wave=new_wave,
