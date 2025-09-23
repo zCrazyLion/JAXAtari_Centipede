@@ -930,21 +930,17 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                         jax.random.randint(rng_key, (), 0, 15) * self.consts.MUSHROOM_X_SPACING
                 )
                 init_y = 5.0
-                return jnp.array([init_x, init_y, 2], dtype=jnp.float32)
+                return jnp.array([init_x, init_y, 2.0])
 
             def move_flea():
                 old_y = flea_position[1]
-                new_y = jnp.where(jnp.equal(jnp.floor(old_y) + 0.5, old_y), old_y + 8.5, old_y + 0.125)
-                return jnp.where(new_y < 185, flea_position.at[1].set(new_y), jnp.zeros_like(flea_position))
-
-            """
-            velocity = jnp.where(flea_position[2] == 2, 0.125, 0.25)
-                new_y = jnp.where(
-                    jnp.greater_equal(jnp.floor(old_y) + 0.5, old_y),
-                    jnp.floor(old_y + 8.5),
-                    old_y + velocity
+                v = jnp.where(flea_position[2] == 2, 0.125, 0.25)
+                big_step = jnp.logical_or(
+                    jnp.equal(jnp.floor(old_y) + 0.5, old_y),
+                    jnp.equal(jnp.floor(old_y) + 0.625, old_y)
                 )
-            """
+                new_y = jnp.where(big_step, old_y + 8.5, old_y + v)
+                return jnp.where(new_y < 185, flea_position.at[1].set(new_y), jnp.zeros_like(flea_position))
 
             return jax.lax.cond(flea_position[2] == 0, lambda: spawn_new(), lambda: move_flea())
 
