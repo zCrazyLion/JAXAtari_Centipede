@@ -2077,7 +2077,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 new_player_spell_state,
                 state.flea_position,
                 state.flea_spawn_timer,
-                state.score
+                new_score
             )
 
             # --- Scorpion Collision ---
@@ -2193,7 +2193,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 scorpion_spawn_timer=new_scorpion_timer,
                 flea_position=new_flea_position,
                 flea_spawn_timer=new_flea_timer,
-                score=new_score,
+                score=jnp.where(new_score <= 999999, new_score, state.score),
                 lives=new_lives,
                 step_counter=state.step_counter + 1,
                 wave=new_wave,
