@@ -29,17 +29,13 @@ class CentipedeConstants:
     SCALING_FACTOR = 6
 
     ## -------- Player constants --------
-    PLAYER_START_X = 76.0
+    PLAYER_START_X = 76
     PLAYER_START_Y = 172
     PLAYER_BOUNDS = (16, 140), (141, 172)
 
     PLAYER_SIZE = (4, 9)
 
-    # MAX_VELOCITY_X = 1 # Default: 6 | Maximum speed in x direction (pixels per frame)
-    # ACCELERATION_X = 1 # Default: 0.2 | How fast player accelerates
-    # FRICTION_X = 1 # Default: 1 | 1 = 100% -> player stops immediately, 0 = 0% -> player does not stop, 0.5 = 50 % -> player loses 50% of its velocity every frame
     PLAYER_Y_VALUES = jnp.array([141, 145, 147, 150, 154, 156, 159, 163, 165, 168, 172])      # Double to not need extra state value
-    # MAX_VELOCITY_Y = 0.25
 
     ## -------- Player spell constants --------
     PLAYER_SPELL_SPEED = 9
@@ -103,7 +99,7 @@ class CentipedeConstants:
     SCORPION_POINTS = 1000
 
     ## -------- Flea constants --------
-    FLEA_SIZE = (0, 0)
+    FLEA_SIZE = (4, 6)
     FLEA_SPAWN_MUSHROOM_PROBABILITY = 0.5
 
     ## -------- Death animation constants --------
@@ -180,13 +176,14 @@ class EntityPosition(NamedTuple):
 
 class CentipedeObservation(NamedTuple):
     player: PlayerEntity
-    # mushrooms: jnp.ndarray
-    # centipede: jnp.ndarray
-    # spider: jnp.ndarray
-    # flea: jnp.ndarray
-    # scorpion: jnp.ndarray
-    # score: jnp.ndarray
-    # lives: jnp.ndarray
+    mushrooms: jnp.ndarray      # Shape (MAX_MUSHROOMS, 5) - MAX_MUSHROOMS mushrooms, each with x,y,w,h,active
+    centipede: jnp.ndarray      # Shape (MAX_SEGMENTS, 5) - MAX_SEGMENTS Centipede segments, each with x,y,w,h,active
+    spider: EntityPosition      # Shape (5,) - one spider with x,y,w,h,active
+    flea: EntityPosition        # Shape (5,) - one flea with x,y,w,h,active
+    scorpion: EntityPosition    # Shape (5,) - one scorpion with x,y,w,h,active
+    player_spell: EntityPosition    # Shape (5,) - one spell with x,y,w,h,active
+    score: jnp.ndarray
+    lives: jnp.ndarray
     # TODO: fill
     # if changed: obs_to_flat_array, _get_observation, (step, reset)
 
@@ -351,7 +348,7 @@ def load_sprites():
 # -------- Game Logic --------
 
 class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, CentipedeInfo, CentipedeConstants]):
-    def __init__(self, consts: CentipedeConstants = None, reward_funcs: list[callable] =None):
+    def __init__(self, consts: CentipedeConstants = None, reward_funcs: list[callable] = None):
         consts = consts or CentipedeConstants()
         super().__init__(consts)
         if reward_funcs is not None:
@@ -377,8 +374,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             Action.DOWNRIGHTFIRE,
             Action.DOWNLEFTFIRE
         ]
-        # self.frame_stack_size = 4 # ???
-        # self.obs_size = 1024 # ???
+        self.frame_stack_size = 4
+        self.obs_size = 6 + 304 * 5 + 9 * 5 + 5 + 5 + 5 + 5 + 1 + 1
         self.renderer = CentipedeRenderer(self.consts)
 
     @partial(jax.jit, static_argnums=(0,))
@@ -387,16 +384,36 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return self.renderer.render(state)
 
     def flatten_entity_position(self, entity: EntityPosition) -> jnp.ndarray:
-        return jnp.concatenate([jnp.array([entity.x]), jnp.array([entity.y]), jnp.array([entity.width]), jnp.array([entity.height]), jnp.array([entity.active])])
+        return jnp.concatenate([
+            jnp.array([entity.x], dtype=jnp.int32),
+            jnp.array([entity.y], dtype=jnp.int32),
+            jnp.array([entity.width], dtype=jnp.int32),
+            jnp.array([entity.height], dtype=jnp.int32),
+            jnp.array([entity.active], dtype=jnp.int32)
+        ])
 
     def flatten_player_entity(self, entity: PlayerEntity) -> jnp.ndarray:
-        return jnp.concatenate([jnp.array([entity.x]), jnp.array([entity.y]), jnp.array([entity.o]), jnp.array([entity.width]), jnp.array([entity.height]), jnp.array([entity.active])])
+        return jnp.concatenate([
+            jnp.array([entity.x], dtype=jnp.int32),
+            jnp.array([entity.y], dtype=jnp.int32),
+            jnp.array([entity.o], dtype=jnp.int32),
+            jnp.array([entity.width], dtype=jnp.int32),
+            jnp.array([entity.height], dtype=jnp.int32),
+            jnp.array([entity.active], dtype=jnp.int32)
+        ])
 
     @partial(jax.jit, static_argnums=(0,))
     def obs_to_flat_array(self, obs: CentipedeObservation) -> jnp.ndarray:
         return jnp.concatenate([
-            self.flatten_player_entity(obs.player)
-            # TODO: fill
+            self.flatten_player_entity(obs.player),
+            obs.mushrooms.flatten().astype(jnp.int32),
+            obs.centipede.flatten().astype(jnp.int32),
+            self.flatten_entity_position(obs.spider),
+            self.flatten_entity_position(obs.flea),
+            self.flatten_entity_position(obs.scorpion),
+            self.flatten_entity_position(obs.player_spell),
+            obs.score.flatten().astype(jnp.int32),
+            obs.lives.flatten().astype(jnp.int32),
         ])
 
     def action_space(self) -> spaces.Discrete:
@@ -404,64 +421,177 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
     def observation_space(self) -> spaces.Dict:
         """Returns the observation space for Centipede.
-                The observation contains:
+        The observation contains:
+        - player: PlayerEntity (x, y, o, width, height, active)
+        - mushrooms: array of shape (304, 5) with x,y,width,height,active for each mushroom
+        - centipede: array of shape (9, 5) with x,y,width,height,active for each segment
+        - spider: EntityPosition (x, y, width, height, active)
+        - flea: EntityPosition (x, y, width, height, active)
+        - scorpion: EntityPosition (x, y, width, height, active)
+        - player_spell: EntityPosition (x, y, width, height, active)
+        - score: int (0-999999)
+        - lives: int (0-3)
         """
         return spaces.Dict({
             "player": spaces.Dict({
                 "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
                 "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-                "o": spaces.Box(low=0, high=1, shape=(), dtype=jnp.int32),
+                "o": spaces.Box(low=-1, high=1, shape=(), dtype=jnp.int32),
                 "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
                 "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
                 "active": spaces.Box(low=0, high=1, shape=(), dtype=jnp.int32),
             }),
-            # TODO: fill
+            "mushrooms": spaces.Box(low=0, high=160, shape=(304, 5), dtype=jnp.int32),
+            "centipede": spaces.Box(low=0, high=160, shape=(9, 5), dtype=jnp.int32),
+            "spider": spaces.Dict({
+                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "active": spaces.Box(low=0, high=1, shape=(), dtype=jnp.int32),
+            }),
+            "flea": spaces.Dict({
+                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "active": spaces.Box(low=0, high=1, shape=(), dtype=jnp.int32),
+            }),
+            "scorpion": spaces.Dict({
+                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "active": spaces.Box(low=0, high=1, shape=(), dtype=jnp.int32),
+            }),
+            "player_spell": spaces.Dict({
+                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
+                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
+                "active": spaces.Box(low=0, high=1, shape=(), dtype=jnp.int32),
+            }),
+            "score": spaces.Box(low=0, high=999999, shape=(), dtype=jnp.int32),
+            "lives": spaces.Box(low=0, high=6, shape=(), dtype=jnp.int32),
         })
 
     def image_space(self) -> spaces.Box:
         """Returns the image space for Centipede.
-        The image is an RGB image with shape (160, 210, 3).
+        The image is a RGB image with shape (210, 160, 3).
         """
         return spaces.Box(
             low=0,
             high=255,
-            shape=(160, 210, 3),
+            shape=(210, 160, 3),
             dtype=jnp.uint8
         )
 
-    @partial(jax.jit, static_argnums=(0, ))
-    def _get_observation(self, state: CentipedeState) -> CentipedeObservation:      # TODO: fill
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_observation(self, state: CentipedeState) -> CentipedeObservation:
+        # Create player (already scalar, no need for vectorization)
         player = PlayerEntity(
             x=state.player_x,
             y=state.player_y,
-            o=state.player_velocity_x,
+            o=jnp.array(0),  # No orientation in Centipede, set to 0
             width=jnp.array(self.consts.PLAYER_SIZE[0]),
             height=jnp.array(self.consts.PLAYER_SIZE[1]),
-            active=jnp.array(1),
+            active=jnp.array(1),  # Player is always active
         )
 
-        def convert_to_entity(pos, size):
+        # Define a function to convert mushroom positions to entity format
+        def convert_to_mushroom_entity(pos):
+            x, y, is_poisoned, lives = pos
             return jnp.array([
-                pos[0],  # x position
-                pos[1],  # y position
-                size[0],  # width
-                size[1],  # height
-                pos[2] != 0,  # active flag
+                x,  # x position
+                y,  # y position
+                self.consts.MUSHROOM_SIZE[0],  # width
+                self.consts.MUSHROOM_SIZE[1],  # height
+                lives > 0,  # active flag
             ])
 
-        return CentipedeObservation(
-            player=player,
+        # Mushrooms
+        mushrooms = jax.vmap(convert_to_mushroom_entity)(
+            state.mushroom_positions
         )
 
-    @partial(jax.jit, static_argnums=(0, ))
-    def _get_info(self, state: CentipedeState, all_rewards: jnp.ndarray) -> CentipedeInfo:      # TODO: fill
+        # Define a function to convert centipede segments to entity format
+        def convert_to_centipede_entity(pos):
+            x, y, speed_h, movement_v, status = pos
+            return jnp.array([
+                x.astype(jnp.int32),  # x position
+                y.astype(jnp.int32),  # y position
+                self.consts.SEGMENT_SIZE[0],  # width
+                self.consts.SEGMENT_SIZE[1],  # height
+                status != 0,  # active flag assuming status indicates activity
+            ])
+
+        # Centipede segments
+        centipede = jax.vmap(convert_to_centipede_entity)(
+            state.centipede_position
+        )
+
+        # Spider (scalar)
+        spider_pos = state.spider_position
+        spider = EntityPosition(
+            x=spider_pos[0],
+            y=spider_pos[1],
+            width=jnp.array(self.consts.SPIDER_SIZE[0]),
+            height=jnp.array(self.consts.SPIDER_SIZE[1]),
+            active=spider_pos[0] != 0,
+        )
+
+        # Flea (scalar)
+        flea_pos = state.flea_position
+        flea = EntityPosition(
+            x=flea_pos[0].astype(jnp.int32),
+            y=flea_pos[1].astype(jnp.int32),
+            width=jnp.array(self.consts.FLEA_SIZE[0]),
+            height=jnp.array(self.consts.FLEA_SIZE[1]),
+            active=flea_pos[2] > 0,
+        )
+
+        # Scorpion (scalar)
+        scorpion_pos = state.scorpion_position
+        scorpion = EntityPosition(
+            x=scorpion_pos[0],
+            y=scorpion_pos[1],
+            width=jnp.array(self.consts.SCORPION_SIZE[0]),
+            height=jnp.array(self.consts.SCORPION_SIZE[1]),
+            active=scorpion_pos[0] != 0,
+        )
+
+        # Player spell (scalar)
+        spell_pos = state.player_spell
+        player_spell = EntityPosition(
+            x=spell_pos[0],
+            y=spell_pos[1],
+            width=jnp.array(self.consts.PLAYER_SPELL_SIZE[0]),
+            height=jnp.array(self.consts.PLAYER_SPELL_SIZE[1]),
+            active=spell_pos[2] != 0,
+        )
+
+        # Return observation
+        return CentipedeObservation(
+            player=player,
+            mushrooms=mushrooms,
+            centipede=centipede,
+            spider=spider,
+            flea=flea,
+            scorpion=scorpion,
+            player_spell=player_spell,
+            score=state.score,
+            lives=state.lives,
+        )
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_info(self, state: CentipedeState, all_rewards: jnp.ndarray = None) -> CentipedeInfo:
         return CentipedeInfo(
             step_counter=state.step_counter,
             all_rewards=all_rewards,
         )
 
-    @jax.jit
-    def _get_env_reward(self, previous_state: CentipedeState, state: CentipedeState) -> jnp.ndarray:
+    @partial(jax.jit, static_argnums=(0,))
+    def _get_reward(self, previous_state: CentipedeState, state: CentipedeState):
         return state.score - previous_state.score
 
     @partial(jax.jit, static_argnums=(0,))
@@ -471,7 +601,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         rewards = jnp.array([reward_func(previous_state, state) for reward_func in self.reward_funcs])
         return rewards
 
-    @jax.jit
+    @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: CentipedeState) -> bool:
         return state.lives < 0
 
@@ -732,12 +862,12 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                                      jnp.where(rand, -1, +1)))
 
             new_idx = idx + dy
-            return self.consts.SPIDER_Y_POSITIONS[new_idx].astype(jnp.float32)
+            return self.consts.SPIDER_Y_POSITIONS[new_idx]
 
         new_y = jax.lax.cond(
             move_y,
             update_y,
-            lambda y: y.astype(jnp.float32),
+            lambda y: y,
             spider_y
         )
 
@@ -766,7 +896,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         new_timer = spawn_timer - 1
 
         def respawn():
-            new_spider = self.initialize_spider_position(key_spawn).astype(jnp.float32)
+            new_spider = self.initialize_spider_position(key_spawn)
             next_timer = jax.random.randint(
                 key_spawn,
                 (),
@@ -776,7 +906,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             return new_spider, next_timer
 
         def wait():
-            return jnp.array([spider_position[0], spider_position[1], 0], dtype=jnp.float32), new_timer
+            return jnp.array([spider_position[0], spider_position[1], 0]), new_timer
 
         return jax.lax.cond(new_timer <= 0, respawn, wait)
 
@@ -865,7 +995,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         vanished = (stop_left | stop_right).astype(jnp.int32)
         new_direction = jnp.where(vanished == 1, 0, scorpion_direction)
 
-        new_scorpion = jnp.stack([new_x, scorpion_y, new_direction, scorpion_speed]).astype(jnp.float32)
+        new_scorpion = jnp.stack([new_x, scorpion_y, new_direction, scorpion_speed])
 
         return new_scorpion, vanished
 
@@ -900,7 +1030,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 lambda: mushrooms
             )
 
-            dead_scorpion = jnp.array([new_scorpion[0], new_scorpion[1], 0.0, new_scorpion[3]], dtype=jnp.float32)
+            dead_scorpion = jnp.array([new_scorpion[0], new_scorpion[1], 0, new_scorpion[3]])
 
             return dead_scorpion, next_timer, updated_mush
 
@@ -932,7 +1062,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         def respawn():
             def do_spawn():
                 key_pos, key_rand = jax.random.split(key_spawn)
-                new_scorpion = self.initialize_scorpion_position(key_pos, score).astype(jnp.float32)
+                new_scorpion = self.initialize_scorpion_position(key_pos, score)
                 next_timer = jax.random.randint(
                     key_rand,
                     (),
@@ -952,10 +1082,9 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                     [
                         scorpion_position[0],
                         scorpion_position[1],
-                        0.0,
+                        0,
                         scorpion_position[3]
-                    ],
-                    dtype=jnp.float32
+                    ]
                 ), next_timer, mushroom_positions
 
             return jax.lax.cond(
@@ -969,10 +1098,9 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 [
                     scorpion_position[0],
                     scorpion_position[1],
-                    0.0,
+                    0,
                     scorpion_position[3]
-                ],
-                dtype=jnp.float32
+                ]
             ), new_timer, mushroom_positions
 
         #jax.debug.print("Scorpion spawn_timer={t} dir={d}", t=spawn_timer, d=scorpion_position[2])
@@ -1262,7 +1390,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 )
 
                 new_spell = spell_state.at[2].set(0)
-                new_spider = jnp.array([spider_x, spider_y, 0], dtype=jnp.float32)
+                new_spider = jnp.array([spider_x, spider_y, 0])
                 new_score = score + points
                 return new_spell, new_spider, new_score, spider_timer_sprite
 
@@ -1317,7 +1445,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
             def on_hit():
                 new_spell = spell_state.at[2].set(0)
-                new_scorpion = jnp.array([scorpion_x, scorpion_y, 0.0, scorpion_speed], dtype=jnp.float32)
+                new_scorpion = jnp.array([scorpion_x, scorpion_y, 0, scorpion_speed])
                 new_score = score + self.consts.SCORPION_POINTS
                 return new_spell, new_scorpion, new_score, jnp.array(1, dtype=jnp.int32)  # poison_stop_flag
 
@@ -1478,7 +1606,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         idx_y = jax.random.randint(key, (), 0, len(self.consts.SPIDER_Y_POSITIONS))
         y = self.consts.SPIDER_Y_POSITIONS[idx_y]
 
-        return jnp.stack([x, y, direction]).astype(jnp.float32)
+        return jnp.stack([x, y, direction])
 
     ## -------- Scorpion Spawn Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
@@ -1494,11 +1622,11 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         key_speed, _ = jax.random.split(key, 2)
         speed = jax.lax.cond(
             score >= 20000,
-            lambda: jnp.where(jax.random.uniform(key_speed) < 0.75, 2.0, 1.0),
-            lambda: 1.0
+            lambda: jnp.where(jax.random.uniform(key_speed) < 0.75, 2, 1),
+            lambda: 1
         )
 
-        return jnp.stack([x, y, direction, speed]).astype(jnp.float32)
+        return jnp.stack([x, y, direction, speed])
 
     ## -------- Centipede Spawn Logic -------- ##
     @partial(jax.jit, static_argnums=(0, ))
@@ -1677,7 +1805,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             jnp.logical_and(no_horiz_op, player_x % 4 != 0),
             player_x + jnp.sign(new_velocity_x),
             jnp.clip(player_x + raw_vel_x, self.consts.PLAYER_BOUNDS[0][0], self.consts.PLAYER_BOUNDS[0][1])
-        )
+        ).astype(jnp.int32)
 
         # Calculate new y position
         y_idx = jnp.argmax(self.consts.PLAYER_Y_VALUES == player_y)
@@ -1723,12 +1851,12 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         new_x = jnp.where(
             spawn,
             player_x + 1,
-            jnp.where(new_is_alive, player_spell[0], 0.0)
+            jnp.where(new_is_alive, player_spell[0], 0)
         )
         new_y = jnp.where(
             spawn,
             jnp.floor(player_y) - 9,
-            jnp.where(new_is_alive, player_spell[1] - self.consts.PLAYER_SPELL_SPEED, 0.0)
+            jnp.where(new_is_alive, player_spell[1] - self.consts.PLAYER_SPELL_SPEED, 0)
         )
 
         return jnp.array([new_x, new_y, new_is_alive])
@@ -1747,16 +1875,16 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             player_x=jnp.array(self.consts.PLAYER_START_X),
             player_y=jnp.array(self.consts.PLAYER_START_Y),
             player_velocity_x=jnp.array(0.0),
-            player_spell=jnp.zeros(3),
+            player_spell=jnp.zeros(3, dtype=jnp.int32),
             mushroom_positions=self.initialize_mushroom_positions(),
             centipede_position=self.initialize_centipede_positions(jnp.array([0, 0])),
             centipede_spawn_timer=jnp.array(0),
-            spider_position=jnp.zeros(3),
+            spider_position=jnp.zeros(3, dtype=jnp.int32),
             spider_spawn_timer=initial_spider_timer,
             spider_points=jnp.array([0, 0]),
             flea_position=jnp.zeros(3),
             flea_spawn_timer=jnp.array(0),
-            scorpion_position=jnp.zeros(4),
+            scorpion_position=jnp.zeros(4, dtype=jnp.int32),
             scorpion_spawn_timer=initial_scorpion_timer,
             score=jnp.array(0),
             lives=jnp.array(3),
@@ -1772,6 +1900,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: CentipedeState, action: chex.Array) -> tuple[
         CentipedeObservation, CentipedeState, float, bool, CentipedeInfo]:
+
+        previous_state = state  # for reward/info
 
         def handle_death_animation():
 
@@ -1794,16 +1924,16 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                     player_x=jnp.array(self.consts.PLAYER_START_X),
                     player_y=jnp.array(self.consts.PLAYER_START_Y),
                     player_velocity_x=jnp.array(0.0),
-                    player_spell=jnp.zeros(3),
+                    player_spell=jnp.zeros(3, dtype=jnp.int32),
                     mushroom_positions=state.mushroom_positions,
                     centipede_position=self.initialize_centipede_positions(jnp.array([0, 0])),
                     centipede_spawn_timer=jnp.array(0),
-                    spider_position=jnp.zeros(3),
+                    spider_position=jnp.zeros(3, dtype=jnp.int32),
                     spider_spawn_timer=initial_spider_timer,
                     spider_points=jnp.array([0, 0]),
                     flea_position=jnp.zeros(3),
                     flea_spawn_timer=jnp.array(0),
-                    scorpion_position=jnp.zeros(4),
+                    scorpion_position=jnp.zeros(4, dtype=jnp.int32),
                     scorpion_spawn_timer=initial_scorpion_timer,
                     score=state.score,
                     lives=state.lives - 1,
@@ -1830,10 +1960,10 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             )
 
             state_during_animation = state._replace(
-                player_spell=jnp.zeros(3),
-                spider_position=jnp.zeros(3),
+                player_spell=jnp.zeros(3, dtype=jnp.int32),
+                spider_position=jnp.zeros(3, dtype=jnp.int32),
                 centipede_position=jnp.zeros_like(state.centipede_position),
-                scorpion_position=jnp.zeros(4),
+                scorpion_position=jnp.zeros(4, dtype=jnp.int32),
                 flea_position=jnp.zeros(3),
                 death_counter=new_death_counter,
                 score=new_score
@@ -2034,10 +2164,12 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         )
 
         obs = self._get_observation(return_state)
+        done = self._get_done(return_state)
+        env_reward = self._get_reward(previous_state, return_state)
         all_rewards = self._get_all_rewards(state, return_state)
         info = self._get_info(return_state, all_rewards)
 
-        return obs, return_state, 0.0, False, info
+        return obs, return_state, env_reward, done, info
 
 
 class CentipedeRenderer(JAXGameRenderer):
