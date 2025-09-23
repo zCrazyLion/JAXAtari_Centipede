@@ -674,7 +674,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         # --- Poisoned zig-zag behaviour ---
         def poisoned_step(segment):
             speed = segment[2] * 0.5
-            new_x = segment[0] + speed
+            new_x = segment[0]
             new_y = segment[1]
 
             # check walls & mushrooms
@@ -683,30 +683,29 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             mushroom_collision = jnp.any(
                 jax.vmap(lambda m: check_mushroom_collision(segment, m, segment[2]))(mushrooms_positions))
 
-            move_down = jnp.logical_or(hit_left, jnp.logical_or(hit_right, mushroom_collision))
+            move_down = jnp.logical_or(
+                jnp.logical_or(hit_left, hit_right),
+                jnp.logical_or(mushroom_collision, (segment[0] + 1) % 4 == 0)
+            )
 
             def descend():
-                new_y = segment[1] + self.consts.MUSHROOM_Y_SPACING
-                new_vertical = jnp.where(new_y >= 176, -2, 2)
-                return new_x, new_y, segment[2], new_vertical
+                new_y = jnp.where(
+                    segment[1] < 176,
+                    segment[1] + self.consts.MUSHROOM_Y_SPACING,
+                    segment[1] - self.consts.MUSHROOM_Y_SPACING
+                )
+                new_vertical = jnp.where(segment[1] < 176, 2, -1)
+                return new_x - speed, new_y, -segment[2], new_vertical
 
             def keep_horizontal():
-                return new_x, new_y, segment[2], segment[3].astype(jnp.int32)
+                return new_x + speed, new_y, segment[2], segment[3].astype(jnp.int32)
 
             # if diving down
             def poisoned_down():
                 new_x2, new_y2, new_horiz, new_vertical = jax.lax.cond(move_down, descend, keep_horizontal)
                 return new_x2, new_y2, new_horiz, new_vertical
 
-            # if climbing up after bottom
-            def poisoned_up():
-                new_y = segment[1] - self.consts.MUSHROOM_Y_SPACING
-                new_vertical = jnp.where(new_y <= 131, 2, -2)  # bounce at top of player zone
-                return segment[0], new_y, segment[2], new_vertical
-
-            new_x, new_y, new_horiz, new_vertical = jax.lax.cond(
-                segment[3] == 2, poisoned_down, poisoned_up
-            )
+            new_x, new_y, new_horiz, new_vertical = poisoned_down()
 
             new_status = jnp.where(segment[4] == 1.5, 2, segment[4])
             return jnp.array([new_x, new_y, new_horiz, new_vertical, new_status]), jnp.array(0)
