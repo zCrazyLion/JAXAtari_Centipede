@@ -775,9 +775,31 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 lambda: normal_step(segment, turn_around),
             )
 
+        def should_turn_around(i, carry):
+            groups, same_group = carry
+            this_seg = centipede_state[i]
+            next_seg = centipede_state[i + 1]
+
+            is_head = jnp.where(this_seg[4] == 2, True, False)
+
+            def head_case():
+                def same_group_head():
+                    return groups.at[i].set(1), True
+
+                def dif_group():
+                    return groups, False
+
+                dist = jnp.linalg.norm(this_seg[:2] - next_seg[:2])
+                return jax.lax.cond(jnp.less_equal(dist, 10), same_group_head, dif_group)
+
+            def same_group_tail():
+                return groups, True
+
+            return jax.lax.cond(is_head, head_case, same_group_tail)
+
         # --- Run update over all segments ---
         init_carry = jnp.zeros_like(centipede_state[:, 0], dtype=jnp.int32), False
-        turn_around, _ = jax.lax.fori_loop(0, centipede_state.shape[0] - 1, lambda i, carry: carry, init_carry)
+        turn_around, _ = jax.lax.fori_loop(0, centipede_state.shape[0] - 1, should_turn_around, init_carry)
 
         new_state, segment_split = jax.vmap(move_segment)(centipede_state, turn_around)
         segment_split = jnp.roll(segment_split, 1)
