@@ -1676,29 +1676,26 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     def initialize_centipede_positions(self, wave: chex.Array) -> chex.Array:
         base_x = 80
         base_y = 5
-        initial_positions = jnp.zeros((self.consts.MAX_SEGMENTS, 5))
 
         wave = wave[0]
         slow_wave = wave < 0
         num_heads = jnp.abs(wave)
         main_segments = self.consts.MAX_SEGMENTS - num_heads
 
-        def spawn_segment(i, segments: chex.Array):
+        def spawn_segment(i):
             def main_body():
                 is_head = i == 0
-                return segments.at[i].set(
+                return jnp.where(
+                    slow_wave,
                     jnp.where(
-                        slow_wave,
-                        jnp.where(
-                            is_head,
-                            jnp.array([base_x + 4 * i, base_y, -1, 1, 2]),
-                            jnp.array([base_x + 4 * i, base_y, -1, 1, 1]),
-                        ),
-                        jnp.where(
-                            is_head,
-                            jnp.array([base_x + 4 * i, base_y, -2, 1, 2]),
-                            jnp.array([base_x + 4 * i, base_y, -2, 1, 1]),
-                        )
+                        is_head,
+                        jnp.array([base_x + 4 * i, base_y, -1, 1, 2]),
+                        jnp.array([base_x + 4 * i, base_y, -1, 1, 1]),
+                    ),
+                    jnp.where(
+                        is_head,
+                        jnp.array([base_x + 4 * i, base_y, -2, 1, 2]),
+                        jnp.array([base_x + 4 * i, base_y, -2, 1, 1]),
                     )
                 )
 
@@ -1706,29 +1703,29 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 j = i - main_segments
                 return jnp.where(
                     j == 0,
-                    segments.at[i].set(jnp.array([140, 5, -2, 1, 2])),      # TODO: sometimes starts with different direction
+                    jnp.array([140, 5, -2, 1, 2]),
                     jnp.where(
                         j == 1,
-                        segments.at[i].set(jnp.array([16, 5, 2, 1, 2])),
+                        jnp.array([16, 5, 2, 1, 2]),
                         jnp.where(
                             j == 2,
-                            segments.at[i].set(jnp.array([108, 5, -2, 1, 2])),
+                            jnp.array([108, 5, -2, 1, 2]),
                             jnp.where(
                                 j == 3,
-                                segments.at[i].set(jnp.array([48, 14, 2, 1, 2])),
+                                jnp.array([48, 14, 2, 1, 2]),
                                 jnp.where(
                                     j == 4,
-                                    segments.at[i].set(jnp.array([124, 23, 2, 1, 2])),
+                                    jnp.array([124, 23, 2, 1, 2]),
                                     jnp.where(
                                         j == 5,
-                                        segments.at[i].set(jnp.array([32, 14, 2, 1, 2])),
+                                        jnp.array([32, 14, 2, 1, 2]),
                                         jnp.where(
                                             j == 6,
-                                            segments.at[i].set(jnp.array([92, 14, -2, 1, 2])),
+                                            jnp.array([92, 14, -2, 1, 2]),
                                             jnp.where(
                                                 j == 7,
-                                                segments.at[i].set(jnp.array([64, 14, -2, 1, 2])),
-                                                segments.at[i].set(jnp.array([80, 5, -2, 1, 2])),       # failsafe
+                                                jnp.array([64, 14, -2, 1, 2]),
+                                                jnp.array([80, 5, -2, 1, 2]),       # failsafe
                                             )
                                         )
                                     ),
@@ -1744,7 +1741,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 single_head,
             )
 
-        return jax.lax.fori_loop(0, self.consts.MAX_SEGMENTS, spawn_segment, initial_positions)
+        carry = jnp.arange(0, 9)
+        return jax.vmap(spawn_segment)(carry).astype(jnp.float32)
 
     ## -------- Wave Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
