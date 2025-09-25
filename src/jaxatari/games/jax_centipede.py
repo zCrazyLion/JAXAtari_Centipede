@@ -798,7 +798,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         # --- Run update over all segments ---
         init_carry = jnp.zeros_like(centipede_state[:, 0], dtype=jnp.int32), False
-        turn_around, _ = jax.lax.fori_loop(0, centipede_state.shape[0] - 1, should_turn_around, init_carry)
+        turn_around, _ = jax.lax.fori_loop(0, centipede_state.shape[0] - 1, should_turn_around, init_carry)     # afaik not vmappable
 
         new_state, segment_split = jax.vmap(move_segment)(centipede_state, turn_around)
         segment_split = jnp.roll(segment_split, 1)
@@ -2523,48 +2523,47 @@ class CentipedeRenderer(JAXGameRenderer):
         )
 
         ### -------- Render mushrooms -------- ###
-        def render_mushrooms(i, raster_base):
-            alive = state.mushroom_positions[i][3] > 0
-            poisoned = state.mushroom_positions[i][2] == 1
+        def render_one(raster, pos):
+            x, y, poisoned, lives = pos
+            alive = lives > 0
+            poisoned = poisoned == 1
 
-            return jax.lax.cond(
-                alive,
-                lambda r: jax.lax.cond(
+            def render_alive(r):
+                return jax.lax.cond(
                     poisoned,
-                    lambda r2: jru.render_at(
-                        r2,
-                        state.mushroom_positions[i][0],
-                        state.mushroom_positions[i][1],
-                        frame_poisoned_mushroom,
-                    ),
-                    lambda r2: jru.render_at(
-                        r2,
-                        state.mushroom_positions[i][0],
-                        state.mushroom_positions[i][1],
-                        frame_mushroom,
-                    ),
+                    lambda r2: jru.render_at(r2, x, y, frame_poisoned_mushroom),
+                    lambda r2: jru.render_at(r2, x, y, frame_mushroom),
                     r,
-                ),
-                lambda r: r,
-                raster_base,
-            )
-        raster = jax.lax.fori_loop(0, self.consts.MAX_MUSHROOMS, render_mushrooms, raster)
+                )
+
+            return jax.lax.cond(alive, render_alive, lambda r: r, raster)
+
+        # vmapped version: apply across mushrooms
+        def render_all(raster_base, mushroom_positions):
+            def body(r, pos):
+                return render_one(r, pos), None
+
+            raster, _ = jax.lax.scan(body, raster_base, mushroom_positions)
+            return raster
+
+        # Usage:
+        raster = render_all(raster, state.mushroom_positions)
 
         ### -------- Render centipede -------- ###
-        def render_centipede_segment(i, raster_base):
-            should_render = jnp.logical_and(state.centipede_position[i][4] != 0, state.death_counter <= 0)
-            return jax.lax.cond(
-                should_render,
-                lambda r: jru.render_at(
-                    r,
-                    state.centipede_position[i][0],
-                    state.centipede_position[i][1],
-                    frame_centipede,
-                ),
-                lambda r: r,
-                raster_base
-            )
-        raster = jax.lax.fori_loop(0, self.consts.MAX_SEGMENTS, render_centipede_segment, raster)
+        def render_segment_one(raster_base, pos):
+            x, y, _, _, alive_flag = pos
+            should_render = jnp.logical_and(alive_flag != 0, state.death_counter <= 0)
+
+            def render_fn(r):
+                return jru.render_at(r, x, y, frame_centipede)
+
+            return jax.lax.cond(should_render, render_fn, lambda r: r, raster_base)
+
+        # Apply vmap across all centipede segments
+        rasters = jax.vmap(lambda pos: render_segment_one(raster, pos))(state.centipede_position)
+
+        # Combine all rasters; choose the reduction according to how overlapping segments should combine
+        raster = jnp.maximum.reduce(rasters)
 
         ### -------- Render spider -------- ###
         raster = jnp.where(
