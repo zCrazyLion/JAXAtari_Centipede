@@ -1846,7 +1846,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         )
         new_player_x = jnp.where(
             jnp.logical_and(no_horiz_op, player_x % 4 != 0),
-            player_x + jnp.sign(new_velocity_x),
+            player_x + jnp.where(new_velocity_x < 0, -1, 1),
             jnp.clip(player_x + raw_vel_x, self.consts.PLAYER_BOUNDS[0][0], self.consts.PLAYER_BOUNDS[0][1])
         ).astype(jnp.int32)
 
