@@ -1614,50 +1614,56 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     ## -------- Mushroom Spawn Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
     def initialize_mushroom_positions(self) -> chex.Array:
-        # Create row and column indices
-        row_indices = jnp.repeat(
-            jnp.arange(self.consts.MUSHROOM_NUMBER_OF_ROWS),
-            self.consts.MUSHROOM_NUMBER_OF_COLS
-        )
-        col_indices = jnp.tile(
-            jnp.arange(self.consts.MUSHROOM_NUMBER_OF_COLS),
-            self.consts.MUSHROOM_NUMBER_OF_ROWS
-        )
+        rows = jnp.arange(self.consts.MUSHROOM_NUMBER_OF_ROWS)
+        cols = jnp.arange(self.consts.MUSHROOM_NUMBER_OF_COLS)
 
-        # Compute row parity
-        row_is_even = row_indices % 2 == 0
-        column_start = jnp.where(
-            row_is_even,
-            self.consts.MUSHROOM_COLUMN_START_EVEN,
-            self.consts.MUSHROOM_COLUMN_START_ODD
-        )
-        x = column_start + self.consts.MUSHROOM_X_SPACING * col_indices
-        x = x.astype(jnp.int32)
+        # --- Build char_code grid from Python pattern ---
+        # Convert each row into padded ord codes
+        def row_to_codes(row: str) -> jnp.ndarray:
+            # Pad row with "O" if shorter than max cols
+            padded = row.ljust(self.consts.MUSHROOM_NUMBER_OF_COLS, "O")
+            return jnp.array([ord(c) for c in padded], dtype=jnp.int32)
 
-        y = (row_indices * self.consts.MUSHROOM_Y_SPACING + 7).astype(jnp.int32)
+        # Run row_to_codes across all rows in the Python list
+        char_codes = jnp.stack([row_to_codes(r) for r in self.consts.MUSHROOM_STARTING_PATTERN])
 
-        # Build full pattern as arrays
-        # Lives: 3 for 'X' or 'P', 0 otherwise
-        lives_pattern = jnp.array([
-            [3 if c.upper() in ("X", "P") else 0 for c in row.ljust(self.consts.MUSHROOM_NUMBER_OF_COLS, "O")]
-            for row in self.consts.MUSHROOM_STARTING_PATTERN
-        ])
+        # --- Lives and poison pattern from char codes ---
+        def char_to_lives(ch: jnp.ndarray) -> jnp.ndarray:
+            return jnp.where(
+                (ch == ord("X")) | (ch == ord("x")) | (ch == ord("P")) | (ch == ord("p")),
+                3, 0
+            )
 
-        # Poison: 1 for 'P', 0 otherwise
-        poison_pattern = jnp.array([
-            [1 if c.upper() == "P" else 0 for c in row.ljust(self.consts.MUSHROOM_NUMBER_OF_COLS, "O")]
-            for row in self.consts.MUSHROOM_STARTING_PATTERN
-        ])
+        def char_to_poison(ch: jnp.ndarray) -> jnp.ndarray:
+            return jnp.where((ch == ord("P")) | (ch == ord("p")), 1, 0)
 
-        # Pad patterns to required size
+        lives_pattern   = jax.vmap(jax.vmap(char_to_lives))(char_codes)
+        poison_pattern  = jax.vmap(jax.vmap(char_to_poison))(char_codes)
+
+        # Pad patterns to required number of rows
         pad_rows = max(0, self.consts.MUSHROOM_NUMBER_OF_ROWS - lives_pattern.shape[0])
-        lives_pattern = jnp.pad(lives_pattern, ((0, pad_rows), (0, 0)), constant_values=0)
+        lives_pattern  = jnp.pad(lives_pattern,  ((0, pad_rows), (0, 0)), constant_values=0)
         poison_pattern = jnp.pad(poison_pattern, ((0, pad_rows), (0, 0)), constant_values=0)
 
-        lives = lives_pattern[row_indices, col_indices]
-        is_poisoned = poison_pattern[row_indices, col_indices]
+        # --- Per-cell computation ---
+        def cell_fn(row, col):
+            row_is_even = (row % 2) == 0
+            column_start = jnp.where(
+                row_is_even,
+                self.consts.MUSHROOM_COLUMN_START_EVEN,
+                self.consts.MUSHROOM_COLUMN_START_ODD,
+            )
+            x = column_start + self.consts.MUSHROOM_X_SPACING * col
+            y = row * self.consts.MUSHROOM_Y_SPACING + 7
+            lives   = lives_pattern[row, col]
+            poisoned = poison_pattern[row, col]
+            return jnp.array([x, y, poisoned, lives], dtype=jnp.int32)
 
-        return jnp.stack([x, y, is_poisoned, lives], axis=1)
+        # Vectorize across grid with nested vmaps
+        grid = jax.vmap(lambda r: jax.vmap(lambda c: cell_fn(r, c))(cols))(rows)
+
+        # Flatten to (N*M, 4)
+        return grid.reshape(-1, 4)
 
     ## -------- Spider Spawn Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
