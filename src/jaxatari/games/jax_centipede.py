@@ -2523,12 +2523,12 @@ class CentipedeRenderer(JAXGameRenderer):
         )
 
         ### -------- Render mushrooms -------- ###
-        def render_one(raster, pos):
+        def render_mushroom_scan(raster, pos):
             x, y, poisoned, lives = pos
             alive = lives > 0
             poisoned = poisoned == 1
 
-            def render_alive(r):
+            def render_fn(r):
                 return jax.lax.cond(
                     poisoned,
                     lambda r2: jru.render_at(r2, x, y, frame_poisoned_mushroom),
@@ -2536,34 +2536,23 @@ class CentipedeRenderer(JAXGameRenderer):
                     r,
                 )
 
-            return jax.lax.cond(alive, render_alive, lambda r: r, raster)
+            return jax.lax.cond(alive, render_fn, lambda r: r, raster), None
 
-        # vmapped version: apply across mushrooms
-        def render_all(raster_base, mushroom_positions):
-            def body(r, pos):
-                return render_one(r, pos), None
-
-            raster, _ = jax.lax.scan(body, raster_base, mushroom_positions)
-            return raster
-
-        # Usage:
-        raster = render_all(raster, state.mushroom_positions)
+        # Thread raster through all mushrooms
+        raster, _ = jax.lax.scan(render_mushroom_scan, raster, state.mushroom_positions)
 
         ### -------- Render centipede -------- ###
-        def render_segment_one(raster_base, pos):
+        def render_segment_scan(raster, pos):
             x, y, _, _, alive_flag = pos
             should_render = jnp.logical_and(alive_flag != 0, state.death_counter <= 0)
 
             def render_fn(r):
                 return jru.render_at(r, x, y, frame_centipede)
 
-            return jax.lax.cond(should_render, render_fn, lambda r: r, raster_base)
+            return jax.lax.cond(should_render, render_fn, lambda r: r, raster), None
 
-        # Apply vmap across all centipede segments
-        rasters = jax.vmap(lambda pos: render_segment_one(raster, pos))(state.centipede_position)
-
-        # Combine all rasters; choose the reduction according to how overlapping segments should combine
-        raster = jnp.maximum.reduce(rasters)
+        # Scan over all segments, threading the raster
+        raster, _ = jax.lax.scan(render_segment_scan, raster, state.centipede_position)
 
         ### -------- Render spider -------- ###
         raster = jnp.where(
