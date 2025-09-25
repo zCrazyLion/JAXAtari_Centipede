@@ -585,6 +585,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     @partial(jax.jit, static_argnums=(0,))
     def _get_info(self, state: CentipedeState, all_rewards: jnp.ndarray = None) -> CentipedeInfo:
         return CentipedeInfo(
+            wave=state.wave[1],
             step_counter=state.step_counter,
             all_rewards=all_rewards,
         )
@@ -1786,7 +1787,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 jnp.abs(logical_wave) + 1 % 8
             )
 
-            new_wave = jnp.array([new_logical_wave, ui_wave + 1 % 8])
+            new_wave = jnp.array([new_logical_wave, ui_wave + 1])
             return self.initialize_centipede_positions(new_wave), new_wave
 
         return jax.lax.cond(
