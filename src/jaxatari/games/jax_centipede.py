@@ -2024,6 +2024,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             state_during_animation = state._replace(
                 player_spell=jnp.zeros(3, dtype=jnp.int32),
                 spider_position=jnp.zeros(3, dtype=jnp.int32),
+                spider_points=jnp.array([0, 0]),
                 centipede_position=jnp.zeros_like(state.centipede_position),
                 scorpion_position=jnp.zeros(4, dtype=jnp.int32),
                 flea_position=jnp.zeros(3),
