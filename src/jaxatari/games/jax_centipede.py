@@ -93,8 +93,8 @@ class CentipedeConstants:
     ## -------- Scorpion constants --------
     SCORPION_X_POSITIONS = jnp.array([16, 133])
     SCORPION_Y_POSITIONS = jnp.array([7, 16, 25, 34, 43, 52, 61, 70, 79, 88, 97, 106, 115, 124, 133])
-    SCORPION_MIN_SPAWN_FRAMES = 355 #TODO: prob. not accurate
-    SCORPION_MAX_SPAWN_FRAMES = 2000 #TODO: prob. not accurate
+    SCORPION_MIN_SPAWN_FRAMES = 355
+    SCORPION_MAX_SPAWN_FRAMES = 2000
     SCORPION_SIZE = (8, 6)
     SCORPION_POINTS = 1000
 
@@ -185,11 +185,9 @@ class CentipedeObservation(NamedTuple):
     player_spell: EntityPosition    # Shape (5,) - one spell with x,y,w,h,active
     score: jnp.ndarray
     lives: jnp.ndarray
-    # TODO: fill
-    # if changed: obs_to_flat_array, _get_observation, (step, reset)
 
 class CentipedeInfo(NamedTuple):
-    # difficulty: jnp.ndarray # add if necessary
+    wave: jnp.ndarray
     step_counter: jnp.ndarray
     all_rewards: jnp.ndarray
 
@@ -1237,7 +1235,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
     ## -------- Centipede Spell Collision Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
-    def check_spell_centipede_collision(        # TODO: fix
+    def check_spell_centipede_collision(
             self,
             spell_state: chex.Array,
             centipede_position: chex.Array,
@@ -1880,7 +1878,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         return new_player_x, new_player_y, new_velocity_x
 
     ## -------- Player Spell Logic -------- ##
-    def player_spell_step(      # TODO: fix behaviour for close objects (add cooldown)
+    def player_spell_step(
             self,
             player_x: chex.Array,
             player_y: chex.Array,
