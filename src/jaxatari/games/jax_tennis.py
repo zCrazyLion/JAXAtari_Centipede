@@ -4,7 +4,7 @@ import chex
 import jax.lax
 import jax.random as random
 import jax
-import jaxatari.rendering.jax_rendering_utils as aj
+import jaxatari.rendering.jax_rendering_utils_legacy as aj
 import os
 import chex
 from jaxatari.environment import JaxEnvironment, EnvState, EnvObs, EnvInfo

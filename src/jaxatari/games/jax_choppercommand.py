@@ -12,7 +12,7 @@ import jax
 import jax.numpy as jnp
 import chex
 import pygame
-import jaxatari.rendering.jax_rendering_utils as jru
+import jaxatari.rendering.jax_rendering_utils_legacy as jru
 import numpy as np
 import jaxatari.spaces as spaces
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action, EnvState

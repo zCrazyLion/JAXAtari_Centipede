@@ -35,7 +35,7 @@ import jax.lax
 import chex
 
 import pygame
-from jaxatari.rendering import jax_rendering_utils as aj
+from jaxatari.rendering import jax_rendering_utils_legacy as aj
 from jaxatari.renderers import JAXGameRenderer
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action, EnvObs
 import jaxatari.spaces as spaces

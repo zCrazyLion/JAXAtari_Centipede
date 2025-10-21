@@ -5,12 +5,12 @@ import jax
 import jax.numpy as jnp
 import chex
 import jaxatari.spaces as spaces
-import jaxatari.rendering.jax_rendering_utils as jr
+import jaxatari.rendering.jax_rendering_utils_legacy as jr
 import numpy as np
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 from jaxatari.spaces import Space
 
-from jaxatari.rendering.jax_rendering_utils import pad_to_match
+from jaxatari.rendering.jax_rendering_utils_legacy import pad_to_match
 
 
 # Phoenix Game by: Florian Schmidt, Finn Keller

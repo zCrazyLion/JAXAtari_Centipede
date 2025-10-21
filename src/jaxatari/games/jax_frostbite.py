@@ -10,7 +10,7 @@ import jax.random as jrandom
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 import jaxatari.spaces as spaces
 from jaxatari.renderers import JAXGameRenderer
-import jaxatari.rendering.jax_rendering_utils as jr
+import jaxatari.rendering.jax_rendering_utils_legacy as jr
 
 
 

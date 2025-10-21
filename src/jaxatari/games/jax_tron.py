@@ -2,7 +2,7 @@ from jaxatari.renderers import JAXGameRenderer
 from typing import NamedTuple, Tuple, TypeVar, Dict, Any
 from jax import Array, jit, random, numpy as jnp
 from functools import partial
-from jaxatari.rendering import jax_rendering_utils as jr
+from jaxatari.rendering import jax_rendering_utils_legacy as jr
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action, EnvObs
 import jaxatari.spaces as spaces
 import jax.lax
