@@ -7,7 +7,7 @@ import chex
 
 import jaxatari.spaces as spaces
 from jaxatari.renderers import JAXGameRenderer
-from jaxatari.rendering import jax_rendering_utils as jr
+from jaxatari.rendering import jax_rendering_utils as render_utils
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 
 class PongConstants(NamedTuple):
@@ -556,80 +556,84 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo, PongConstants
             jnp.greater_equal(state.enemy_score, 21),
         )
 
-
 class PongRenderer(JAXGameRenderer):
     def __init__(self, consts: PongConstants = None):
         super().__init__()
         self.consts = consts or PongConstants()
+        self.config = render_utils.RendererConfig(
+            game_dimensions=(210, 160),
+            channels=3,
+            #downscale=(84, 84)
+        )
+        self.jr = render_utils.JaxRenderingUtils(self.config)
+        # 1. Create any procedural assets first
+        wall_sprite = self._create_wall_sprite()
+        
+        # 2. Define the full asset manifest, mixing file-based and procedural assets
+        asset_config = self._get_asset_config(wall_sprite)
+        sprite_path = f"{os.path.dirname(os.path.abspath(__file__))}/sprites/pong"
+
+        # 3. Make a single call to the setup function
         (
-            self.SPRITE_BG,
-            self.SPRITE_PLAYER,
-            self.SPRITE_ENEMY,
-            self.SPRITE_BALL,
-            self.PLAYER_DIGIT_SPRITES,
-            self.ENEMY_DIGIT_SPRITES,
-        ) = self.load_sprites()
+            self.PALETTE,
+            self.SHAPE_MASKS,
+            self.BACKGROUND,
+            self.COLOR_TO_ID,
+            self.FLIP_OFFSETS
+        ) = self.jr.load_and_setup_assets(asset_config, sprite_path)
 
-    def load_sprites(self):
-        MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+    def _create_wall_sprite(self) -> jnp.ndarray:
+        """Procedurally creates an RGBA sprite for the top/bottom walls."""
+        # The wall color must match a color used elsewhere (e.g., the score)
+        # so it gets added to the palette correctly.
+        wall_color_rgba = (*self.consts.SCORE_COLOR, 255) # e.g., (236, 236, 236, 255)
+        
+        wall_shape = (self.consts.WALL_TOP_HEIGHT, self.consts.WIDTH, 4)
+        wall_sprite = jnp.tile(jnp.array(wall_color_rgba, dtype=jnp.uint8), (*wall_shape[:2], 1))
+        return wall_sprite
 
-        player = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/player.npy"))
-        enemy = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/enemy.npy"))
-        ball = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/ball.npy"))
-
-        bg = jr.loadFrame(os.path.join(MODULE_DIR, "sprites/pong/background.npy"))
-
-        SPRITE_BG = jnp.expand_dims(bg, axis=0)
-        SPRITE_PLAYER = jnp.expand_dims(player, axis=0)
-        SPRITE_ENEMY = jnp.expand_dims(enemy, axis=0)
-        SPRITE_BALL = jnp.expand_dims(ball, axis=0)
-
-        PLAYER_DIGIT_SPRITES = jr.load_and_pad_digits(
-            os.path.join(MODULE_DIR, "sprites/pong/player_score_{}.npy"),
-            num_chars=10,
-        )
-        ENEMY_DIGIT_SPRITES = jr.load_and_pad_digits(
-            os.path.join(MODULE_DIR, "sprites/pong/enemy_score_{}.npy"),
-            num_chars=10,
-        )
-
-        return (
-            SPRITE_BG,
-            SPRITE_PLAYER,
-            SPRITE_ENEMY,
-            SPRITE_BALL,
-            PLAYER_DIGIT_SPRITES,
-            ENEMY_DIGIT_SPRITES
-        )
+    def _get_asset_config(self, wall_sprite_data: jnp.ndarray) -> list:
+        """Returns the declarative manifest of all assets for the game."""
+        return [
+            {'name': 'background', 'type': 'background', 'file': 'background.npy'},
+            {'name': 'player', 'type': 'single', 'file': 'player.npy'},
+            {'name': 'enemy', 'type': 'single', 'file': 'enemy.npy'},
+            {'name': 'ball', 'type': 'single', 'file': 'ball.npy'},
+            {'name': 'player_digits', 'type': 'digits', 'pattern': 'player_score_{}.npy'},
+            {'name': 'enemy_digits', 'type': 'digits', 'pattern': 'enemy_score_{}.npy'},
+            
+            # Add the procedurally created sprite to the manifest
+            {'name': 'wall', 'type': 'procedural', 'data': wall_sprite_data},
+        ]
 
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state):
-        raster = jr.create_initial_frame(width=160, height=210)
+        raster = self.jr.create_object_raster(self.BACKGROUND)
 
-        frame_bg = jr.get_sprite_frame(self.SPRITE_BG, 0)
-        raster = jr.render_at(raster, 0, 0, frame_bg)
+        player_mask = self.SHAPE_MASKS["player"]
+        raster = self.jr.render_at(raster, self.consts.PLAYER_X, state.player_y, player_mask)
 
-        frame_player = jr.get_sprite_frame(self.SPRITE_PLAYER, 0)
-        raster = jr.render_at(raster, self.consts.PLAYER_X, state.player_y, frame_player)
+        enemy_mask = self.SHAPE_MASKS["enemy"]
+        raster = self.jr.render_at(raster, self.consts.ENEMY_X, state.enemy_y, enemy_mask)
 
-        frame_enemy = jr.get_sprite_frame(self.SPRITE_ENEMY, 0)
-        raster = jr.render_at(raster, self.consts.ENEMY_X, state.enemy_y, frame_enemy)
+        ball_mask = self.SHAPE_MASKS["ball"]
+        raster = self.jr.render_at(raster, state.ball_x, state.ball_y, ball_mask)
 
-        frame_ball = jr.get_sprite_frame(self.SPRITE_BALL, 0)
-        raster = jr.render_at(raster, state.ball_x, state.ball_y, frame_ball)
+        # --- Stamp Walls and Score (using the same color/ID) ---
+        score_color_tuple = self.consts.SCORE_COLOR # (236, 236, 236)
+        score_id = self.COLOR_TO_ID[score_color_tuple]
 
-        # Direct wall rendering with HWC indexing
-        wall_color = jnp.array(self.consts.WALL_COLOR, dtype=jnp.uint8)
-        top_wall_y_start = self.consts.WALL_TOP_Y
-        top_wall_y_end = self.consts.WALL_TOP_Y + self.consts.WALL_TOP_HEIGHT
-        raster = raster.at[top_wall_y_start:top_wall_y_end, :, :].set(wall_color)
+        # Draw walls (which are now a sprite)
+        raster = self.jr.render_at(raster, 0, self.consts.WALL_TOP_Y, self.SHAPE_MASKS["wall"])
+        raster = self.jr.render_at(raster, 0, self.consts.WALL_BOTTOM_Y, self.SHAPE_MASKS["wall"])
 
-        bottom_wall_y_start = self.consts.WALL_BOTTOM_Y
-        bottom_wall_y_end = self.consts.WALL_BOTTOM_Y + self.consts.WALL_BOTTOM_HEIGHT
-        raster = raster.at[bottom_wall_y_start:bottom_wall_y_end, :, :].set(wall_color)
+        # Stamp Score using the label utility
+        player_digits = self.jr.int_to_digits(state.player_score, max_digits=2)
+        enemy_digits = self.jr.int_to_digits(state.enemy_score, max_digits=2)
 
-        player_score_digits = jr.int_to_digits(state.player_score, max_digits=2)
-        enemy_score_digits = jr.int_to_digits(state.enemy_score, max_digits=2)
+        # Note: The logic for single/double digits is complex for a jitted function.
+        player_digit_masks = self.SHAPE_MASKS["player_digits"] # Assumes single color
+        enemy_digit_masks = self.SHAPE_MASKS["enemy_digits"] # Assumes single color
 
         is_player_single_digit = state.player_score < 10
         player_start_index = jax.lax.select(is_player_single_digit, 1, 0)
@@ -638,11 +642,8 @@ class PongRenderer(JAXGameRenderer):
                                          120 + 16 // 2,
                                          120)
 
-        raster = jr.render_label_selective(raster, player_render_x, 3,
-                                            player_score_digits, self.PLAYER_DIGIT_SPRITES,
-                                            player_start_index, player_num_to_render,
-                                            spacing=16)
-
+        raster = self.jr.render_label_selective(raster, player_render_x, 3, player_digits, player_digit_masks, player_start_index, player_num_to_render, spacing=16)
+        
         is_enemy_single_digit = state.enemy_score < 10
         enemy_start_index = jax.lax.select(is_enemy_single_digit, 1, 0)
         enemy_num_to_render = jax.lax.select(is_enemy_single_digit, 1, 2)
@@ -650,9 +651,6 @@ class PongRenderer(JAXGameRenderer):
                                         10 + 16 // 2,
                                         10)
 
-        raster = jr.render_label_selective(raster, enemy_render_x, 3,
-                                           enemy_score_digits, self.ENEMY_DIGIT_SPRITES,
-                                           enemy_start_index, enemy_num_to_render,
-                                           spacing=16)
+        raster = self.jr.render_label_selective(raster, enemy_render_x, 3, enemy_digits, enemy_digit_masks, enemy_start_index, enemy_num_to_render, spacing=16)
 
-        return raster
+        return self.jr.render_from_palette(raster, self.PALETTE)
