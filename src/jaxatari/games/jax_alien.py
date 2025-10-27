@@ -17,7 +17,7 @@ import chex
 from jaxatari.renderers import JAXGameRenderer
 from gymnax.environments import spaces
 import jaxatari.spaces as spaces
-from jaxatari.rendering import jax_rendering_utils as jr
+from jaxatari.rendering import jax_rendering_utils_legacy as jr
 from jaxatari.environment import JaxEnvironment, JAXAtariAction
 import jax
 import numpy as np

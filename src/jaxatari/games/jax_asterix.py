@@ -8,7 +8,7 @@ from typing import Tuple, NamedTuple, List, Dict, Optional, Any
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 import jaxatari.spaces as spaces
 from jaxatari.renderers import JAXGameRenderer
-import jaxatari.rendering.jax_rendering_utils as jr
+import jaxatari.rendering.jax_rendering_utils_legacy as jr
 
 
 def min_delay(level, base_min=30, spawn_accel=2, min_delay_clamp=20, max_delay_clamp=120):

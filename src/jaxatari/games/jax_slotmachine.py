@@ -74,7 +74,7 @@ import jax.random
 
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 from jaxatari.renderers import JAXGameRenderer
-from jaxatari.rendering import jax_rendering_utils as aj
+from jaxatari.rendering import jax_rendering_utils_legacy as aj
 import jaxatari.spaces as spaces
 
 
@@ -262,7 +262,8 @@ class SlotMachineRenderer(JAXGameRenderer):
         sprites = {}
 
         # Load sprite files from the sprites directory
-        sprite_dir = "src/jaxatari/games/sprites/slotmachine"
+        MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+        sprite_dir = os.path.join(MODULE_DIR, "sprites/slotmachine")
 
         # Scale factor for all sprites (70%)
         scale_factor = 0.7

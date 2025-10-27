@@ -12,7 +12,7 @@ import jaxatari.spaces as spaces
 
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 from jaxatari.renderers import JAXGameRenderer
-import jaxatari.rendering.jax_rendering_utils as aj
+import jaxatari.rendering.jax_rendering_utils_legacy as aj
 
 
 # -------- Game constants --------

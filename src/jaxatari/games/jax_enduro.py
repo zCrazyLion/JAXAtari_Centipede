@@ -12,7 +12,7 @@ from typing import Tuple, NamedTuple, Any
 # jaxatari
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 from jaxatari.renderers import JAXGameRenderer
-from jaxatari.rendering import jax_rendering_utils as aj
+from jaxatari.rendering import jax_rendering_utils_legacy as aj
 import jaxatari.spaces as spaces
 
 

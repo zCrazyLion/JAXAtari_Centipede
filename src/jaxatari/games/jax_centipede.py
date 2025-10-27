@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 import chex
 
-import jaxatari.rendering.jax_rendering_utils as jru
+import jaxatari.rendering.jax_rendering_utils_legacy as jru
 import time
 from functools import partial
 from typing import NamedTuple, Tuple

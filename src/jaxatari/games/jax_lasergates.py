@@ -9,7 +9,7 @@ from typing import Tuple, NamedTuple, Callable
 import chex
 import jax
 import jax.numpy as jnp
-import jaxatari.rendering.jax_rendering_utils as jru
+import jaxatari.rendering.jax_rendering_utils_legacy as jru
 from jaxatari import spaces
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action, JAXAtariAction
 from jaxatari.renderers import JAXGameRenderer

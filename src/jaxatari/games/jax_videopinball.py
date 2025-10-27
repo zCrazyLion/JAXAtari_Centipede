@@ -20,7 +20,7 @@ import chex
 import pygame
 
 from jaxatari.renderers import JAXGameRenderer
-from jaxatari.rendering import jax_rendering_utils as jr
+from jaxatari.rendering import jax_rendering_utils_legacy as jr
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 from jaxatari import spaces
 from jaxatari.games.videopinball_constants import (
