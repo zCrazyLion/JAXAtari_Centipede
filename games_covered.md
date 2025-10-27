@@ -1,7 +1,7 @@
 # Games covered in JaxAtari
 - 🥇: game is very close to original game and well optimized.
 - 🥈: game is close to original game, but may miss some parts, implements them differently or is not yet optimized for performance. 
-- 🥉: game differs significantly from original game
+- 🥉: game differs significantly from original game (some of these can only be found in the experimental/games branch as they are under active development)
 
 ## Atari 5
 | Game                        | Status  | Mods available |
@@ -86,7 +86,7 @@
 | frogger                      | unsupported | 0 |
 | galaxian                     | 🥈       | 0 |
 | hangman                      | 🥈       | 0 |
-| haunted_house                | 🥈       | 0 |
+| haunted_house                | 🥇       | 0 |
 | human_cannonball             | 🥈       | 0 |
 | kaboom                       | unsupported | 0 |
 | keystone_kapers              | unsupported | 0 |
@@ -98,7 +98,7 @@
 | mario_bros                   | 🥉       | 0 |
 | miniature_golf               | unsupported | 0 |
 | mr_do                        | unsupported | 0 |
-| othello                      | unsupported | 0 |
+| othello                      | 🥉       | 0 |
 | pacman                       | unsupported | 0 |
 | pitfall                      | unsupported | 0 |
 | pitfall2                     | unsupported | 0 |
@@ -108,7 +108,7 @@
 | space_invaders               | 🥈       | 0 |
 | space_war                    | 🥈       | 0 |
 | superman                     | unsupported | 0 |
-| surround                     | unsupported | 0 |
+| surround                     | 🥈       | 0 |
 | tetris                       | 🥈      | 0 |
 | tic_tac_toe_3d               | unsupported | 0 |
 | tron                         | 🥈       | 0 |
