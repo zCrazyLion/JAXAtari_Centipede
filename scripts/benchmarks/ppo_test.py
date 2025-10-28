@@ -6,115 +6,64 @@ import os
 import time
 import jax
 import jax.numpy as jnp
+import numpy as np
+import distrax
 from functools import partial
-from typing import Any
+from typing import Any, Sequence, NamedTuple
 import os
 
 import chex
 import optax
 import flax.linen as nn
+from flax.linen.initializers import constant, orthogonal
 from flax.training.train_state import TrainState
 from jaxatari.wrappers import AtariWrapper, PixelObsWrapper, FlattenObservationWrapper, LogWrapper, ObjectCentricWrapper, NormalizeObservationWrapper
 import hydra
 from omegaconf import OmegaConf
+
 
 import jaxatari
 import wandb
 
 from train_utils import video_callback, load_params
 
-class CNN(nn.Module):
 
-    norm_type: str = "layer_norm"
-
-    @nn.compact
-    def __call__(self, x: jnp.ndarray, train: bool):
-        if self.norm_type == "layer_norm":
-            normalize = lambda x: nn.LayerNorm()(x)
-        elif self.norm_type == "batch_norm":
-            normalize = lambda x: nn.BatchNorm(use_running_average=not train)(x)
-        else:
-            normalize = lambda x: x
-        x = nn.Conv(
-            32,
-            kernel_size=(8, 8),
-            strides=(4, 4),
-            padding="VALID",
-            kernel_init=nn.initializers.he_normal(),
-        )(x)
-        x = normalize(x)
-        x = nn.relu(x)
-        x = nn.Conv(
-            64,
-            kernel_size=(4, 4),
-            strides=(2, 2),
-            padding="VALID",
-            kernel_init=nn.initializers.he_normal(),
-        )(x)
-        x = normalize(x)
-        x = nn.relu(x)
-        x = nn.Conv(
-            64,
-            kernel_size=(3, 3),
-            strides=(1, 1),
-            padding="VALID",
-            kernel_init=nn.initializers.he_normal(),
-        )(x)
-        x = normalize(x)
-        x = nn.relu(x)
-        x = x.reshape((x.shape[0], -1))
-        x = nn.Dense(512, kernel_init=nn.initializers.he_normal())(x)
-        x = normalize(x)
-        x = nn.relu(x)
-        return x
-
-class QNetwork(nn.Module):
-    action_dim: int
-    hidden_size: int = 128
-    num_layers: int = 2
-    norm_type: str = "layer_norm"
-    norm_input: bool = False
-    object_centric: bool = True
+class ActorCritic(nn.Module):
+    action_dim: Sequence[int]
+    activation: str = "tanh"
 
     @nn.compact
-    def __call__(self, x: jnp.ndarray, train: bool):
-        if self.norm_input:
-            x = nn.BatchNorm(use_running_average=not train)(x)
+    def __call__(self, x):
+        if self.activation == "relu":
+            activation = nn.relu
         else:
-            # dummy normalize input for global compatibility
-            x_dummy = nn.BatchNorm(use_running_average=not train)(x)
+            activation = nn.tanh
+        actor_mean = nn.Dense(
+            64, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+        )(x)
+        actor_mean = activation(actor_mean)
+        actor_mean = nn.Dense(
+            64, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+        )(actor_mean)
+        actor_mean = activation(actor_mean)
+        actor_mean = nn.Dense(
+            self.action_dim, kernel_init=orthogonal(0.01), bias_init=constant(0.0)
+        )(actor_mean)
+        pi = distrax.Categorical(logits=actor_mean)
 
-        if self.object_centric:
-            # Use MLP for object centric observations
-            if self.norm_type == "layer_norm":
-                normalize = lambda x: nn.LayerNorm()(x)
-            elif self.norm_type == "batch_norm":
-                normalize = lambda x: nn.BatchNorm(use_running_average=not train)(x)
-            else:
-                normalize = lambda x: x
+        critic = nn.Dense(
+            64, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+        )(x)
+        critic = activation(critic)
+        critic = nn.Dense(
+            64, kernel_init=orthogonal(np.sqrt(2)), bias_init=constant(0.0)
+        )(critic)
+        critic = activation(critic)
+        critic = nn.Dense(1, kernel_init=orthogonal(1.0), bias_init=constant(0.0))(
+            critic
+        )
 
-            for l in range(self.num_layers):
-                x = nn.Dense(self.hidden_size)(x)
-                x = normalize(x)
-                x = nn.relu(x)
-        else:
-            # Use CNN for pixel based observations
-            x = CNN(norm_type=self.norm_type)(x, train)
-
-        x = nn.Dense(self.action_dim)(x)
-
-        return x
-
-
-@chex.dataclass(frozen=True)
-class Transition:
-    obs: chex.Array
-    action: chex.Array
-    reward: chex.Array
-    done: chex.Array
-    next_obs: chex.Array
-    q_val: chex.Array
-
+        return pi, jnp.squeeze(critic, axis=-1)
 
 class CustomTrainState(TrainState):
     batch_stats: Any
@@ -123,7 +72,7 @@ class CustomTrainState(TrainState):
     grad_steps: int = 0
 
 
-def make_test(config, save_params, batch_stats):
+def make_test(config, save_params):
 
     config["NUM_UPDATES"] = (
         config["TOTAL_TIMESTEPS"] // config["NUM_STEPS"] // config["NUM_ENVS"]
@@ -155,100 +104,67 @@ def make_test(config, save_params, batch_stats):
         return env
 
     env = apply_wrappers(env)
-    mod_env = apply_wrappers(mod_env)
+    mod_env = apply_wrappers(mod_env) 
 
-    # epsilon-greedy exploration
-    def eps_greedy_exploration(rng, q_vals, eps):
-        rng_a, rng_e = jax.random.split(
-            rng
-        )  # a key for sampling random actions and one for picking
-        greedy_actions = jnp.argmax(q_vals, axis=-1)
-        chosed_actions = jnp.where(
-            jax.random.uniform(rng_e, greedy_actions.shape)
-            < eps,  # pick the actions that should be random
-            jax.random.randint(
-                rng_a, shape=greedy_actions.shape, minval=0, maxval=q_vals.shape[-1]
-            ),  # sample random actions,
-            greedy_actions,
+    def linear_schedule(count):
+        frac = (
+            1.0
+            - (count // (config["NUM_MINIBATCHES"] * config["UPDATE_EPOCHS"]))
+            / config["NUM_UPDATES"]
         )
-        return chosed_actions
+        return config["LR"] * frac
 
     def test(rng):
 
-        original_rng = rng[0]
-
-        eps_scheduler = optax.linear_schedule(
-            config["EPS_START"],
-            config["EPS_FINISH"],
-            (config["EPS_DECAY"]) * config["NUM_UPDATES_DECAY"],
+        network = ActorCritic(
+            env.action_space().n, activation=config["ACTIVATION"]
         )
-
-        lr_scheduler = optax.linear_schedule(
-            init_value=config["LR"],
-            end_value=1e-20,
-            transition_steps=(config["NUM_UPDATES_DECAY"])
-            * config["NUM_MINIBATCHES"]
-            * config["NUM_EPOCHS"],
-        )
-        lr = lr_scheduler if config.get("LR_LINEAR_DECAY", False) else config["LR"]
-
-        # INIT NETWORK AND OPTIMIZER
-        network = QNetwork(
-            action_dim=env.action_space().n,
-            hidden_size=config.get("HIDDEN_SIZE", 128),
-            num_layers=config.get("NUM_LAYERS", 2),
-            norm_type=config["NORM_TYPE"],
-            norm_input=config.get("NORM_INPUT", False),
-            object_centric=config.get("OBJECT_CENTRIC", True),
-        )
-
-        def create_agent(rng):
-            init_x = jnp.zeros((1, *env.observation_space().shape))
-            network_variables = network.init(rng, init_x, train=False)
+        original_rng = rng
+        rng, _rng = jax.random.split(rng)
+        init_x = jnp.zeros(env.observation_space().shape)
+        network_params = jax.tree.map(lambda x: x.squeeze(), save_params)
+        # Not sure why this is necessary...
+        for param in network_params:
+            network_params[param]["Dense_5"]["kernel"] = jnp.expand_dims(network_params[param]["Dense_5"]["kernel"], axis=-1)
+            network_params[param]["Dense_5"]["bias"] = jnp.expand_dims(network_params[param]["Dense_5"]["bias"], axis=-1)
+        if config["ANNEAL_LR"]:
             tx = optax.chain(
                 optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
-                optax.radam(learning_rate=lr),
+                optax.adam(learning_rate=linear_schedule, eps=1e-5),
             )
-            params = network_variables["params"] if save_params is None else save_params
-            batch_sts = network_variables["batch_stats"] if batch_stats is None else batch_stats
-            batch_sts = jax.tree.map(lambda x: x.squeeze(), batch_sts)  # remove vmap dim
-            params = jax.tree.map(lambda x: x.squeeze(), params)  # remove vmap dim
-            train_state = CustomTrainState.create(
-                apply_fn=network.apply,
-                params=params,
-                batch_stats=batch_sts,
-                tx=tx,
+        else:
+            tx = optax.chain(
+                optax.clip_by_global_norm(config["MAX_GRAD_NORM"]),
+                optax.adam(config["LR"], eps=1e-5),
             )
-            return train_state
-
-        rng, _rng = jax.random.split(rng)
-        train_state = create_agent(rng)
+        train_state = TrainState.create(
+            apply_fn=network.apply,
+            params=network_params,
+            tx=tx,
+        )
         
         @partial(jax.jit, static_argnums=(1,))
         def get_test_metrics(train_state, mod, rng):
 
             def _env_step(carry, _):
-                env_state, last_obs, rng = carry
+                train_state, env_state, last_obs, rng = carry
+
+                # SELECT ACTION
                 rng, _rng = jax.random.split(rng)
-                q_vals = network.apply(
-                    {
-                        "params": train_state.params,
-                        "batch_stats": train_state.batch_stats,
-                    },
-                    last_obs,
-                    train=False,
-                )
-                eps = jnp.full(config["TEST_NUM_ENVS"], config["EPS_TEST"])
-                action = jax.vmap(eps_greedy_exploration)(
-                    jax.random.split(_rng, config["TEST_NUM_ENVS"]), q_vals, eps
-                )
+                pi, value = network.apply(train_state.params, last_obs)
+                action = pi.sample(seed=_rng)
+
+                # STEP ENV
+                rng, _rng = jax.random.split(rng)
                 if mod:
                     new_obs, new_env_state, reward, done, info = jax.vmap(mod_env.step)(env_state, action)
                 else:
                     new_obs, new_env_state, reward, done, info = jax.vmap(env.step)(env_state, action)
+
                 env_state_vid = jax.tree.map(lambda x: x[0], new_env_state)
                 dones_vid = jax.tree.map(lambda x: x[0], done)
-                return (new_env_state, new_obs, rng), (info, env_state_vid, dones_vid)
+                carry = (train_state, new_env_state, new_obs, rng)
+                return carry, (info, env_state_vid, dones_vid)
 
             rng, _rng = jax.random.split(rng)
             reset_keys = jax.random.split(_rng, config["TEST_NUM_ENVS"])
@@ -258,7 +174,7 @@ def make_test(config, save_params, batch_stats):
                 init_obs, env_state = jax.vmap(env.reset)(reset_keys)
 
             _, output = jax.lax.scan(
-                _env_step, (env_state, init_obs, _rng), None, config["TEST_NUM_STEPS"]
+                _env_step, (train_state, env_state, init_obs, _rng), None, config["TEST_NUM_STEPS"]
             )
             infos, env_states, dones = output[0], output[1], output[2]
 
@@ -300,7 +216,6 @@ def single_run(config):
 
     save_dir = os.path.join(config["SAVE_PATH"], env_name)
     train_state_params = []
-    batch_stats = []
     for i, rng in enumerate(rngs):
         save_path = os.path.join(
             save_dir,
@@ -310,14 +225,10 @@ def single_run(config):
             raise ValueError(f"Save path {save_path} does not exist!")
 
         params = load_params(save_path)  # test loading
-        batch_sts = load_params(save_path.replace(".safetensors", "_bs.safetensors"))
         train_state_params.append(params)
-        batch_stats.append(batch_sts)
+
     train_state_params = jax.tree_util.tree_map(
         lambda *xs: jnp.stack(xs), *train_state_params
-    )
-    batch_stats = jax.tree_util.tree_map(
-        lambda *xs: jnp.stack(xs), *batch_stats
     )
 
     wandb.init(
@@ -336,7 +247,7 @@ def single_run(config):
 
     t0 = time.time()
 
-    train_vjit = jax.jit(jax.vmap(make_test(config, train_state_params, batch_stats)))
+    train_vjit = jax.jit(jax.vmap(make_test(config, train_state_params)))
     train_vjit.lower(rngs).compile()
     compile_time = time.time()
     print(f"Compile time: {compile_time - t0} seconds.")
