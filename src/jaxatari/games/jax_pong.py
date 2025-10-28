@@ -337,6 +337,7 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo, PongConstants
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: PongState, action: chex.Array) -> Tuple[PongObservation, PongState, float, bool, PongInfo]:
+
         new_player_y, player_speed_b, new_acceleration_counter = self._player_step(
             state.player_y, state.player_speed, state.acceleration_counter, action
         )
