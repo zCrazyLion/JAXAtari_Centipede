@@ -1,17 +1,18 @@
 import pygame
 import jax
 import numpy as np
-import importlib.util
+import importlib
 import inspect
 import os
 import sys
 
-from typing import Tuple
+from typing import Type, Tuple, Dict, Any, List, Callable
+
+from functools import partial
 
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 from jaxatari.wrappers import JaxatariWrapper
 from jaxatari.renderers import JAXGameRenderer
-
 
 def update_pygame(pygame_screen, raster, SCALING_FACTOR=3, WIDTH=400, HEIGHT=300):
     """Updates the Pygame display with the rendered raster.
@@ -184,49 +185,55 @@ def load_game_environment(game: str) -> Tuple[JaxEnvironment, JAXGameRenderer]:
 
     return game, renderer
 
-def load_game_mod(game: str, mod: str) -> JaxEnvironment:
+
+def load_game_mods(game_name: str, mods_config: List[str]) -> Callable:
     """
-    Dynamically loads a game mod from a .py file.
-    It looks for a class that inherits from JaxatariWrapper.
+    Dynamically loads and configures the single mod class (KangarooEnvMod) 
+    using a list of mod strings.
+
+    Args:
+        game_name: The name of the game (e.g., 'kangaroo').
+        mods_config: A list of mod strings (e.g., ['no_monkey', 'no_falling_coconut']).
+
+    Returns:
+        A callable function that takes the base environment and returns the 
+        wrapped environment instance configured with the specified mods.
+
+    Raises:
+        ImportError: If the mod module or class cannot be found.
     """
-    # Get the project root directory (parent of scripts directory)
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(script_dir)
-    mod_file_path = os.path.join(project_root, "src", "jaxatari", "games", "mods", f"{game.lower()}_mods.py")
-    
-    if not os.path.exists(mod_file_path):
-        raise FileNotFoundError(f"Mod file not found: {mod_file_path}")
-
-    module_name = os.path.splitext(os.path.basename(mod_file_path))[0]
-
-    # Add the directory of the mod file to sys.path to handle relative imports within the mod file
-    mod_dir = os.path.dirname(os.path.abspath(mod_file_path))
-    if mod_dir not in sys.path:
-        sys.path.insert(0, mod_dir)
-
-    spec = importlib.util.spec_from_file_location(module_name, mod_file_path)
-    if spec is None:
-        raise ImportError(f"Could not load spec for module {module_name} from {mod_file_path}")
-
-    mod_module = importlib.util.module_from_spec(spec)
     try:
-        spec.loader.exec_module(mod_module)
-    except Exception as e:
-        if mod_dir in sys.path and sys.path[0] == mod_dir:  # Clean up sys.path if we added to it
-            sys.path.pop(0)
-        raise ImportError(f"Could not execute module {module_name}: {e}")
+        # 1. Dynamically import the game's mod file (e.g., 'jaxatari.games.mods.kangaroo_mods')
+        module_path = f"jaxatari.games.mods.{game_name.lower()}_mods"
+        mod_module = importlib.import_module(module_path)
 
-    if mod_dir in sys.path and sys.path[0] == mod_dir:  # Clean up sys.path if we added to it
-        sys.path.pop(0)
+        # 2. Assume the single mod class is named 'KangarooEnvMod'
+        mod_class = getattr(mod_module, f"{game_name}EnvMod")
 
-    # Find the class that inherits from JaxatariWrapper
-    for name, obj in inspect.getmembers(mod_module):
-        if inspect.isclass(obj) and issubclass(obj, JaxatariWrapper) and obj is not JaxatariWrapper:
-            if name.lower() != mod.lower():
-                continue
-            print(f"Found game mod: {name}")
-            return obj  # return the mod class
+        # 3. Return a partial function to instantiate the class with the mods_config list.
+        # This callable will be used in the main script: `env = mod_fn(env)`
+        if mods_config:
+            print(f"Loading mod configuration for {game_name}: {mods_config}")
+        
+        return partial(mod_class, mods_config=mods_config)
 
-    raise ImportError(f"No class found in {mod_file_path} that inherits from JaxatariWrapper")
+    except ImportError as e:
+        # Check if the mod module exists but the class name is wrong, or if module failed to load.
+        raise ImportError(
+            f"Could not load mod module for game '{game_name}' or class 'KangarooEnvMod'. "
+            f"Ensure the file {module_path}.py exists and contains the class. Details: {e}"
+        )
+    except AttributeError:
+        # This handles the case where the module loaded but the class is missing.
+        raise ImportError(
+            f"Mod class 'KangarooEnvMod' not found in module {module_path}. "
+            f"Please ensure the class name is correct."
+        )
+
+    except ImportError as e:
+        raise ImportError(
+            f"Could not load mod module for game '{game_name}' or mod '{mod_name}'. "
+            f"Details: {e}"
+        )
 
 

@@ -7,7 +7,7 @@ import jax.random as jrandom
 import numpy as np
 
 from jaxatari.environment import JAXAtariAction
-from utils import get_human_action, load_game_environment, load_game_mod, update_pygame
+from utils import get_human_action, load_game_environment, load_game_mods, update_pygame
 
 UPSCALE_FACTOR = 4
 
@@ -31,10 +31,11 @@ def main():
         help="Name of the game to play (e.g. 'freeway', 'pong'). The game must be in the src/jaxatari/games directory.",
     )
     parser.add_argument(
-        "-m", "--mod",
+        "-m", "--mods",
+        nargs='+',
         type=str,
         required=False,
-        help="Name of the mod class.",
+        help="Name of the mods class.",
     )
 
     mode_group = parser.add_mutually_exclusive_group(required=False)
@@ -80,8 +81,8 @@ def main():
     # Load the game environment
     try:
         env, renderer = load_game_environment(args.game)
-        if args.mod is not None:
-            mod = load_game_mod(args.game, args.mod)
+        if args.mods is not None:
+            mod = load_game_mods(args.game, args.mods)
             env = mod(env)
 
         if renderer is None:
