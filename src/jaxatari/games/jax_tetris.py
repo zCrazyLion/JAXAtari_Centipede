@@ -130,7 +130,6 @@ class TetrisInfo(NamedTuple):
     score: chex.Array
     cleared: chex.Array
     game_over: chex.Array
-    all_rewards: chex.Array
 
 # ======================= Environment =====================
 
@@ -327,7 +326,7 @@ class JaxTetris(JaxEnvironment[TetrisState, TetrisObservation, TetrisInfo, Tetri
                         )
 
         reward = (lines_cleared > 0).astype(jnp.float32) * line_clear_score.astype(jnp.float32)
-        info = TetrisInfo(score=new_state.score, cleared=lines_cleared, game_over=game_over, all_rewards=jnp.zeros(1))
+        info = TetrisInfo(score=new_state.score, cleared=lines_cleared, game_over=game_over)
         return new_state, reward, game_over, info
 
     # ----- Spaces -----
@@ -490,14 +489,14 @@ class JaxTetris(JaxEnvironment[TetrisState, TetrisObservation, TetrisInfo, Tetri
                 lambda ss: self._lock_spawn(ss, grid, tick_next, soft_points=jnp.int32(0)),
                 lambda ss: (ss._replace(pos=pos_v, tick=tick_next),
                             jnp.float32(0.0), jnp.bool_(False),
-                            TetrisInfo(score=ss.score, cleared=jnp.int32(0), game_over=ss.game_over, all_rewards=jnp.zeros(1))),
+                            TetrisInfo(score=ss.score, cleared=jnp.int32(0), game_over=ss.game_over)),
                 s
             )
 
         def do_env_reset(_):
             obs, st0 = self.reset(state.key)
             return st0, jnp.float32(0.0), jnp.bool_(False), TetrisInfo(score=st0.score, cleared=jnp.int32(0),
-                                                                       game_over=st0.game_over, all_rewards= jnp.zeros(1))
+                                                                       game_over=st0.game_over)
 
         state, _reward, done, info = lax.cond(
             do_reset, do_env_reset,
@@ -509,7 +508,7 @@ class JaxTetris(JaxEnvironment[TetrisState, TetrisObservation, TetrisInfo, Tetri
         def after_over(ss):
             obs2, st2 = self.reset(ss.key)
             return st2, jnp.float32(0.0), jnp.bool_(False), TetrisInfo(score=st2.score, cleared=jnp.int32(0),
-                                                                       game_over=jnp.bool_(False), all_rewards=jnp.zeros(1))
+                                                                       game_over=jnp.bool_(False))
 
         state, reward, done, info = lax.cond(state.game_over, after_over, lambda s: (s, _reward, done, info), state)
 
@@ -531,8 +530,7 @@ class JaxTetris(JaxEnvironment[TetrisState, TetrisObservation, TetrisInfo, Tetri
         obs = self._get_observation(state)
         reward = self._get_reward(previous_state, state)
         done = self._get_done(state)
-        all_rewards = self._get_all_reward(previous_state, state)
-        info = self._get_info(state, all_rewards)
+        info = self._get_info(state)
         return obs, state, reward, done, info
 
     # ----- Helpers used inside step -----
@@ -550,11 +548,11 @@ class JaxTetris(JaxEnvironment[TetrisState, TetrisObservation, TetrisInfo, Tetri
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: TetrisState, all_rewards: chex.Array = None) -> TetrisInfo:
+    def _get_info(self, state: TetrisState) -> TetrisInfo:
         """
         Extract info (score, cleared lines, game over) from the state.
         """
-        return TetrisInfo(score=state.score, cleared=jnp.int32(0), game_over=state.game_over, all_rewards= all_rewards)
+        return TetrisInfo(score=state.score, cleared=jnp.int32(0), game_over=state.game_over)
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_reward(self, previous_state: TetrisState, state: TetrisState) -> float:
@@ -564,16 +562,6 @@ class JaxTetris(JaxEnvironment[TetrisState, TetrisObservation, TetrisInfo, Tetri
         """
         cleared = state.score - previous_state.score
         return jnp.where(cleared > 0, cleared.astype(jnp.float32), jnp.float32(0.0))
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_reward(self, previous_state: TetrisState, state: TetrisState):
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array(
-            [reward_func(previous_state, state) for reward_func in self.reward_funcs]
-        )
-        return rewards
-
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: TetrisState) -> bool:

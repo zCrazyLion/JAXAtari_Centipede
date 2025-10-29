@@ -74,7 +74,6 @@ class PongObservation(NamedTuple):
 
 class PongInfo(NamedTuple):
     time: jnp.ndarray
-    all_rewards: chex.Array
 
 
 class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo, PongConstants]):
@@ -478,8 +477,7 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo, PongConstants
 
         done = self._get_done(state)
         env_reward = self._get_reward(previous_state, state)
-        all_rewards = self._get_all_reward(previous_state, state)
-        info = self._get_info(state, all_rewards)
+        info = self._get_info(state)
         observation = self._get_observation(state)
 
         return observation, state, env_reward, done, info
@@ -573,23 +571,14 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo, PongConstants
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: PongState, all_rewards: chex.Array = None) -> PongInfo:
-        return PongInfo(time=state.step_counter, all_rewards=all_rewards)
+    def _get_info(self, state: PongState, ) -> PongInfo:
+        return PongInfo(time=state.step_counter)
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_reward(self, previous_state: PongState, state: PongState):
         return (state.player_score - state.enemy_score) - (
             previous_state.player_score - previous_state.enemy_score
         )
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_reward(self, previous_state: PongState, state: PongState):
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array(
-            [reward_func(previous_state, state) for reward_func in self.reward_funcs]
-        )
-        return rewards
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: PongState) -> bool:
