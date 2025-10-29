@@ -184,7 +184,6 @@ class WordZapperInfo(NamedTuple):
     step_counter: jnp.ndarray
     timer: jnp.ndarray
     finished_level_count: jnp.ndarray
-    all_rewards: jnp.ndarray
 
 
 def load_sprites():
@@ -1313,20 +1312,12 @@ class JaxWordZapper(JaxEnvironment[WordZapperState, WordZapperObservation, WordZ
         return state.score - previous_state.score
     
     @partial(jax.jit, static_argnums=(0,))
-    def _get_all_rewards(self, previous_state: WordZapperState, state: WordZapperState) -> jnp.ndarray:
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array([reward_func(previous_state, state) for reward_func in self.reward_funcs])
-        return rewards
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: WordZapperState, all_rewards: jnp.ndarray = None) -> WordZapperInfo:
+    def _get_info(self, state: WordZapperState) -> WordZapperInfo:
         return WordZapperInfo(
             score=state.score,
             step_counter=state.step_counter,
             timer=state.timer,
             finished_level_count=state.finised_level_count,
-            all_rewards=all_rewards,
         )
     
     def _advance_phase(self, state: WordZapperState):
@@ -1824,8 +1815,7 @@ class JaxWordZapper(JaxEnvironment[WordZapperState, WordZapperObservation, WordZ
         observation = self._get_observation(state)
         done = self._get_done(state)
         env_reward = self._get_env_reward(previous_state, state)
-        all_rewards = self._get_all_rewards(previous_state, state)
-        info = self._get_info(state, all_rewards)
+        info = self._get_info(state)
 
         return observation, state, env_reward, done, info
 

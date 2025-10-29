@@ -221,7 +221,6 @@ class ChopperCommandObservation(NamedTuple):
 
 class ChopperCommandInfo(NamedTuple):
     step_counter: jnp.ndarray  # Current step count
-    all_rewards: jnp.ndarray  # All rewards for the current step
 
 # RENDER CONSTANTS
 def load_sprites():
@@ -558,22 +557,14 @@ class JaxChopperCommand(JaxEnvironment[ChopperCommandState, ChopperCommandObserv
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: ChopperCommandState, all_rewards: jnp.ndarray = None) -> ChopperCommandInfo:
+    def _get_info(self, state: ChopperCommandState) -> ChopperCommandInfo:
         return ChopperCommandInfo(
             step_counter=state.step_counter,
-            all_rewards=all_rewards,
         )
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_reward(self, previous_state: ChopperCommandState, state: ChopperCommandState):
         return state.score - previous_state.score
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_rewards(self, previous_state: ChopperCommandState, state: ChopperCommandState) -> jnp.ndarray:
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array([reward_func(previous_state, state) for reward_func in self.reward_funcs])
-        return rewards
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: ChopperCommandState) -> bool:
@@ -1942,8 +1933,7 @@ class JaxChopperCommand(JaxEnvironment[ChopperCommandState, ChopperCommandObserv
 
         done        = self._get_done(step_state)
         env_reward  = self._get_reward(prev, step_state)
-        all_rewards = self._get_all_rewards(prev, step_state)
-        info        = self._get_info(step_state, all_rewards)
+        info        = self._get_info(step_state)
 
         # Return matching your caller (obs, state, reward, done, info)
         return observation, step_state, env_reward, done, info

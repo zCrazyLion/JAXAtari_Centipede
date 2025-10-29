@@ -339,7 +339,6 @@ class SirLancelotInfo(NamedTuple):
     time: jnp.ndarray
     level_complete: jnp.ndarray
     consecutive_kills: jnp.ndarray
-    all_rewards: jnp.ndarray
 
 
 # -----------------------------------------------------------------------------
@@ -852,9 +851,8 @@ class JaxSirLancelot(JaxEnvironment[SirLancelotState, SirLancelotObservation, Si
         reward = new_state.score - state.score
         # Game ends on game over only (levels loop back after 8)
         done = new_state.game_over
-        all_rewards = self._get_all_rewards(state, new_state)
 
-        return self._get_observation(new_state), new_state, reward, done, self._get_info(new_state, all_rewards)
+        return self._get_observation(new_state), new_state, reward, done, self._get_info(new_state)
     
     def _advance_to_next_level(self, state: SirLancelotState) -> SirLancelotState:
         """Advance to the next level or loop back after level 8.
@@ -2517,12 +2515,11 @@ class JaxSirLancelot(JaxEnvironment[SirLancelotState, SirLancelotObservation, Si
         )
     
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: SirLancelotState, all_rewards: jnp.ndarray = None) -> SirLancelotInfo:
+    def _get_info(self, state: SirLancelotState) -> SirLancelotInfo:
         return SirLancelotInfo(
             time=state.time,
             level_complete=state.stage_complete,
             consecutive_kills=state.consecutive_quick_kills,
-            all_rewards=all_rewards
         )
     
     def _get_done(self, state: SirLancelotState) -> bool:
@@ -2530,13 +2527,6 @@ class JaxSirLancelot(JaxEnvironment[SirLancelotState, SirLancelotObservation, Si
     
     def _get_reward(self, previous_state: SirLancelotState, current_state: SirLancelotState) -> float:
         return (current_state.score - previous_state.score).astype(jnp.float32)
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_rewards(self, previous_state: SirLancelotState, current_state: SirLancelotState) -> jnp.ndarray:
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array([reward_func(previous_state, current_state) for reward_func in self.reward_funcs])
-        return rewards
 
     def render(self, state: SirLancelotState):
         """Render the current game state.

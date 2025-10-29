@@ -221,7 +221,6 @@ class PhoenixObservation(NamedTuple):
 
 class PhoenixInfo(NamedTuple):
     step_counter: jnp.ndarray
-    all_rewards: jnp.ndarray
 
 class CarryState(NamedTuple):
     score: chex.Array
@@ -271,19 +270,9 @@ class JaxPhoenix(JaxEnvironment[PhoenixState, PhoenixObservation, PhoenixInfo, N
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_all_rewards(self, previous_state: PhoenixState, state: PhoenixState):
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array(
-            [reward_func(previous_state, state) for reward_func in self.reward_funcs]
-        )
-        return rewards
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: PhoenixState, all_rewards: chex.Array = None) -> PhoenixInfo:
+    def _get_info(self, state: PhoenixState) -> PhoenixInfo:
         return PhoenixInfo(
             step_counter=state.step_counter,
-            all_rewards=all_rewards
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -1142,8 +1131,7 @@ class JaxPhoenix(JaxEnvironment[PhoenixState, PhoenixObservation, PhoenixInfo, N
         observation = self._get_observation(return_state)
         env_reward = jnp.where(enemy_hit_detected, 1.0, 0.0)
         done = self._get_done(return_state)
-        all_rewards = self._get_all_rewards(state, return_state)
-        info = self._get_info(return_state, all_rewards)
+        info = self._get_info(return_state)
         return observation, return_state, env_reward, done, info
 
     def render(self, state:PhoenixState) -> jnp.ndarray:

@@ -137,7 +137,6 @@ class VideoPinballInfo(NamedTuple):
     ball_in_play: chex.Array
     respawn_timer: chex.Array
     tilt_counter: chex.Array
-    all_rewards: chex.Array
 
 
 class VideoPinballConstants(NamedTuple):

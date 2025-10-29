@@ -449,8 +449,7 @@ class JaxVideoPinball(
 
         done = self._get_done(new_state)
         env_reward = self._get_reward(state, new_state)
-        all_rewards = self._get_all_reward(state, new_state)
-        info = self._get_info(new_state, all_rewards)
+        info = self._get_info(new_state)
         observation = self._get_observation(new_state)
 
         return observation, new_state, env_reward, done, info
@@ -973,7 +972,7 @@ class JaxVideoPinball(
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_info(
-        self, state: VideoPinballState, all_rewards: chex.Array = None
+        self, state: VideoPinballState
     ) -> VideoPinballInfo:
         """
         Description
@@ -985,8 +984,6 @@ class JaxVideoPinball(
             ----------
             state : VideoPinballState
                 Current environment state from which fields are sampled.
-            all_rewards : Optional[chex.Array]
-                Optional array of reward function outputs. Defaults to None.
 
         Returns
             ----------
@@ -1005,25 +1002,12 @@ class JaxVideoPinball(
             ball_in_play=state.ball_in_play,
             respawn_timer=state.respawn_timer,
             tilt_counter=state.tilt_counter,
-            all_rewards=all_rewards,
         )
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_reward(self, previous_state: VideoPinballState, state: VideoPinballState):
         """The reward is the difference in score between the previous and current state."""
         return jnp.subtract(state.score, previous_state.score)
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_reward(
-        self, previous_state: VideoPinballState, state: VideoPinballState
-    ):
-        """Calculate all rewards from the list of reward functions."""
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array(
-            [reward_func(previous_state, state) for reward_func in self.reward_funcs]
-        )
-        return rewards
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: VideoPinballState) -> bool:

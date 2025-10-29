@@ -368,7 +368,6 @@ class HangmanObservation(NamedTuple):
 
 class HangmanInfo(NamedTuple):
     time: chex.Array
-    all_rewards: chex.Array
 
 # helpers funcutions
 @jax.jit
@@ -932,10 +931,9 @@ class JaxHangman(JaxEnvironment[HangmanState, HangmanObservation, HangmanInfo, A
 
         done = self._get_done(next_state)                 # stays False
         env_reward = self._get_env_reward(state, next_state)
-        all_rewards = self._get_all_rewards(state, next_state)
 
         obs = self._get_observation(next_state)
-        info = self._get_info(next_state, all_rewards)
+        info = self._get_info(next_state)
         return obs, next_state, env_reward, done, info
 
     def action_space(self) -> spaces.Discrete:
@@ -986,12 +984,6 @@ class JaxHangman(JaxEnvironment[HangmanState, HangmanObservation, HangmanInfo, A
         return state.reward
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_all_rewards(self, previous_state: HangmanState, state: HangmanState):
-        if self.reward_funcs is None:
-            return jnp.zeros(1, dtype=jnp.float32)
-        return jnp.array([rf(previous_state, state) for rf in self.reward_funcs], dtype=jnp.float32)
-
-    @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: HangmanState) -> bool:
         return state.done
 
@@ -999,8 +991,5 @@ class JaxHangman(JaxEnvironment[HangmanState, HangmanObservation, HangmanInfo, A
     def render(self, state: HangmanState) -> jnp.ndarray:
         return self.renderer.render(state)
 
-    def _get_info(self, state: HangmanState, all_rewards: Optional[chex.Array] = None) -> HangmanInfo:
-        if all_rewards is None:
-            n = 1 if self.reward_funcs is None else len(self.reward_funcs)
-            all_rewards = jnp.zeros((n,), dtype=jnp.float32)
-        return HangmanInfo(time=state.step_counter, all_rewards=all_rewards)
+    def _get_info(self, state: HangmanState) -> HangmanInfo:
+        return HangmanInfo(time=state.step_counter)

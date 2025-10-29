@@ -220,9 +220,6 @@ class SlotMachineInfo(NamedTuple):
     player1_spins_played: jnp.ndarray
     player2_spins_played: jnp.ndarray
 
-    # Keeps track of rewards for use by external api
-    all_rewards: Optional[jnp.ndarray] = None
-
 
 class SlotMachineConstants(NamedTuple):
     """
@@ -834,8 +831,7 @@ class JaxSlotMachine(JaxEnvironment[SlotMachineState, SlotMachineObservation, Sl
         
         def early_return():
             obs = self._get_observation(state)
-            all_rewards = self._get_all_reward(previous_state, state)
-            info = self._get_info(state, all_rewards)
+            info = self._get_info(state)
             return obs, state, 0.0, True, info
             
         def continue_game():
@@ -977,8 +973,7 @@ class JaxSlotMachine(JaxEnvironment[SlotMachineState, SlotMachineObservation, Sl
             done = self._get_done(new_state)
 
             obs = self._get_observation(new_state)
-            all_rewards = self._get_all_reward(previous_state, new_state)
-            info = self._get_info(new_state, all_rewards)
+            info = self._get_info(new_state)
 
             return obs, new_state, reward, done, info
         
@@ -1427,24 +1422,9 @@ class JaxSlotMachine(JaxEnvironment[SlotMachineState, SlotMachineObservation, Sl
         ]
         return jnp.concatenate(components, axis=0)
 
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_reward(
-        self,
-        previous_state: SlotMachineState,
-        state: SlotMachineState,
-    ) -> jnp.ndarray:
-        if self.reward_funcs is None:
-            return jnp.zeros(1, dtype=jnp.float32)
-        rewards = jnp.array(
-            [reward_func(previous_state, state) for reward_func in self.reward_funcs],
-            dtype=jnp.float32,
-        )
-        return rewards
-
     def _get_info(
         self,
         state: SlotMachineState,
-        all_rewards: Optional[jnp.ndarray] = None,
     ) -> SlotMachineInfo:
 
         return SlotMachineInfo(
@@ -1452,7 +1432,6 @@ class JaxSlotMachine(JaxEnvironment[SlotMachineState, SlotMachineObservation, Sl
             player2_total_winnings=state.player2_total_winnings,
             player1_spins_played=state.player1_spins_played,
             player2_spins_played=state.player2_spins_played,
-            all_rewards=all_rewards,
         )
 
     def _get_reward(

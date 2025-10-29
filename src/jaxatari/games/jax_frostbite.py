@@ -379,7 +379,6 @@ class FrostbiteObservation(NamedTuple):
 class FrostbiteInfo(NamedTuple):
     """Simple info"""
     level: jnp.ndarray
-    all_rewards: chex.Array
 
 
 # ==========================================================================================
@@ -969,20 +968,9 @@ class JaxFrostbite(JaxEnvironment[FrostbiteState, FrostbiteObservation, Frostbit
                 ((bcd_score[2] >> 4) & 0xF) * 10 +
                 (bcd_score[2] & 0xF)).astype(jnp.int32)
 
-    def _get_info(self, state: FrostbiteState, all_rewards: chex.Array = None) -> FrostbiteInfo:
-        """Get game info including all_rewards for compatibility."""
-        if all_rewards is None:
-            all_rewards = jnp.zeros(1, dtype=jnp.float32)
-        return FrostbiteInfo(level=state.level, all_rewards=all_rewards)
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_reward(self, previous_state: FrostbiteState, state: FrostbiteState):
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array(
-            [reward_func(previous_state, state) for reward_func in self.reward_funcs]
-        )
-        return rewards
+    def _get_info(self, state: FrostbiteState) -> FrostbiteInfo:
+        """Get game info"""
+        return FrostbiteInfo(level=state.level)
 
     @partial(jax.jit, static_argnums=(0,))
     def _step_once(self, state: FrostbiteState, action: int) -> tuple:
@@ -1069,10 +1057,9 @@ class JaxFrostbite(JaxEnvironment[FrostbiteState, FrostbiteObservation, Frostbit
         # Calculate reward and done using dedicated methods
         reward = self._get_reward(prev_state, state)
         done = self._get_done(state)
-        all_rewards = self._get_all_reward(prev_state, state)
 
         obs = self._get_observation(state)
-        info = self._get_info(state, all_rewards)
+        info = self._get_info(state)
 
         return obs, state, reward, done, info
 

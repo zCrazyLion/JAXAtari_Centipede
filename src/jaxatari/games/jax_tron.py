@@ -304,7 +304,6 @@ class TronInfo(NamedTuple):
     enemy_global_fire_cd: Array  # () int32
     game_started: Array  # () bool
     frame_idx: Array  # () int32
-    all_rewards: Array
 
 
 # Organize all helper functions concerning the disc-movement in this class
@@ -2773,9 +2772,8 @@ class JaxTron(JaxEnvironment[TronState, TronObservation, TronInfo, TronConstants
         )
 
         obs: TronObservation = self._get_observation(state)
-        all_rewards = self._get_all_reward(previous_state, state)
         env_reward = self._get_reward(previous_state, state)
-        info: TronInfo = self._get_info(state, all_rewards)
+        info: TronInfo = self._get_info(state)
         done: bool = self._get_done(state)
 
         return obs, state, env_reward, done, info
@@ -2912,7 +2910,7 @@ class JaxTron(JaxEnvironment[TronState, TronObservation, TronInfo, TronConstants
         return state.player_gone
 
     @partial(jit, static_argnums=(0,))
-    def _get_info(self, state: TronState, all_reward: Array = None) -> TronInfo:
+    def _get_info(self, state: TronState) -> TronInfo:
         # Counts / booleans
         enemies_alive_count = jnp.sum(state.enemies.alive.astype(jnp.int32))
         discs_active_count = jnp.sum(
@@ -2940,7 +2938,6 @@ class JaxTron(JaxEnvironment[TronState, TronObservation, TronInfo, TronConstants
             enemy_global_fire_cd=state.enemy_global_fire_cd.astype(jnp.int32),
             game_started=state.game_started,
             frame_idx=state.frame_idx.astype(jnp.int32),
-            all_rewards=all_reward,
         )
 
     def action_space(self) -> spaces.Discrete:
@@ -2954,15 +2951,6 @@ class JaxTron(JaxEnvironment[TronState, TronObservation, TronInfo, TronConstants
             shape=(c.screen_height, c.screen_width, 3),
             dtype=jnp.uint8,
         )
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_reward(self, previous_state: TronState, state: TronState):
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array(
-            [reward_func(previous_state, state) for reward_func in self.reward_funcs]
-        )
-        return rewards
 
     @partial(jax.jit, static_argnums=(0,))
     def obs_to_flat_array(self, obs: EnvObs) -> Array:

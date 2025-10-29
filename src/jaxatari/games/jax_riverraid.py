@@ -104,7 +104,6 @@ class RiverraidState(NamedTuple):
 
 class RiverraidInfo(NamedTuple):
     time: jnp.ndarray
-    all_rewards: chex.Array
 
 
 class RiverraidObservation(NamedTuple):
@@ -1686,9 +1685,8 @@ class JaxRiverraid(JaxEnvironment):
 
         observation = self._get_observation(new_state)
         env_reward = self._get_reward(state, new_state)
-        all_rewards = self._get_all_reward(state, new_state)
         done = self._get_done(new_state)
-        info = self._get_info(new_state, all_rewards)
+        info = self._get_info(new_state)
 
         return observation, new_state, env_reward, done, info
 
@@ -1728,15 +1726,6 @@ class JaxRiverraid(JaxEnvironment):
         return state.player_score - previous_state.player_score
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_all_reward(self, previous_state: RiverraidState, state: RiverraidState) -> chex.Array:
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array(
-            [reward_func(previous_state, state) for reward_func in self.reward_funcs]
-        )
-        return rewards
-
-    @partial(jax.jit, static_argnums=(0,))
     def obs_to_flat_array(self, obs: RiverraidObservation) -> chex.Array:
         return jnp.concatenate(
             [
@@ -1765,21 +1754,11 @@ class JaxRiverraid(JaxEnvironment):
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: RiverraidState, all_rewards: chex.Array = None) -> RiverraidInfo:
+    def _get_info(self, state: RiverraidState) -> RiverraidInfo:
         """
-        Creates the info object. The all_rewards argument is optional to handle
-        the case where this is called during a reset() by the Gymnasium wrapper,
-        where no rewards have been computed yet.
+        Creates the info object.
         """
-        if all_rewards is None:
-            # If no reward functions are defined, default to a single zero reward.
-            if self.reward_funcs is None:
-                all_rewards = jnp.zeros(1)
-            # Otherwise, create a zero array matching the number of reward functions.
-            else:
-                all_rewards = jnp.zeros(len(self.reward_funcs))
-
-        return RiverraidInfo(time=state.turn_step_linear, all_rewards=all_rewards)
+        return RiverraidInfo(time=state.turn_step_linear)
 
 
 def load_sprites():

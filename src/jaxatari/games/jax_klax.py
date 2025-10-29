@@ -195,7 +195,6 @@ class KlaxObservation(NamedTuple):
 
 class KlaxInfo(NamedTuple):
     time: chex.Array
-    all_rewards: chex.Array
 
 
 class KlaxState(NamedTuple):
@@ -482,16 +481,9 @@ class JaxKlax(JaxEnvironment[KlaxState, KlaxObservation, KlaxInfo, KlaxConstants
             val = jax.lax.switch(i, self._rf_branches, operand)
             return arr.at[i].set(val)
 
-        all_rewards = jax.lax.fori_loop(
-            0,
-            jnp.int32(self._rf_eff_len),
-            body,
-            jnp.zeros((self._rf_eff_len,), dtype=jnp.float32),
-        )
-
         done = self._get_done(new_state)
         obs = self._get_observation(new_state)
-        info = self._get_info(new_state, all_rewards)
+        info = self._get_info(new_state)
         return obs, new_state, base_reward, done, info
 
     @partial(jax.jit, static_argnums=(0,))
@@ -971,8 +963,8 @@ class JaxKlax(JaxEnvironment[KlaxState, KlaxObservation, KlaxInfo, KlaxConstants
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: KlaxState, all_rewards: chex.Array = None) -> KlaxInfo:
-        return KlaxInfo(time=state.step_counter, all_rewards=all_rewards)
+    def _get_info(self, state: KlaxState) -> KlaxInfo:
+        return KlaxInfo(time=state.step_counter)
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_reward(self, previous_state: KlaxState, state: KlaxState) -> jnp.float32:

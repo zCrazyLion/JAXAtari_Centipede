@@ -115,8 +115,7 @@ class AsterixObservation(NamedTuple):
 
 
 class AsterixInfo(NamedTuple):
-    all_rewards: jnp.ndarray
-
+    pass 
 
 class JaxAsterix(JaxEnvironment[AsterixState, AsterixObservation, AsterixInfo, AsterixConstants]):
     def __init__(self, consts: AsterixConstants = None, reward_funcs: list[callable] = None):
@@ -628,9 +627,8 @@ class JaxAsterix(JaxEnvironment[AsterixState, AsterixObservation, AsterixInfo, A
 
         done = self._get_done(new_state)
         env_reward = self._get_reward(state, new_state)
-        all_rewards = self._get_all_reward(state, new_state)
         obs = self._get_observation(new_state)
-        info = self._get_info(new_state, all_rewards)
+        info = self._get_info(new_state)
 
         return obs, new_state, env_reward, done, info
 
@@ -646,21 +644,12 @@ class JaxAsterix(JaxEnvironment[AsterixState, AsterixObservation, AsterixInfo, A
 
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: AsterixState, all_rewards: chex.Array = None) -> AsterixInfo:
-        return AsterixInfo(all_rewards=all_rewards)
+    def _get_info(self, state: AsterixState) -> AsterixInfo:
+        return AsterixInfo()
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_reward(self, previous_state: AsterixState, state: AsterixState):
         return state.score - previous_state.score
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_reward(self, previous_state: AsterixState, state: AsterixState):
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array(
-            [reward_func(previous_state, state) for reward_func in self.reward_funcs]
-        )
-        return rewards
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: AsterixState) -> bool:

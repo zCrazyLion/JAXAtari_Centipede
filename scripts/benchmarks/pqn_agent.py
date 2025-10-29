@@ -20,14 +20,14 @@ import optax
 import flax.linen as nn
 from flax.training.train_state import TrainState
 from flax.core.frozen_dict import FrozenDict
-from jaxatari.wrappers import AtariWrapper, PixelObsWrapper, FlattenObservationWrapper, LogWrapper, ObjectCentricWrapper, NormalizeObservationWrapper
+from jaxatari.wrappers import AtariWrapper, MultiRewardWrapper, PixelObsWrapper, FlattenObservationWrapper, LogWrapper, ObjectCentricWrapper, NormalizeObservationWrapper, MultiRewardWrapper, MultiRewardLogWrapper
 import hydra
 from omegaconf import OmegaConf
 
 import jaxatari
 import wandb
 
-from .train_utils import video_callback, save_params
+from train_utils import video_callback, save_params
 
 class CNN(nn.Module):
 

@@ -280,7 +280,6 @@ class BankHeistObservation(NamedTuple):
 
 class BankHeistInfo(NamedTuple):
     time: jnp.ndarray
-    all_rewards: jnp.ndarray
 
 class JaxBankHeist(JaxEnvironment[BankHeistState, BankHeistObservation, BankHeistInfo, BankHeistConstants]):
     
@@ -1097,7 +1096,6 @@ class JaxBankHeist(JaxEnvironment[BankHeistState, BankHeistObservation, BankHeis
         # Create info
         info = BankHeistInfo(
             time=new_state.time,
-            all_rewards=jnp.array([reward])
         )
 
         
@@ -1250,8 +1248,8 @@ class JaxBankHeist(JaxEnvironment[BankHeistState, BankHeistObservation, BankHeis
         return self.renderer.render(state)
     
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: BankHeistInfo, all_rewards: chex.Array = None) -> BankHeistInfo:
-        return BankHeistInfo(time=state.time, all_rewards=all_rewards)
+    def _get_info(self, state: BankHeistInfo) -> BankHeistInfo:
+        return BankHeistInfo(time=state.time)
     
     @partial(jax.jit, static_argnums=(0,))
     def _get_reward(self, previous_state: BankHeistState, current_state: BankHeistState) -> chex.Array:

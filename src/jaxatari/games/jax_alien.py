@@ -38,7 +38,6 @@ class AlienObservation(NamedTuple):
 class AlienInfo(NamedTuple):
     score: jnp.ndarray
     step_counter: jnp.ndarray
-    all_rewards: jnp.ndarray
     
 class AlienConstants(NamedTuple):
     SEED: int = 42 #seed for randomness
@@ -1268,9 +1267,8 @@ class JaxAlien(JaxEnvironment[AlienState, AlienObservation, AlienInfo, AlienCons
         # Here is info and observation secured
         observation = self._get_observation(new_state)
         env_reward = self._get_env_reward(state,new_state)
-        all_reward = self._get_all_rewards(state,new_state)
         done = self._get_done(new_state)
-        alieninfo = self._get_info(new_state,all_reward)
+        alieninfo = self._get_info(new_state)
                 
         return   (observation, new_state, env_reward, done, alieninfo)
 
@@ -1331,12 +1329,11 @@ class JaxAlien(JaxEnvironment[AlienState, AlienObservation, AlienInfo, AlienCons
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: AlienState, all_rewards: jnp.ndarray=None) -> AlienInfo:
+    def _get_info(self, state: AlienState) -> AlienInfo:
         """Returns auxiliary information about the game state.
 
         Args:
             state (AlienState): state of the game
-            all_rewards (jnp.ndarray, optional):  Defaults to None.
 
         Returns:
             AlienInfo: the information
@@ -1344,7 +1341,6 @@ class JaxAlien(JaxEnvironment[AlienState, AlienObservation, AlienInfo, AlienCons
         return AlienInfo(
             score=state.level.score, # Current game score
             step_counter = state.step_counter, # Number of steps taken in the environment
-            all_rewards= all_rewards # Optional: all rewards across steps
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -1398,27 +1394,6 @@ class JaxAlien(JaxEnvironment[AlienState, AlienObservation, AlienInfo, AlienCons
         )
         # Remove any unnecessary dimensions (e.g. from concatenation)
         return jnp.squeeze(ret)
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_rewards(self, previous_state: AlienState, state: AlienState) -> jnp.ndarray:
-        """Computes all rewards from the list of reward functions.
-
-       Args:
-           previous_state (AlienState): The previous game state.
-           state (AlienState): The current game state.
-
-       Returns:
-           jnp.ndarray: Array of rewards, one per reward function.
-       """
-        # If no reward functions are defined, return a zero array
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        # Apply each reward function to (previous_state, state)
-        rewards = jnp.array(
-            [reward_func(previous_state, state) for reward_func in self.reward_funcs]
-        )
-        return rewards
-
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: AlienState) -> bool:

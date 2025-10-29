@@ -374,7 +374,6 @@ class KingKongObservation(NamedTuple):
 
 class KingKongInfo(NamedTuple):
 	time: chex.Array
-	all_rewards: chex.Array
 
 class JaxKingKong(JaxEnvironment[KingKongState, KingKongObservation, KingKongInfo, KingKongConstants]):
 	def __init__(self, consts: KingKongConstants = None, reward_funcs: list[callable]=None):
@@ -486,8 +485,7 @@ class JaxKingKong(JaxEnvironment[KingKongState, KingKongObservation, KingKongInf
 		
 		done = self._get_done(new_state)
 		env_reward = self._get_reward(state, new_state)
-		all_rewards = self._get_all_reward(state, new_state)
-		info = self._get_info(new_state, all_rewards)
+		info = self._get_info(new_state)
 		observation = self._get_observation(new_state)
 	
 		return observation, new_state, env_reward, done, info
@@ -2130,21 +2128,12 @@ class JaxKingKong(JaxEnvironment[KingKongState, KingKongObservation, KingKongInf
 		)
 
 	@partial(jax.jit, static_argnums=(0,))
-	def _get_info(self, state: KingKongState, all_rewards: chex.Array = None) -> KingKongInfo:
-		return KingKongInfo(time=state.step_counter, all_rewards=all_rewards)
+	def _get_info(self, state: KingKongState) -> KingKongInfo:
+		return KingKongInfo(time=state.step_counter)
 
 	@partial(jax.jit, static_argnums=(0,))
 	def _get_reward(self, previous_state: KingKongState, state: KingKongState):
 		return state.score - previous_state.score # could be changed to also account for bonus timer e.g. 
-
-	@partial(jax.jit, static_argnums=(0,))
-	def _get_all_reward(self, previous_state: KingKongState, state: KingKongState):
-		if self.reward_funcs is None:
-			return jnp.zeros(1)
-		rewards = jnp.array(
-			[reward_func(previous_state, state) for reward_func in self.reward_funcs]
-		)
-		return rewards
 
 	@partial(jax.jit, static_argnums=(0,))
 	def _get_done(self, state: KingKongState) -> bool:

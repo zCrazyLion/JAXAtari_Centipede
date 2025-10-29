@@ -89,7 +89,6 @@ class SkiingObservation(NamedTuple):
 
 class SkiingInfo(NamedTuple):
     time: jnp.ndarray
-    all_rewards: jnp.ndarray
 
 
 class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, SkiingConstants]):
@@ -679,8 +678,7 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, SkiingC
         reward = self._get_reward(state, new_state)
         reward = jnp.array(reward, dtype=jnp.float32)
         obs = self._get_observation(new_state)
-        all_rewards = self._get_all_rewards(state, new_state)
-        info = self._get_info(new_state, all_rewards)
+        info = self._get_info(new_state)
         return obs, new_state, reward, done, info
 
     @partial(jax.jit, static_argnums=(0,))
@@ -732,13 +730,9 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, SkiingC
 
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: GameState, all_rewards: jnp.ndarray | None = None) -> SkiingInfo:
-        # Accept optional all_rewards so wrappers that call _get_info(state) still work.
-        if all_rewards is None:
-            all_rewards = jnp.zeros((1,), dtype=jnp.float32)
+    def _get_info(self, state: GameState) -> SkiingInfo:
         return SkiingInfo(
             time=state.time,
-            all_rewards=all_rewards,
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -748,15 +742,6 @@ class JaxSkiing(JaxEnvironment[GameState, SkiingObservation, SkiingInfo, SkiingC
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: GameState) -> bool:
         return jnp.greater_equal(state.gates_seen, 20)
-    
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_rewards(self, previous_state: GameState, state: GameState) -> jnp.ndarray:
-        # Falls keine Liste übergeben wurde → 1-dimensionaler Nullvektor
-        if self.reward_funcs is None or len(self.reward_funcs) == 0:
-            return jnp.zeros((1,), dtype=jnp.float32)
-        # Liste statisch → comprehension ist JIT-ok
-        rewards = jnp.array([rf(previous_state, state) for rf in self.reward_funcs], dtype=jnp.float32)
-        return rewards
 
 
 @dataclass

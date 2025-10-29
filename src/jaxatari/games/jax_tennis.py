@@ -1468,7 +1468,7 @@ class TennisObs(NamedTuple):
 
 
 class TennisInfo(NamedTuple):
-    all_rewards: jnp.ndarray
+    pass 
 
 
 class TennisConstants(NamedTuple):
@@ -1545,14 +1545,6 @@ class TennisJaxEnv(JaxEnvironment[TennisState, TennisObs, TennisInfo, TennisCons
         self.reward_funcs = reward_funcs
         self.renderer = TennisRenderer(consts)
 
-    def _get_all_reward(self, previous_state: TennisState, state: TennisState):
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array(
-            [reward_func(previous_state, state) for reward_func in self.reward_funcs]
-        )
-        return rewards
-
     def reset(self, key) -> Tuple[TennisObs, TennisState]:
         reset_state = tennis_reset(self.consts)
         reset_obs = self._get_observation(reset_state)
@@ -1563,9 +1555,8 @@ class TennisJaxEnv(JaxEnvironment[TennisState, TennisObs, TennisInfo, TennisCons
         new_state = tennis_step(state, action, self.consts)
         new_obs = self._get_observation(new_state)
         reward = self._get_reward(state, new_state)
-        all_rewards = self._get_all_reward(state, new_state)
         done = self._get_done(new_state)
-        info = self._get_info(new_state, all_rewards=all_rewards)
+        info = self._get_info(new_state)
 
         return new_obs, new_state, reward, done, info
 
@@ -1656,8 +1647,8 @@ class TennisJaxEnv(JaxEnvironment[TennisState, TennisObs, TennisInfo, TennisCons
         # 140211275917888, 140211243107184
         #return obs
 
-    def _get_info(self, state: TennisState, all_rewards: jnp.ndarray = None) -> TennisInfo:
-        return TennisInfo(all_rewards=all_rewards)
+    def _get_info(self, state: TennisState) -> TennisInfo:
+        return TennisInfo()
 
     def _get_reward(self, previous_state: TennisState, state: TennisState) -> float:
         return 0.0

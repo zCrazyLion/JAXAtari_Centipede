@@ -251,8 +251,6 @@ class NameThisGameObservation(NamedTuple):
 
 class NameThisGameInfo(NamedTuple):
     """Diagnostics and shaping hooks returned via the `info` dict.
-
-    `all_rewards` can aggregate auxiliary reward terms if provided at init time.
     """
     score: jnp.ndarray
     round: jnp.ndarray
@@ -264,7 +262,6 @@ class NameThisGameInfo(NamedTuple):
     oxygen_line_active: jnp.ndarray
     diver_alive: jnp.ndarray
     lives_remaining: jnp.ndarray
-    all_rewards: jnp.ndarray
 
 
 class NameThisGameConstants(NamedTuple):
@@ -778,7 +775,7 @@ class JaxNameThisGame(
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: NameThisGameState, all_rewards: chex.Array = None) -> NameThisGameInfo:
+    def _get_info(self, state: NameThisGameState) -> NameThisGameInfo:
         """Assemble auxiliary info (diagnostics and optional shaping rewards)."""
 
         return NameThisGameInfo(
@@ -792,7 +789,6 @@ class JaxNameThisGame(
             oxygen_line_active=state.oxygen_line_active.astype(jnp.int32),
             diver_alive=state.diver_alive.astype(jnp.int32),
             lives_remaining=state.lives_remaining,
-            all_rewards=(all_rewards if all_rewards is not None else jnp.zeros(1, jnp.float32)),
         )
 
     # -------------------------- Core helpers -------------------------------
@@ -801,22 +797,6 @@ class JaxNameThisGame(
     @jax.jit
     def _rects_overlap(l1, r1, t1, b1, l2, r2, t2, b2):
         return (l1 < r2) & (r1 > l2) & (t1 < b2) & (b1 > t2)
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_reward(self, prev_state: NameThisGameState, state: NameThisGameState) -> chex.Array:
-        """Compute auxiliary reward components.
-
-        Notes
-        -----
-        `self.reward_funcs` must be a static tuple of callables for JIT stability.
-        Each callable has signature `(prev_state, state) -> float`.
-        """
-
-        if self.reward_funcs is None:
-            return jnp.zeros((1,), jnp.float32)
-        # Python-side list comp is fine under jit if reward_funcs is static
-        rewards = jnp.array([func(prev_state, state) for func in self.reward_funcs], jnp.float32)
-        return rewards
 
     # -------------------------- Update systems -----------------------------
 
@@ -1582,8 +1562,7 @@ class JaxNameThisGame(
         # Outputs
         observation = self._get_observation(state)
         done = self._get_done(state)
-        all_rewards = self._get_all_reward(prev_state, state)
-        info = self._get_info(state, all_rewards)
+        info = self._get_info(state)
         return observation, state, step_reward, done, info
 
     @partial(jax.jit, static_argnums=(0,))
@@ -1608,8 +1587,7 @@ class JaxNameThisGame(
         obs_final = self._get_observation(state_fs)
         done_final = self._get_done(state_fs)
         state_fs = state_fs._replace(reward=total_reward)
-        all_rewards = self._get_all_reward(state, state_fs)
-        info_final = self._get_info(state_fs, all_rewards)
+        info_final = self._get_info(state_fs)
         return obs_final, state_fs, total_reward, done_final, info_final
 
 

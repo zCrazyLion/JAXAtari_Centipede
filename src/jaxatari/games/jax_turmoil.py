@@ -183,7 +183,6 @@ class TurmoilObservation(NamedTuple):
 
 class TurmoilInfo(NamedTuple):
     step_counter: jnp.ndarray  # Current step count
-    all_rewards: jnp.ndarray  # All rewards for the current step
     level: jnp.ndarray # current game level
 
 
@@ -556,23 +555,15 @@ class JaxTurmoil(JaxEnvironment[TurmoilState, TurmoilObservation, TurmoilInfo, T
     
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: TurmoilState, all_rewards: jnp.ndarray = None) -> TurmoilInfo:
+    def _get_info(self, state: TurmoilState) -> TurmoilInfo:
         return TurmoilInfo(
             step_counter=state.step_counter,
-            all_rewards=all_rewards,
             level=state.level,
         )
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_reward(self, previous_state: TurmoilState, state: TurmoilState):
         return state.score - previous_state.score
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_rewards(self, previous_state: TurmoilState, state: TurmoilState) -> jnp.ndarray:
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array([reward_func(previous_state, state) for reward_func in self.reward_funcs])
-        return rewards
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: TurmoilState) -> bool:
@@ -1971,8 +1962,7 @@ class JaxTurmoil(JaxEnvironment[TurmoilState, TurmoilObservation, TurmoilInfo, T
         observation = self._get_observation(return_state)
         done = self._get_done(return_state)
         env_reward = self._get_reward(previous_state, return_state)
-        all_rewards = self._get_all_rewards(previous_state, return_state)
-        info = self._get_info(return_state, all_rewards)
+        info = self._get_info(return_state)
 
         return observation, return_state, env_reward, done, info
 

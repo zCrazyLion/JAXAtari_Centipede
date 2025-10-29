@@ -131,7 +131,6 @@ class BerzerkObservation(NamedTuple):
 
 
 class BerzerkInfo(NamedTuple):
-    all_rewards: chex.Array       # (1,)
     enemies_killed: chex.Array      # (1,)
     level_cleared: chex.Array       # (1,)
 
@@ -737,22 +736,10 @@ class JaxBerzerk(JaxEnvironment[BerzerkState, BerzerkObservation, BerzerkInfo, B
 
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_all_rewards(self, previous_state: BerzerkState, state: BerzerkState) -> jnp.ndarray:
-        points_reward = state.score - previous_state.score
-        enemies_killed_reward = jnp.sum(previous_state.enemy_alive - state.enemy_alive)
-        
-        return jnp.array([points_reward, enemies_killed_reward], dtype=jnp.float32)
-
-
-    @partial(jax.jit, static_argnums=(0,))
     def _get_info(self, state: BerzerkState, previous_state: BerzerkState = None) -> BerzerkInfo:
         if previous_state is None:
-            all_rewards = jnp.zeros(2, dtype=jnp.float32)
             enemies_killed = jnp.array(0, dtype=jnp.int32)
         else:
-            # Rewards
-            all_rewards = self._get_all_rewards(previous_state, state)
-
             prev_alive = jnp.array(previous_state.enemy_alive, dtype=jnp.int32)
             curr_alive = jnp.array(state.enemy_alive, dtype=jnp.int32)
             enemies_killed = jnp.sum(prev_alive - curr_alive)
@@ -760,7 +747,6 @@ class JaxBerzerk(JaxEnvironment[BerzerkState, BerzerkObservation, BerzerkInfo, B
         level_cleared = jnp.array([state.room_counter], dtype=jnp.int32)
 
         return BerzerkInfo(
-            all_rewards=all_rewards,
             enemies_killed=enemies_killed,
             level_cleared=level_cleared
         )
@@ -790,7 +776,6 @@ class JaxBerzerk(JaxEnvironment[BerzerkState, BerzerkObservation, BerzerkInfo, B
     @partial(jax.jit, static_argnums=(0,))
     def info_to_flat_array(self, info: BerzerkInfo) -> chex.Array:
         return jnp.concatenate([
-            info.all_rewards.flatten(),
             info.enemies_killed.flatten(),
             info.level_cleared.flatten()
         ])

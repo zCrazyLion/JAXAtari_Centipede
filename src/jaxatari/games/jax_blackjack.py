@@ -116,7 +116,6 @@ class BlackjackObservation(NamedTuple):
 
 class BlackjackInfo(NamedTuple):
     time: jnp.ndarray
-    all_rewards: jnp.ndarray
 
 
 @jax.jit
@@ -741,8 +740,7 @@ class JaxBlackjack(JaxEnvironment[BlackjackState, BlackjackObservation, Blackjac
 
         done = self._get_done(new_state)
         env_reward = self._get_reward(state, new_state)
-        all_rewards = self._get_all_reward(state, new_state)
-        info = self._get_info(new_state, all_rewards)
+        info = self._get_info(new_state)
         observation = self._get_observation(new_state)
 
         return observation, new_state, env_reward, done, info
@@ -750,16 +748,6 @@ class JaxBlackjack(JaxEnvironment[BlackjackState, BlackjackObservation, Blackjac
     @partial(jax.jit, static_argnums=(0,))
     def _get_reward(self, previous_state: BlackjackState, state: BlackjackState):
         return state.player_score - previous_state.player_score
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_reward(self, previous_state: BlackjackState, state: BlackjackState):
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array(
-            [reward_func(previous_state, state)
-             for reward_func in self.reward_funcs]
-        )
-        return rewards
 
     def action_space(self) -> Discrete:
         return Discrete(len(self.action_set))
@@ -827,8 +815,8 @@ class JaxBlackjack(JaxEnvironment[BlackjackState, BlackjackObservation, Blackjac
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: BlackjackState, all_rewards: jnp.ndarray = None) -> BlackjackInfo:
-        return BlackjackInfo(state.step_counter, all_rewards)
+    def _get_info(self, state: BlackjackState) -> BlackjackInfo:
+        return BlackjackInfo(state.step_counter)
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: BlackjackState) -> bool:

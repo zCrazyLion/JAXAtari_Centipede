@@ -393,7 +393,6 @@ class LaserGatesObservation(NamedTuple):
 class LaserGatesInfo(NamedTuple):
     # difficulty: jnp.ndarray # add if necessary
     step_counter: jnp.ndarray
-    all_rewards: jnp.ndarray
 
 # -------- Render Constants --------
 def load_sprites():
@@ -2188,22 +2187,14 @@ class JaxLaserGates(JaxEnvironment[LaserGatesState, LaserGatesObservation, Laser
             lower_mountain_2=lm2,
         )
 
-    def _get_info(self, state: LaserGatesState, all_rewards: jnp.ndarray | None = None) -> LaserGatesInfo:
+    def _get_info(self, state: LaserGatesState) -> LaserGatesInfo:
         return LaserGatesInfo(
             step_counter=state.step_counter,
-            all_rewards=all_rewards,
         )
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_reward(self, previous_state: LaserGatesState, state: LaserGatesState) -> jnp.ndarray:
         return state.score - previous_state.score
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_rewards(self, previous_state: LaserGatesState, state: LaserGatesState) -> jnp.ndarray:
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array([reward_func(previous_state, state) for reward_func in self.reward_funcs])
-        return rewards
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: LaserGatesState) -> chex.Array:
@@ -2618,8 +2609,7 @@ class JaxLaserGates(JaxEnvironment[LaserGatesState, LaserGatesObservation, Laser
         )
 
         obs = self._get_observation(return_state)
-        all_rewards = self._get_all_rewards(state, return_state)
-        info = self._get_info(return_state, all_rewards)
+        info = self._get_info(return_state)
 
         return obs, return_state, 0.0, False, info
 

@@ -169,13 +169,11 @@ class FishingDerbyObservation(NamedTuple):
         p1_score (int): The current score of Player 1.
         p2_score (int): The current score of Player 2.
         time (int): The elapsed time in the game, measured in frames.
-        all_rewards (chex.Array): An array containing rewards for all players.
 """
 class FishingDerbyInfo(NamedTuple):
     p1_score: int
     p2_score: int
     time: int
-    all_rewards: chex.Array
 
 
 # Game Logic
@@ -324,13 +322,6 @@ class FishingDerby(JaxEnvironment):
         p1_delta = new_state.p1.score - old_state.p1.score
         return p1_delta
 
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_rewards(self, old_state: GameState, new_state: GameState) -> chex.Array:
-        """Return all rewards as an array (for multi-reward scenarios)."""
-        p1_delta = new_state.p1.score - old_state.p1.score
-        p2_delta = new_state.p2.score - old_state.p2.score
-        return jnp.array([p1_delta, p2_delta])
-
     def _get_done(self, state: GameState) -> bool:
         """
             Determines whether the game is over.
@@ -358,7 +349,6 @@ class FishingDerby(JaxEnvironment):
             p1_score=state.p1.score,
             p2_score=state.p2.score,
             time=state.time,
-            all_rewards=self._get_all_rewards(state, state)  # Use _get_all_rewards for info
         )
 
 

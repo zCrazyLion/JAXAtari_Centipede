@@ -184,7 +184,6 @@ class HauntedHouseObservation(NamedTuple):
 
 class HauntedHouseInfo(NamedTuple):
     time: jnp.ndarray
-    all_rewards: chex.Array
 
 
 
@@ -913,8 +912,7 @@ class JaxHauntedHouse(JaxEnvironment[HauntedHouseState, HauntedHouseObservation,
 
         done = self._get_done(new_state)
         env_reward = self._get_reward(state, new_state)
-        all_rewards = self._get_all_reward(state, new_state)
-        info = self._get_info(new_state, all_rewards)
+        info = self._get_info(new_state)
         observation = self._get_observation(new_state)
 
         return observation, new_state, env_reward, done, info
@@ -1231,22 +1229,13 @@ class JaxHauntedHouse(JaxEnvironment[HauntedHouseState, HauntedHouseObservation,
         )
 
     @partial(jax.jit, static_argnums=(0,))
-    def _get_info(self, state: HauntedHouseState, all_rewards: chex.Array = None) -> HauntedHouseInfo:
-        return HauntedHouseInfo(time=state.step_counter, all_rewards=all_rewards)
+    def _get_info(self, state: HauntedHouseState) -> HauntedHouseInfo:
+        return HauntedHouseInfo(time=state.step_counter)
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_reward(self, previous_state: HauntedHouseState, state: HauntedHouseState):
         penality_chasing = jnp.where(state.chasing > 0, 1, 0)
         return state.item_held + state.lives - state.stun_duration / 10 - state.matches_used - penality_chasing
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_reward(self, previous_state: HauntedHouseState, state: HauntedHouseState):
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array(
-            [reward_func(previous_state, state) for reward_func in self.reward_funcs]
-        )
-        return rewards
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: HauntedHouseState) -> bool:
