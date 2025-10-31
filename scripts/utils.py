@@ -186,14 +186,15 @@ def load_game_environment(game: str) -> Tuple[JaxEnvironment, JAXGameRenderer]:
     return game, renderer
 
 
+# TODO: this can only load mods that are defined in the MOD_MODULES dictionary in core.py. We could change this in the future to retain the ability to load mods that are not yet in core.py
 def load_game_mods(game_name: str, mods_config: List[str]) -> Callable:
     """
-    Dynamically loads and configures the single mod class (KangarooEnvMod) 
-    using a list of mod strings.
+    Dynamically loads and configures mods using the full two-stage pipeline
+    (Controller + Wrapper) via the modify function from core.py.
 
     Args:
-        game_name: The name of the game (e.g., 'kangaroo').
-        mods_config: A list of mod strings (e.g., ['no_monkey', 'no_falling_coconut']).
+        game_name: The name of the game (e.g., 'pong', 'kangaroo').
+        mods_config: A list of mod strings (e.g., ['lazy_enemy', 'random_enemy']).
 
     Returns:
         A callable function that takes the base environment and returns the 
@@ -202,38 +203,11 @@ def load_game_mods(game_name: str, mods_config: List[str]) -> Callable:
     Raises:
         ImportError: If the mod module or class cannot be found.
     """
-    try:
-        # 1. Dynamically import the game's mod file (e.g., 'jaxatari.games.mods.kangaroo_mods')
-        module_path = f"jaxatari.games.mods.{game_name.lower()}_mods"
-        mod_module = importlib.import_module(module_path)
-
-        # 2. Assume the single mod class is named 'KangarooEnvMod'
-        mod_class = getattr(mod_module, f"{game_name}EnvMod")
-
-        # 3. Return a partial function to instantiate the class with the mods_config list.
-        # This callable will be used in the main script: `env = mod_fn(env)`
-        if mods_config:
-            print(f"Loading mod configuration for {game_name}: {mods_config}")
-        
-        return partial(mod_class, mods_config=mods_config)
-
-    except ImportError as e:
-        # Check if the mod module exists but the class name is wrong, or if module failed to load.
-        raise ImportError(
-            f"Could not load mod module for game '{game_name}' or class 'KangarooEnvMod'. "
-            f"Ensure the file {module_path}.py exists and contains the class. Details: {e}"
-        )
-    except AttributeError:
-        # This handles the case where the module loaded but the class is missing.
-        raise ImportError(
-            f"Mod class 'KangarooEnvMod' not found in module {module_path}. "
-            f"Please ensure the class name is correct."
-        )
-
-    except ImportError as e:
-        raise ImportError(
-            f"Could not load mod module for game '{game_name}' or mod '{mod_name}'. "
-            f"Details: {e}"
-        )
-
-
+    from jaxatari.core import modify
+    
+    if mods_config:
+        print(f"Loading mod configuration for {game_name}: {mods_config}")
+    
+    # Return a partial function that applies the full mod pipeline
+    # This ensures both internal mods (controller) and post-step mods (wrapper) are applied
+    return partial(modify, game_name=game_name, mods_config=mods_config)
