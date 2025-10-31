@@ -38,6 +38,12 @@ def main():
         help="Name of the mods class.",
     )
 
+    parser.add_argument(
+        "--allow_conflicts",
+        action="store_true",
+        help="Allow loading conflicting mods (last mod in list takes priority).",
+    )
+
     mode_group = parser.add_mutually_exclusive_group(required=False)
     mode_group.add_argument(
         "--record",
@@ -82,15 +88,15 @@ def main():
     try:
         env, renderer = load_game_environment(args.game)
         if args.mods is not None:
-            mod = load_game_mods(args.game, args.mods)
+            mod = load_game_mods(args.game, args.mods, args.allow_conflicts)
             env = mod(env)
 
         if renderer is None:
             execute_without_rendering = True
             print("No renderer found, running without rendering.")
 
-    except (FileNotFoundError, ImportError) as e:
-        print(f"Error loading game: {e}")
+    except (FileNotFoundError, ImportError, ValueError, AttributeError) as e:
+        print(f"Error loading game or mods: {e}")
         sys.exit(1)
 
     # Initialize the environment

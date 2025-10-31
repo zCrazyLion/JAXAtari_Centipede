@@ -459,8 +459,8 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo, PongConstants
         state = PongState(
             player_y=jnp.array(96).astype(jnp.int32),
             player_speed=jnp.array(0.0).astype(jnp.int32),
-            ball_x=jnp.array(78).astype(jnp.int32),
-            ball_y=jnp.array(115).astype(jnp.int32),
+            ball_x=self.consts.BALL_START_X.astype(jnp.int32),
+            ball_y=self.consts.BALL_START_Y.astype(jnp.int32),
             enemy_y=jnp.array(115).astype(jnp.int32),
             enemy_speed=jnp.array(0.0).astype(jnp.int32),
             ball_vel_x=self.consts.BALL_SPEED[0].astype(jnp.int32),

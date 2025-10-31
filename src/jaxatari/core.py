@@ -1,5 +1,6 @@
 import importlib
 import inspect
+import jax
 
 from jaxatari.environment import JaxEnvironment
 from jaxatari.renderers import JAXGameRenderer
@@ -35,10 +36,22 @@ def list_available_games() -> list[str]:
     """Lists all available, registered games."""
     return list(GAME_MODULES.keys())
 
-def make(game_name: str, mode: int = 0, difficulty: int = 0) -> JaxEnvironment:
+def make(game_name: str, 
+         mode: int = 0, 
+         difficulty: int = 0,
+         mods_config: list = None,
+         allow_conflicts: bool = False
+         ) -> JaxEnvironment:
     """
     Creates and returns a JaxAtari game environment instance.
     This is the main entry point for creating environments.
+
+    If 'mods_config' is provided, this function applies the
+    full two-stage modding pipeline:
+    1. Pre-scans for constant overrides.
+    2. Instantiates the base env with modded constants.
+    3. Applies the internal 'JaxAtariModController'.
+    4. Wraps the env with the 'JaxAtariModWrapper'.
 
     Args:
         game_name: Name of the game to load (e.g., "pong").
@@ -54,21 +67,56 @@ def make(game_name: str, mode: int = 0, difficulty: int = 0) -> JaxEnvironment:
         )
     
     try:
-        # 1. Dynamically load the module
+        # 1. Load the base environment *class* (don't instantiate yet)
         module = importlib.import_module(GAME_MODULES[game_name])
-        
-        # 2. Find the correct environment class within the module
         env_class = None
         for _, obj in inspect.getmembers(module):
             if inspect.isclass(obj) and issubclass(obj, JaxEnvironment) and obj is not JaxEnvironment:
                 env_class = obj
-                break # Found it
-        
+                break
         if env_class is None:
             raise ImportError(f"No JaxEnvironment subclass found in {GAME_MODULES[game_name]}")
-        
-        # 3. Instantiate the class, passing along the arguments, and return it
-        # TODO: none of our environments use mode / difficulty yet, but we might want to add it here and in the single envs (note: probably be replaced by mods)
+
+        # 2. Handle mods if they are requested
+        if mods_config:
+            if game_name not in MOD_MODULES:
+                raise NotImplementedError(f"No mod module defined for '{game_name}'.")
+
+            # 3. Load the Controller and Registry
+            ControllerClass = _load_from_string(MOD_MODULES[game_name])
+            registry = ControllerClass.REGISTRY
+
+            # 4. --- PRE-SCAN FOR CONSTANT OVERRIDES ---
+            base_consts = env_class().consts # Get default constants
+            const_overrides = {}
+            for mod_key in mods_config:
+                if mod_key not in registry:
+                    raise ValueError(f"Mod '{mod_key}' not recognized.")
+                plugin_class = registry[mod_key]
+                if hasattr(plugin_class, "constants_overrides"):
+                    const_overrides.update(plugin_class.constants_overrides)
+            
+            # 5. Create the base env WITH modded constants
+            modded_consts = base_consts._replace(**const_overrides)
+            base_env = env_class(consts=modded_consts)
+            
+            # 6. --- BUILD STAGE 1 (Internal Controller) ---
+            modded_env = ControllerClass(
+                env=base_env,
+                mods_config=mods_config,
+                allow_conflicts=allow_conflicts
+            )
+            
+            # 7. --- BUILD STAGE 2 (Post-Step Wrapper) ---
+            final_env = JaxAtariModWrapper(
+                env=modded_env,
+                mods_config=mods_config,
+                allow_conflicts=allow_conflicts
+            )
+            
+            return final_env
+
+        # 3. If no mods, just return the base env
         return env_class()
 
     except (ImportError, AttributeError) as e:
@@ -108,42 +156,3 @@ def make_renderer(game_name: str) -> JAXGameRenderer:
     except (ImportError, AttributeError) as e:
         raise ImportError(f"Failed to load renderer for '{game_name}': {e}") from e
     
-
-def modify(env: JaxEnvironment, 
-           game_name: str, 
-           mods_config: list,
-           allow_conflicts: bool = False
-           ) -> JaxEnvironment:
-    """
-    Applies a list of modifications to a JaxAtari environment
-    using the full two-stage (Controller + Wrapper) pipeline.
-    """
-    if not mods_config:
-        return env
-    
-    if game_name not in MOD_MODULES:
-        raise NotImplementedError(f"No mod module defined for '{game_name}'.")
-    
-    try:
-        # 1. Load the specific controller class (e.g., PongEnvMod)
-        ControllerClass = _load_from_string(MOD_MODULES[game_name])
-
-        # 2. BUILD STAGE 1 (Internal Controller)
-        # the controller internally filters for internal mods and overrides the methods with the modded ones.
-        modded_env = ControllerClass(
-            env=env,
-            mods_config=mods_config,
-            allow_conflicts=allow_conflicts
-        )
-        
-        # 3. BUILD STAGE 2 (Post-Step Wrapper)
-        # the wrapper filters for post-step mods and runs their logic after the step is complete (mostly state attribute updates).
-        final_env = JaxAtariModWrapper(
-            env=modded_env,
-            mods_config=mods_config,
-            allow_conflicts=allow_conflicts
-        )
-            
-        return final_env
-    except (ImportError, AttributeError) as e:
-        raise ImportError(f"Failed to load mods for '{game_name}': {e}") from e

@@ -7,7 +7,7 @@ class PongEnvMod(JaxAtariModController):
     It simply inherits all logic from JaxAtariModController and defines the PONG_MOD_REGISTRY.
     """
 
-    PONG_MOD_REGISTRY = {
+    REGISTRY = {
         "lazy_enemy": LazyEnemyMod,
         "random_enemy": RandomEnemyMod,
         "zero_score": AlwaysZeroScoreMod,
@@ -24,5 +24,5 @@ class PongEnvMod(JaxAtariModController):
             env=env,
             mods_config=mods_config,
             allow_conflicts=allow_conflicts,
-            registry=self.PONG_MOD_REGISTRY  # for pong this is the only specific part, but other games might need to do execute some other logic in the constructor.
+            registry=self.REGISTRY  # for pong this is the only specific part, but other games might need to do execute some other logic in the constructor.
         )

@@ -9,18 +9,26 @@ from jaxatari.wrappers import JaxatariWrapper
 # --- 1. Plugin Base Classes ---
 class JaxAtariInternalModPlugin(ABC):
     """
-    Base class for an *internal* mod plugin (patches methods).
+    Base class for an *internal* mod plugin.
+    - Patches methods defined on the plugin.
+    - Overrides constants and attributes.
     """
     # manually defined list of mods this mod may conflict with. Does not include functional conflicts (i.e. two mods modifying the same method) which are detected automatically.
-    conflicts_with: list = [] 
+    conflicts_with: list = []
+    # For core.make to override constants at construction time
+    constants_overrides: dict = {}
+    # For overriding member attributes set in __init__
+    attribute_overrides: dict = {}
 
 class JaxAtariPostStepModPlugin(ABC):
     """
     Base class for a *post-step* mod plugin (runs after step).
     """
     # manually defined list of mods this mod may conflict with. Does not include functional conflicts (i.e. two mods modifying the same method) which are detected automatically.
-    conflicts_with: list = [] 
-    
+    conflicts_with: list = []
+    # For core.make to override constants at construction time
+    constants_overrides: dict = {}
+
     @abstractmethod
     @partial(jax.jit, static_argnums=(0,))
     def run(self, new_state):
@@ -98,6 +106,16 @@ class JaxAtariModController:
                 for fn_name, _ in inspect.getmembers(plugin_instance, predicate=inspect.ismethod):
                     if not fn_name.startswith("__"):
                         patch_map[fn_name].append(mod_key)
+
+                # --- Strict Check (Attributes) ---
+                if hasattr(plugin_instance, "attribute_overrides"):
+                    for attr_name in plugin_instance.attribute_overrides:
+                        if not hasattr(self._env, attr_name):
+                            # Strict: Fail on typo or missing attribute
+                            raise AttributeError(
+                                f"Mod '{mod_key}' tries to override attribute '{attr_name}', "
+                                f"but this attribute does not exist on the base environment."
+                            )
         if not active_plugins:
             return # No internal mods to apply
         # 2. --- REPORT PHASE (Gameplay Conflicts) ---
@@ -114,7 +132,7 @@ class JaxAtariModController:
                 conflicts_found = True
                 winner = mods[-1]
                 report_lines.append(
-                    f"  - The function '{fn_name}' is modified by multiple mods: {mods}. "
+                    f"  - The function or attribute '{fn_name}' is modified by multiple mods: {mods}. "
                     f"With allow_conflicts=True, the last mod in the list ('{winner}') would take priority."
                 )
         
@@ -130,9 +148,16 @@ class JaxAtariModController:
         # 4. --- APPLY PHASE ---
         for mod_key in internal_mod_keys: # Iterate in order
             plugin = active_plugins[mod_key]
-            # Store env reference on plugin instance so methods can access it via self._env
+
+            # Ensure internal plugin methods can access the environment
             plugin._env = self._env
-            
+
+            # --- Apply Attribute Overrides ---
+            if hasattr(plugin, "attribute_overrides"):
+                for attr_name, value in plugin.attribute_overrides.items():
+                    setattr(self._env, attr_name, value)
+
+            # --- Apply Function Patches ---
             for fn_name, fn_logic in inspect.getmembers(plugin, predicate=inspect.ismethod):
                 if not fn_name.startswith("__"):
                     # Bind method normally - plugin methods can access self._env as an attribute
@@ -162,7 +187,7 @@ class JaxAtariModWrapper(JaxatariWrapper):
         except AttributeError:
             raise TypeError(
                 "JaxAtariModWrapper must be applied to a JaxAtariModController, "
-                "but the environment provided does not have a .registry attribute"
+                "but the environment provided does not have a .registry attribute."
             )
 
         # 1. --- BUILD & FILTER PHASE ---

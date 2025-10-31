@@ -13,6 +13,7 @@ from functools import partial
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 from jaxatari.wrappers import JaxatariWrapper
 from jaxatari.renderers import JAXGameRenderer
+from jaxatari.modification import JaxAtariModController, JaxAtariModWrapper
 
 def update_pygame(pygame_screen, raster, SCALING_FACTOR=3, WIDTH=400, HEIGHT=300):
     """Updates the Pygame display with the rendered raster.
@@ -186,28 +187,94 @@ def load_game_environment(game: str) -> Tuple[JaxEnvironment, JAXGameRenderer]:
     return game, renderer
 
 
-# TODO: this can only load mods that are defined in the MOD_MODULES dictionary in core.py. We could change this in the future to retain the ability to load mods that are not yet in core.py
-def load_game_mods(game_name: str, mods_config: List[str]) -> Callable:
+def _dynamic_load_from_path(file_path: str, class_name: str):
+    """Dynamically loads a class from a specific .py file."""
+    module_name = os.path.splitext(os.path.basename(file_path))[0]
+    
+    # Add dir to path for relative imports (e.g., pong_mods importing pong_mod_plugins)
+    mod_dir = os.path.dirname(os.path.abspath(file_path))
+    if mod_dir not in sys.path:
+        sys.path.insert(0, mod_dir)
+        
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    if spec is None:
+        raise ImportError(f"Could not load spec from {file_path}")
+        
+    game_module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(game_module)
+    finally:
+        if sys.path and sys.path[0] == mod_dir:
+            sys.path.pop(0) # Clean up path
+    return getattr(game_module, class_name)
+
+# --- REWRITTEN FUNCTION ---
+def load_game_mods(game_name: str, mods_config: List[str], allow_conflicts: bool = False) -> Callable:
     """
-    Dynamically loads and configures mods using the full two-stage pipeline
-    (Controller + Wrapper) via the modify function from core.py.
-
-    Args:
-        game_name: The name of the game (e.g., 'pong', 'kangaroo').
-        mods_config: A list of mod strings (e.g., ['lazy_enemy', 'random_enemy']).
-
+    Dynamically loads the modding pipeline for an unregistered game.
+    
+    This function re-implements the logic from core using dynamic
+    file paths instead of the MOD_MODULES registry.
     Returns:
-        A callable function that takes the base environment and returns the 
-        wrapped environment instance configured with the specified mods.
-
-    Raises:
-        ImportError: If the mod module or class cannot be found.
+        A callable function that applies the full two-stage
+        (Controller + Wrapper) pipeline to an environment.
     """
-    from jaxatari.core import modify
     
-    if mods_config:
-        print(f"Loading mod configuration for {game_name}: {mods_config}")
+    # This is the function that will be returned by load_game_mods
+    def apply_mods(env: JaxEnvironment) -> JaxEnvironment:
+        """This closure captures the mod config and applies the full pipeline."""
+        
+        try:
+            # 1. Dynamically find the paths
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(script_dir)
+            controller_path = os.path.join(
+                project_root, "src", "jaxatari", "games", "mods", f"{game_name.lower()}_mods.py"
+            )
+            
+            # 2. Load the Controller Class (e.g., PongEnvMod)
+            # We must follow the naming convention: "Pong" -> "PongEnvMod"
+            controller_class_name = f"{game_name.capitalize()}EnvMod"
+            ControllerClass = _dynamic_load_from_path(controller_path, controller_class_name)
+            
+            # 3. --- PRE-SCAN FOR CONSTANT OVERRIDES (mirror core.make) ---
+            registry = ControllerClass.REGISTRY
+            const_overrides: Dict[str, Any] = {}
+            for mod_key in mods_config:
+                if mod_key not in registry:
+                    raise ValueError(f"Mod '{mod_key}' not recognized.")
+                plugin_class = registry[mod_key]
+                if hasattr(plugin_class, "constants_overrides"):
+                    const_overrides.update(plugin_class.constants_overrides)
+
+            if const_overrides:
+                # Recreate env with modded constants
+                base_consts = env.consts
+                modded_consts = base_consts._replace(**const_overrides)
+                env = env.__class__(consts=modded_consts)
+
+            # 4. BUILD STAGE 1 (Internal Controller)
+            # Rely on the controller subclass to pass its own REGISTRY via super().__init__
+            modded_env = ControllerClass(
+                env=env,
+                mods_config=mods_config,
+                allow_conflicts=allow_conflicts
+            )
+            
+            # 5. BUILD STAGE 2 (Post-Step Wrapper)
+            # The wrapper gets the registry from the controller
+            final_env = JaxAtariModWrapper(
+                env=modded_env,
+                mods_config=mods_config,
+                allow_conflicts=allow_conflicts
+            )
+            
+            print(f"Successfully loaded {len(mods_config)} mods for unregistered game '{game_name}'.")
+            return final_env
+            
+        except (ImportError, AttributeError, FileNotFoundError) as e:
+            print(f"Error loading mods for unregistered game '{game_name}': {e}")
+            raise e
     
-    # Return a partial function that applies the full mod pipeline
-    # This ensures both internal mods (controller) and post-step mods (wrapper) are applied
-    return partial(modify, game_name=game_name, mods_config=mods_config)
+    # Return the callable 'apply_mods' function
+    return apply_mods
