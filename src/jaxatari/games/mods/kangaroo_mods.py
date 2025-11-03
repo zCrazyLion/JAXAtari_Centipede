@@ -1,5 +1,5 @@
 from jaxatari.modification import JaxAtariModController
-from .kangaroo_mod_plugins import NoMonkeyMod, NoFallingCoconutMod, PinChildMod
+from jaxatari.games.mods.kangaroo_mod_plugins import NoMonkeyMod, NoFallingCoconutMod, PinChildMod
 
 # --- 3. The Registry ---
 KANGAROO_MOD_REGISTRY = {
