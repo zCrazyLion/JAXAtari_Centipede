@@ -242,7 +242,9 @@ def load_game_mods(game_name: str, mods_config: List[str], allow_conflicts: bool
             const_overrides: Dict[str, Any] = {}
             for mod_key in mods_config:
                 if mod_key not in registry:
-                    raise ValueError(f"Mod '{mod_key}' not recognized.")
+                    err_msg = f"Mod '{mod_key}' not recognized. Available mods: \n"
+                    err_msg += "".join([f" - {k}\n" for k in registry.keys()])
+                    raise ValueError(err_msg)
                 plugin_class = registry[mod_key]
                 if hasattr(plugin_class, "constants_overrides"):
                     const_overrides.update(plugin_class.constants_overrides)
