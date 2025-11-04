@@ -1,9 +1,12 @@
 import functools
 import time
+from typing import Any
 
+import chex
 import jax
 import jax.numpy as jnp
 
+from jaxatari.games.jax_centipede import CentipedeState
 from jaxatari.wrappers import JaxatariWrapper
 
 
@@ -44,4 +47,18 @@ class RandomMushrooms(JaxatariWrapper):
         # Flatten to (N*M, 4)
         return grid.reshape(-1, 4)
 
+class RandomPlayerMovement(JaxatariWrapper):
+    """Overwrites player movement with random action with probability 0.2"""
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def get_action(self, action: int|float, key: chex.PRNGKey) -> jnp.ndarray:
+        random_movement_key, random_action_key = jax.random.split(key)
 
+        random_movement_indicator = jax.random.bernoulli(random_movement_key, 0.2)    # might be a bit heavy, lower also possible
+        random_action = jax.random.randint(random_action_key, (), 0, 18)
+
+        return jnp.where(random_movement_indicator, random_action, action)
+
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def step(self, state: CentipedeState, action: int|float) -> tuple[chex.Array, CentipedeState, float, bool, dict[Any, Any]]:
+        new_action = self.get_action(action, state.rng_key)
+        return self._env.step(state, new_action)
