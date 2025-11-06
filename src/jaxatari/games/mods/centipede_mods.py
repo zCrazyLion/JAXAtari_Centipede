@@ -9,6 +9,12 @@ import jax.numpy as jnp
 from jaxatari.games.jax_centipede import CentipedeState
 from jaxatari.wrappers import JaxatariWrapper
 
+class SlowSpell(JaxatariWrapper):
+    """Player spells have half the speed."""
+    def __init__(self, env):
+        super().__init__(env)
+        self._env = env
+        self._env.consts.PLAYER_SPELL_SPEED = 3
 
 class RandomMushrooms(JaxatariWrapper):
     """Initialize mushroom positions randomly."""
