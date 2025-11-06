@@ -12,6 +12,26 @@ from jaxatari.renderers import JAXGameRenderer
 from jaxatari.rendering import jax_rendering_utils as render_utils
 from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
 
+def _create_wall_sprite(consts: "PongConstants", height: int) -> jnp.ndarray:
+    wall_color_rgba = (*consts.SCORE_COLOR, 255)
+    wall_shape = (height, consts.WIDTH, 4)
+    return jnp.tile(jnp.array(wall_color_rgba, dtype=jnp.uint8), (*wall_shape[:2], 1))
+
+def _get_default_asset_config() -> tuple:
+    """
+    Returns the default declarative asset manifest for Pong.
+    Kept immutable (tuple of dicts) to fit NamedTuple defaults.
+    """
+    return (
+        {'name': 'background', 'type': 'background', 'file': 'background.npy'},
+        {'name': 'player', 'type': 'single', 'file': 'player.npy'},
+        {'name': 'enemy', 'type': 'single', 'file': 'enemy.npy'},
+        {'name': 'ball', 'type': 'single', 'file': 'ball.npy'},
+        {'name': 'player_digits', 'type': 'digits', 'pattern': 'player_score_{}.npy'},
+        {'name': 'enemy_digits', 'type': 'digits', 'pattern': 'enemy_score_{}.npy'},
+    )
+
+
 class PongConstants(NamedTuple):
     MAX_SPEED: int = 12
     BALL_SPEED: chex.Array = jnp.array([-1, 1])
@@ -39,6 +59,8 @@ class PongConstants(NamedTuple):
     WALL_TOP_HEIGHT: int = 10
     WALL_BOTTOM_Y: int = 194
     WALL_BOTTOM_HEIGHT: int = 16
+    # sset config baked into constants (immutable default) for asset overrides
+    ASSET_CONFIG: tuple = _get_default_asset_config()
 
 
 # immutable state container
@@ -620,7 +642,7 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo, PongConstants
 
 class PongRenderer(JAXGameRenderer):
     def __init__(self, consts: PongConstants = None):
-        super().__init__()
+        super().__init__(consts)
         self.consts = consts or PongConstants()
         self.config = render_utils.RendererConfig(
             game_dimensions=(210, 160),
@@ -628,43 +650,27 @@ class PongRenderer(JAXGameRenderer):
             #downscale=(84, 84)
         )
         self.jr = render_utils.JaxRenderingUtils(self.config)
-        # 1. Create procedural assets for both walls
-        wall_sprite_top = self._create_wall_sprite(self.consts.WALL_TOP_HEIGHT)
-        wall_sprite_bottom = self._create_wall_sprite(self.consts.WALL_BOTTOM_HEIGHT)
-        
-        # 2. Update asset config to include both walls
-        asset_config = self._get_asset_config(wall_sprite_top, wall_sprite_bottom)
-        sprite_path = f"{os.path.dirname(os.path.abspath(__file__))}/sprites/pong"
 
-        # 3. Make a single call to the setup function
+        # 1. Start from (possibly modded) asset config provided via constants
+        final_asset_config = list(self.consts.ASSET_CONFIG)
+
+        # 2. Create procedural assets using modded constants
+        wall_sprite_top = _create_wall_sprite(self.consts, self.consts.WALL_TOP_HEIGHT)
+        wall_sprite_bottom = _create_wall_sprite(self.consts, self.consts.WALL_BOTTOM_HEIGHT)
+
+        # 3. Append procedural assets
+        final_asset_config.append({'name': 'wall_top', 'type': 'procedural', 'data': wall_sprite_top})
+        final_asset_config.append({'name': 'wall_bottom', 'type': 'procedural', 'data': wall_sprite_bottom})
+
+        # 4. Bake assets once
+        sprite_path = f"{os.path.dirname(os.path.abspath(__file__))}/sprites/pong"
         (
             self.PALETTE,
             self.SHAPE_MASKS,
             self.BACKGROUND,
             self.COLOR_TO_ID,
             self.FLIP_OFFSETS
-        ) = self.jr.load_and_setup_assets(asset_config, sprite_path)
-
-    def _create_wall_sprite(self, height: int) -> jnp.ndarray:
-        """Procedurally creates an RGBA sprite for a wall of given height."""
-        wall_color_rgba = (*self.consts.SCORE_COLOR, 255) # e.g., (236, 236, 236, 255)
-        wall_shape = (height, self.consts.WIDTH, 4)
-        wall_sprite = jnp.tile(jnp.array(wall_color_rgba, dtype=jnp.uint8), (*wall_shape[:2], 1))
-        return wall_sprite
-
-    def _get_asset_config(self, wall_sprite_top: jnp.ndarray, wall_sprite_bottom: jnp.ndarray) -> list:
-        """Returns the declarative manifest of all assets for the game, including both wall sprites."""
-        return [
-            {'name': 'background', 'type': 'background', 'file': 'background.npy'},
-            {'name': 'player', 'type': 'single', 'file': 'player.npy'},
-            {'name': 'enemy', 'type': 'single', 'file': 'enemy.npy'},
-            {'name': 'ball', 'type': 'single', 'file': 'ball.npy'},
-            {'name': 'player_digits', 'type': 'digits', 'pattern': 'player_score_{}.npy'},
-            {'name': 'enemy_digits', 'type': 'digits', 'pattern': 'enemy_score_{}.npy'},
-            # Add the procedurally created sprites to the manifest
-            {'name': 'wall_top', 'type': 'procedural', 'data': wall_sprite_top},
-            {'name': 'wall_bottom', 'type': 'procedural', 'data': wall_sprite_bottom},
-        ]
+        ) = self.jr.load_and_setup_assets(final_asset_config, sprite_path)
 
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state):

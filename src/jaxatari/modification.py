@@ -19,6 +19,8 @@ class JaxAtariInternalModPlugin(ABC):
     constants_overrides: dict = {}
     # For overriding member attributes set in __init__
     attribute_overrides: dict = {}
+    # Read by core.make to override assets via constants at construction time. This is a list of dicts, each with a 'name' key and a 'file' key.
+    asset_overrides: dict = {}
 
 class JaxAtariPostStepModPlugin(ABC):
     """
@@ -85,7 +87,7 @@ class JaxAtariModController:
         self._env = env
         self.registry = registry
         
-        active_plugins = {} # {mod_key: instance}
+        active_internal_plugins = {}
         patch_map = defaultdict(list)
         
         # 1. --- BUILD & FILTER PHASE ---
@@ -99,14 +101,9 @@ class JaxAtariModController:
             # This class only cares about Internal plugins
             if issubclass(plugin_class, JaxAtariInternalModPlugin):
                 plugin_instance = plugin_class()
-                active_plugins[mod_key] = plugin_instance
+                active_internal_plugins[mod_key] = plugin_instance
                 internal_mod_keys.append(mod_key)
                 
-                # Build patch map for functional conflicts
-                for fn_name, _ in inspect.getmembers(plugin_instance, predicate=inspect.ismethod):
-                    if not fn_name.startswith("__"):
-                        patch_map[fn_name].append(mod_key)
-
                 # --- Strict Check (Attributes) ---
                 if hasattr(plugin_instance, "attribute_overrides"):
                     for attr_name in plugin_instance.attribute_overrides:
@@ -116,15 +113,21 @@ class JaxAtariModController:
                                 f"Mod '{mod_key}' tries to override attribute '{attr_name}', "
                                 f"but this attribute does not exist on the base environment."
                             )
-        if not active_plugins:
-            return # No internal mods to apply
-        # 2. --- REPORT PHASE (Gameplay Conflicts) ---
-        # Use the shared helper
-        _check_gameplay_conflicts(
-            active_plugins, 
-            allow_conflicts
-        )
-        # 3. --- REPORT PHASE (Functional Conflicts) ---
+                # Build patch map for functional conflicts
+                for fn_name, _ in inspect.getmembers(plugin_instance, predicate=inspect.ismethod):
+                    if not fn_name.startswith("__"):
+                        if not (hasattr(self._env, fn_name) or (hasattr(self._env, 'renderer') and hasattr(self._env.renderer, fn_name))):
+                            raise AttributeError(
+                                f"Mod '{mod_key}' tries to patch '{fn_name}', but neither env nor renderer define it."
+                            )
+                        patch_map[fn_name].append(mod_key)
+        if not active_internal_plugins:
+            return
+        
+        # 2. --- REPORTING (Gameplay Conflicts) ---
+        _check_gameplay_conflicts(active_internal_plugins, allow_conflicts)
+        
+        # 2b. --- REPORTING (Functional Conflicts) ---
         conflicts_found = False
         report_lines = []
         for fn_name, mods in patch_map.items():
@@ -135,33 +138,33 @@ class JaxAtariModController:
                     f"  - The function or attribute '{fn_name}' is modified by multiple mods: {mods}. "
                     f"With allow_conflicts=True, the last mod in the list ('{winner}') would take priority."
                 )
+        if conflicts_found and not allow_conflicts:
+            raise ValueError(
+                "Functional conflicts detected:\n" + "\n".join(report_lines) + "\n(Pass allow_conflicts=True to ignore this warning.)"
+            )
+        elif conflicts_found:
+            print("WARNING: Functional conflicts detected:\n" + "\n".join(report_lines))
         
-        if conflicts_found:
-            full_report = "\n".join(report_lines)
-            if not allow_conflicts:
-                raise ValueError(
-                    f"Functional conflicts detected:\n{full_report}\n"
-                    "(Pass allow_conflicts=True to ignore this warning.)"
-                )
-            else:
-                print(f"WARNING: Functional conflicts detected:\n{full_report}")
-        # 4. --- APPLY PHASE ---
-        for mod_key in internal_mod_keys: # Iterate in order
-            plugin = active_plugins[mod_key]
-
-            # Ensure internal plugin methods can access the environment
-            plugin._env = self._env
-
-            # --- Apply Attribute Overrides ---
+        # 3. --- APPLY PHASE (Simplified) ---
+        for mod_key in internal_mod_keys:
+            plugin = active_internal_plugins[mod_key]
+            
+            # Apply Attribute Overrides (to env)
             if hasattr(plugin, "attribute_overrides"):
                 for attr_name, value in plugin.attribute_overrides.items():
                     setattr(self._env, attr_name, value)
+            
+            # Provide env reference for plugin logic
+            plugin._env = self._env
 
-            # --- Apply Function Patches ---
+            # Apply Function Patches (to env OR renderer)
             for fn_name, fn_logic in inspect.getmembers(plugin, predicate=inspect.ismethod):
                 if not fn_name.startswith("__"):
-                    # Bind method normally - plugin methods can access self._env as an attribute
-                    setattr(self._env, fn_name, fn_logic)
+                    # Use the bound method directly; jit(static_argnums=(0,)) expects the instance as arg 0
+                    if hasattr(self._env, fn_name):
+                        setattr(self._env, fn_name, fn_logic)
+                    elif hasattr(self._env, 'renderer') and hasattr(self._env.renderer, fn_name):
+                        setattr(self._env.renderer, fn_name, fn_logic)
             
     def __getattr__(self, name):
         """Delegates all other attribute and method access to the wrapped environment."""

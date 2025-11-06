@@ -4,7 +4,7 @@ import jax
 
 from jaxatari.environment import JaxEnvironment
 from jaxatari.renderers import JAXGameRenderer
-from jaxatari.modification import JaxAtariModWrapper
+from jaxatari.modification import JaxAtariModWrapper, JaxAtariPostStepModPlugin
 
 
 # Map of game names to their module paths
@@ -67,7 +67,7 @@ def make(game_name: str,
         )
     
     try:
-        # 1. Load the base environment *class* (don't instantiate yet)
+        # 1. Load the base environment class
         module = importlib.import_module(GAME_MODULES[game_name])
         env_class = None
         for _, obj in inspect.getmembers(module):
@@ -77,49 +77,92 @@ def make(game_name: str,
         if env_class is None:
             raise ImportError(f"No JaxEnvironment subclass found in {GAME_MODULES[game_name]}")
 
-        # 2. Handle mods if they are requested
+        # 2. Get default constants
+        base_consts = env_class().consts
+
+        # 3. Handle mods if requested
         if mods_config:
             if game_name not in MOD_MODULES:
                 raise NotImplementedError(f"No mod module defined for '{game_name}'.")
 
-            # 3. Load the Controller and Registry
+            # Load controller and registry
             ControllerClass = _load_from_string(MOD_MODULES[game_name])
             registry = ControllerClass.REGISTRY
 
-            # 4. --- PRE-SCAN FOR CONSTANT OVERRIDES ---
-            base_consts = env_class().consts # Get default constants
+            # 4. Expand modpacks (lists) into a flat list, deduped
+            expanded_mods_config = []
+            seen_mods = set()
+            def expand_mods(mod_list, depth=0):
+                if depth > 10:
+                    raise RecursionError("Circular dependency detected in modpacks.")
+                for mod_key in mod_list:
+                    if mod_key in seen_mods:
+                        continue
+                    if mod_key not in registry:
+                        raise ValueError(f"Mod '{mod_key}' not recognized.")
+                    plugin = registry[mod_key]
+                    if isinstance(plugin, list):
+                        expand_mods(plugin, depth + 1)
+                    else:
+                        expanded_mods_config.append(mod_key)
+                        seen_mods.add(mod_key)
+            expand_mods(mods_config)
+
+            # 5. Pre-scan for overrides using expanded list
             const_overrides = {}
-            for mod_key in mods_config:
-                if mod_key not in registry:
-                    raise ValueError(f"Mod '{mod_key}' not recognized.")
+            asset_overrides = {}
+            for mod_key in expanded_mods_config:
                 plugin_class = registry[mod_key]
                 if hasattr(plugin_class, "constants_overrides"):
                     const_overrides.update(plugin_class.constants_overrides)
-            
-            # 5. Create the base env WITH modded constants
+                if hasattr(plugin_class, "asset_overrides"):
+                    asset_overrides.update(plugin_class.asset_overrides)
+
+            # 5. Prepare modded asset config first
+            if hasattr(base_consts, "ASSET_CONFIG"):
+                modded_asset_config = list(base_consts.ASSET_CONFIG)
+                new_asset_config = []
+                for asset in modded_asset_config:
+                    asset = dict(asset)
+                    asset_name = asset.get("name")
+                    if asset_name in asset_overrides:
+                        path = asset_overrides[asset_name]
+                        if path is None:
+                            # Remove asset if override explicitly disables it
+                            continue
+                        if "file" in asset:
+                            asset["file"] = path
+                        if "pattern" in asset:
+                            asset["pattern"] = path
+                    new_asset_config.append(asset)
+                const_overrides["ASSET_CONFIG"] = new_asset_config
+
+            # 6. Apply constant overrides (including asset config)
             modded_consts = base_consts._replace(**const_overrides)
+
+            # 7. Instantiate env with modded consts
             base_env = env_class(consts=modded_consts)
-            
-            # 6. --- BUILD STAGE 1 (Internal Controller) ---
+
+            # 8. Internal controller stage
             modded_env = ControllerClass(
                 env=base_env,
-                mods_config=mods_config,
+                mods_config=expanded_mods_config,
                 allow_conflicts=allow_conflicts
             )
-            
-            # 7. --- BUILD STAGE 2 (Post-Step Wrapper) ---
+
+            # 9. Post-step wrapper stage
             final_env = JaxAtariModWrapper(
                 env=modded_env,
-                mods_config=mods_config,
+                mods_config=expanded_mods_config,
                 allow_conflicts=allow_conflicts
             )
-            
+
             return final_env
 
-        # 3. If no mods, just return the base env
-        return env_class()
+        # No mods: return default base env with default constants
+        return env_class(consts=base_consts)
 
-    except (ImportError, AttributeError) as e:
+    except (ImportError, AttributeError, ValueError, NotImplementedError) as e:
         raise ImportError(f"Failed to load game '{game_name}': {e}") from e
 
 def make_renderer(game_name: str) -> JAXGameRenderer:
