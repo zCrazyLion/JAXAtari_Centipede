@@ -1,10 +1,19 @@
 import inspect
+import importlib
 import jax
 import chex
 from functools import partial
 from collections import defaultdict
 from abc import ABC, abstractmethod
 from jaxatari.wrappers import JaxatariWrapper
+from jaxatari.environment import JaxEnvironment
+
+
+def _load_from_string(path: str):
+    """Dynamically import an attribute from a module path string."""
+    module_path, attr_name = path.rsplit(".", 1)
+    module = importlib.import_module(module_path)
+    return getattr(module, attr_name)
 
 # --- 1. Plugin Base Classes ---
 class JaxAtariInternalModPlugin(ABC):
@@ -66,7 +75,66 @@ def _check_gameplay_conflicts(
         else:
             print(f"WARNING: {report}. Conflicts ignored.")
 
-# --- 3. Updated ModController ---
+
+def _build_modded_asset_config(base_consts, registry, expanded_mods_config):
+    """Return a modded ASSET_CONFIG list based on plugin overrides, or None."""
+    if not hasattr(base_consts, "ASSET_CONFIG"):
+        return None
+
+    all_asset_overrides = {}
+    for mod_key in expanded_mods_config:
+        plugin_class = registry[mod_key]
+        if hasattr(plugin_class, "asset_overrides"):
+            all_asset_overrides.update(plugin_class.asset_overrides)
+
+    if not all_asset_overrides:
+        return None
+
+    original_assets_by_name = {}
+    for asset in getattr(base_consts, "ASSET_CONFIG", ()):  # type: ignore[attr-defined]
+        asset_dict = dict(asset)
+        asset_name = asset_dict.get("name")
+        if asset_name:
+            original_assets_by_name[asset_name] = asset_dict
+
+    modded_asset_map = original_assets_by_name.copy()
+
+    for asset_name, override_value in all_asset_overrides.items():
+        if override_value is None:
+            modded_asset_map.pop(asset_name, None)
+            continue
+
+        if isinstance(override_value, str):
+            replacement_name = override_value
+            if replacement_name not in original_assets_by_name:
+                raise ValueError(
+                    "Asset override failed: mod wants to map "
+                    f"'{asset_name}' to '{replacement_name}', but "
+                    f"'{replacement_name}' does not exist in base assets."
+                )
+            new_config = dict(original_assets_by_name[replacement_name])
+            new_config["name"] = asset_name
+            modded_asset_map[asset_name] = new_config
+            continue
+
+        if isinstance(override_value, dict):
+            override_dict = dict(override_value)
+            if override_dict.get("name") != asset_name:
+                raise ValueError(
+                    f"Asset override for '{asset_name}' is invalid. "
+                    "Override dictionaries must include a 'name' key "
+                    f"set to '{asset_name}'."
+                )
+            modded_asset_map[asset_name] = override_dict
+            continue
+
+        raise TypeError(
+            f"Asset override for '{asset_name}' has unsupported type "
+            f"'{type(override_value).__name__}'."
+        )
+
+    return list(modded_asset_map.values())
+
 
 class JaxAtariModController:
     """
@@ -77,6 +145,26 @@ class JaxAtariModController:
     This class is intended to be inherited by game-specific
     controllers (e.g., PongEnvMod, KangarooEnvMod).
     """
+    @staticmethod
+    def pre_scan_for_overrides(
+        mods_config: list,
+        registry: dict,
+        base_consts
+    ) -> dict:
+        const_overrides = {}
+        for mod_key in mods_config:
+            plugin_class = registry[mod_key]
+            if hasattr(plugin_class, "constants_overrides"):
+                const_overrides.update(plugin_class.constants_overrides)
+
+        modded_asset_config = _build_modded_asset_config(
+            base_consts, registry, mods_config
+        )
+        if modded_asset_config is not None:
+            const_overrides["ASSET_CONFIG"] = modded_asset_config
+
+        return const_overrides
+
     def __init__(self, 
                  env, 
                  mods_config: list,  # Full list of mod keys
@@ -98,9 +186,29 @@ class JaxAtariModController:
             
             plugin_class = self.registry[mod_key]
             
+            # Validate that the registry entry is a class (not a function, list, etc.)
+            if isinstance(plugin_class, list):
+                raise TypeError(
+                    f"Mod '{mod_key}' in registry is a modpack (list), but modpacks should have been "
+                    f"expanded before reaching this point. This indicates a bug in the mod expansion logic."
+                )
+            if not inspect.isclass(plugin_class):
+                raise TypeError(
+                    f"Mod '{mod_key}' in registry is not a class. "
+                    f"Found type: {type(plugin_class).__name__}, value: {plugin_class}. "
+                    f"Mod registry entries must be classes that inherit from "
+                    f"JaxAtariInternalModPlugin or JaxAtariPostStepModPlugin."
+                )
+            
             # This class only cares about Internal plugins
             if issubclass(plugin_class, JaxAtariInternalModPlugin):
-                plugin_instance = plugin_class()
+                try:
+                    plugin_instance = plugin_class()
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to instantiate mod '{mod_key}' (class: {plugin_class.__name__}). "
+                        f"Error: {e}"
+                    ) from e
                 active_internal_plugins[mod_key] = plugin_instance
                 internal_mod_keys.append(mod_key)
                 
@@ -161,10 +269,22 @@ class JaxAtariModController:
             for fn_name, fn_logic in inspect.getmembers(plugin, predicate=inspect.ismethod):
                 if not fn_name.startswith("__"):
                     # Use the bound method directly; jit(static_argnums=(0,)) expects the instance as arg 0
-                    if hasattr(self._env, fn_name):
+                    
+                    env_has_attr = hasattr(self._env, fn_name)
+                    renderer_has_attr = hasattr(self._env, 'renderer') and hasattr(self._env.renderer, fn_name)
+                    if env_has_attr and renderer_has_attr:
+                        # This is ambiguous! Fail loudly.
+                        raise AttributeError(
+                            f"Mod '{mod_key}' tries to patch '{fn_name}', but this method exists on BOTH "
+                            f"the base environment and the renderer. The modding system cannot determine which to override."
+                        )
+                    elif env_has_attr:
                         setattr(self._env, fn_name, fn_logic)
-                    elif hasattr(self._env, 'renderer') and hasattr(self._env.renderer, fn_name):
+                    elif renderer_has_attr:
                         setattr(self._env.renderer, fn_name, fn_logic)
+                    
+                    # The 'else' case (does not exist anywhere) is already
+                    # handled by the pre-check earlier in this method.
             
     def __getattr__(self, name):
         """Delegates all other attribute and method access to the wrapped environment."""
@@ -201,8 +321,28 @@ class JaxAtariModWrapper(JaxatariWrapper):
             
             plugin_class = registry[mod_key]
             
+            # Validate that the registry entry is a class (not a function, list, etc.)
+            if isinstance(plugin_class, list):
+                raise TypeError(
+                    f"Mod '{mod_key}' in registry is a modpack (list), but modpacks should have been "
+                    f"expanded before reaching this point. This indicates a bug in the mod expansion logic."
+                )
+            if not inspect.isclass(plugin_class):
+                raise TypeError(
+                    f"Mod '{mod_key}' in registry is not a class. "
+                    f"Found type: {type(plugin_class).__name__}, value: {plugin_class}. "
+                    f"Mod registry entries must be classes that inherit from "
+                    f"JaxAtariInternalModPlugin or JaxAtariPostStepModPlugin."
+                )
+            
             if issubclass(plugin_class, JaxAtariPostStepModPlugin):
-                active_plugins[mod_key] = plugin_class()
+                try:
+                    active_plugins[mod_key] = plugin_class()
+                except Exception as e:
+                    raise RuntimeError(
+                        f"Failed to instantiate mod '{mod_key}' (class: {plugin_class.__name__}). "
+                        f"Error: {e}"
+                    ) from e
         
         if not active_plugins:
             self.post_step_mods = []
@@ -215,7 +355,7 @@ class JaxAtariModWrapper(JaxatariWrapper):
         # 3. --- APPLY PHASE ---
         # Store env reference on each plugin instance
         for plugin in active_plugins.values():
-            plugin._env = self._env
+            plugin._env = self._env._env
         
         # Store the bound run methods (they're already bound to plugin instances)
         self.post_step_mods = [
@@ -238,3 +378,95 @@ class JaxAtariModWrapper(JaxatariWrapper):
             new_state = mod_fn(new_state)
             
         return obs, new_state, reward, done, info
+
+
+def apply_modifications(
+    game_name: str,
+    mods_config: list,
+    allow_conflicts: bool,
+    base_consts,
+    env_class,
+    MOD_MODULES: dict
+) -> JaxEnvironment:
+    """
+    Applies the full two-stage modding pipeline to a base environment class.
+
+    This is the main entry point for the modding system, called by core.make().
+    """
+
+    if game_name not in MOD_MODULES:
+        raise NotImplementedError(f"No mod module defined for '{game_name}'.")
+
+    try:
+        ControllerClass = _load_from_string(MOD_MODULES[game_name])
+    except (ImportError, AttributeError) as e:
+        raise ImportError(
+            f"Failed to load mod controller for '{game_name}'. "
+            f"Path: {MOD_MODULES[game_name]}. Error: {e}"
+        ) from e
+    
+    if not hasattr(ControllerClass, 'REGISTRY'):
+        raise AttributeError(
+            f"Mod controller class '{ControllerClass.__name__}' does not have a REGISTRY attribute. "
+            f"All mod controllers must define a REGISTRY class attribute."
+        )
+    
+    registry = ControllerClass.REGISTRY
+    if not isinstance(registry, dict):
+        raise TypeError(
+            f"Mod controller '{ControllerClass.__name__}' has a REGISTRY that is not a dictionary. "
+            f"Found type: {type(registry).__name__}."
+        )
+
+    expanded_mods_config = []
+    seen_mods = set()
+
+    def expand_mods(mod_list, depth=0):
+        if depth > 10:
+            raise RecursionError("Circular dependency detected in modpacks.")
+        for mod_key in mod_list:
+            if mod_key in seen_mods:
+                continue
+            # Validate mod_key is a string
+            if not isinstance(mod_key, str):
+                raise TypeError(
+                    f"Invalid mod key in modpack: expected string, got {type(mod_key).__name__}: {mod_key}. "
+                    f"Modpacks must contain only string keys that reference other mods."
+                )
+            if mod_key not in registry:
+                raise ValueError(
+                    f"Mod '{mod_key}' not recognized. "
+                    f"Available mods: {list(registry.keys())}"
+                )
+            plugin = registry[mod_key]
+            if isinstance(plugin, list):
+                expand_mods(plugin, depth + 1)
+            else:
+                expanded_mods_config.append(mod_key)
+                seen_mods.add(mod_key)
+
+    expand_mods(mods_config)
+
+    const_overrides = ControllerClass.pre_scan_for_overrides(
+        expanded_mods_config,
+        registry,
+        base_consts
+    )
+
+    modded_consts = base_consts._replace(**const_overrides)
+
+    base_env = env_class(consts=modded_consts)
+
+    modded_env = ControllerClass(
+        env=base_env,
+        mods_config=expanded_mods_config,
+        allow_conflicts=allow_conflicts
+    )
+
+    final_env = JaxAtariModWrapper(
+        env=modded_env,
+        mods_config=expanded_mods_config,
+        allow_conflicts=allow_conflicts
+    )
+
+    return final_env

@@ -7,7 +7,8 @@ import jax.random as jrandom
 import numpy as np
 
 from jaxatari.environment import JAXAtariAction
-from utils import get_human_action, load_game_environment, load_game_mods, update_pygame
+from utils import get_human_action, update_pygame
+from jaxatari.core import make as jaxatari_make
 
 UPSCALE_FACTOR = 4
 
@@ -84,18 +85,19 @@ def main():
     args = parser.parse_args()
 
     execute_without_rendering = False
-    # Load the game environment
+    # Load the game environment using the core.make() entry point
     try:
-        env, renderer = load_game_environment(args.game)
-        if args.mods is not None:
-            mod = load_game_mods(args.game, args.mods, args.allow_conflicts)
-            env = mod(env)
+        env = jaxatari_make(
+            game_name=args.game,
+            mods_config=args.mods,
+            allow_conflicts=args.allow_conflicts
+        )
 
-        if renderer is None:
+        if not hasattr(env, "renderer"):
             execute_without_rendering = True
             print("No renderer found, running without rendering.")
 
-    except (FileNotFoundError, ImportError, ValueError, AttributeError) as e:
+    except (FileNotFoundError, ImportError, ValueError, AttributeError, NotImplementedError) as e:
         print(f"Error loading game or mods: {e}")
         sys.exit(1)
 

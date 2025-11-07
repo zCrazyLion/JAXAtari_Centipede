@@ -1,11 +1,16 @@
 from jaxatari.modification import JaxAtariModController
-from jaxatari.games.mods.kangaroo_mod_plugins import NoMonkeyMod, NoFallingCoconutMod, PinChildMod
-
+from jaxatari.games.mods.kangaroo_mod_plugins import NoMonkeyMod, NoFallingCoconutMod, PinChildMod, RenderDebugInfo, ReplaceChildWithMonkeyMod, ReplaceBellWithFlameMod, LethalFlameMod, SpawnAtSecondLevelMod
 # --- 3. The Registry ---
 KANGAROO_MOD_REGISTRY = {
     "no_monkey": NoMonkeyMod,
     "no_falling_coconut": NoFallingCoconutMod,
     "pin_child": PinChildMod,
+    "render_debug_info": RenderDebugInfo,
+    "replace_child_with_monkey": ReplaceChildWithMonkeyMod,
+    "lethal_flame": LethalFlameMod,
+    "replace_bell_with_flame": ReplaceBellWithFlameMod,
+    "lethal_bell": ["lethal_flame", "replace_bell_with_flame"], # bundle into a modpack
+    "spawn_at_second_level": SpawnAtSecondLevelMod,
 }
 
 class KangarooEnvMod(JaxAtariModController):
