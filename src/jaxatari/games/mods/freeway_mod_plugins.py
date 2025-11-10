@@ -44,57 +44,25 @@ class AlwaysStopAllCarsMod(JaxAtariPostStepModPlugin):
         return new_state._replace(cars=prev_state.cars)
 
 
-class SpeedModeMod(JaxAtariPostStepModPlugin):
-    """Increase speed of all cars by a factor of 2"""
-    
-    @partial(jax.jit, static_argnums=(0,))
-    def run(self, prev_state: FreewayState, new_state: FreewayState) -> FreewayState:
-        """
-        This function is called by the wrapper *after*
-        the main step is complete.
-        Access the environment via self._env (set by JaxAtariModWrapper).
-        
-        To double speed, we look one step ahead from the current new_state.
-        This is equivalent to calling step(new_state, 0) and taking the cars.
-        """
-        # Simulate one more step forward to get double speed
-        # We need to check if cars should move at new_state.time (which is prev_state.time + 1)
-        # and apply that movement to the already-updated cars
-        fast_cars = new_state.cars
-        for lane in range(self._env.consts.num_lanes):
-            dir = (
-                self._env.consts.car_update[lane] / jnp.abs(self._env.consts.car_update[lane])
-            ).astype(jnp.int32)
-            
-            # Check if car should move at new_state.time (one step ahead)
-            should_move = jnp.equal(
-                jnp.mod(new_state.time, self._env.consts.car_update[lane]), 0
-            )
-            
-            new_x = jax.lax.cond(
-                should_move,
-                lambda: new_state.cars[lane, 0] + dir,
-                lambda: new_state.cars[lane, 0],
-            )
-            
-            # Wrap around screen
-            new_x = jnp.where(
-                self._env.consts.car_update[lane] > 0,
-                jnp.where(
-                    new_x > self._env.consts.screen_width,
-                    -self._env.consts.car_width,
-                    new_x
-                ),
-                jnp.where(
-                    new_x < -self._env.consts.car_width,
-                    self._env.consts.screen_width,
-                    new_x
-                ),
-            ).astype(jnp.int32)
-            
-            fast_cars = fast_cars.at[lane, 0].set(new_x)
-        
-        return new_state._replace(cars=fast_cars)
+class SpeedModeMod(JaxAtariInternalModPlugin):
+    """
+    Doubles the speed of all cars by making them "teleport" twice as far
+    on each update, via multiplying their update step by 2.
+    This is done by overriding the `car_update` constant.
+    """
+    @staticmethod
+    def double_update_arr(arr):
+        arr = jnp.array(arr)
+        # Multiply each timing by 2
+        return [int(x * 2) for x in arr]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        base_update = self._env.consts.car_update
+        update_list = list(base_update)
+        self.constants_overrides = {
+            "car_update": SpeedModeMod.double_update_arr(update_list)
+        }
 
 
 class BlackCarsMod(JaxAtariInternalModPlugin):

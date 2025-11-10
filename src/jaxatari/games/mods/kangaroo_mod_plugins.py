@@ -5,6 +5,7 @@ from functools import partial
 
 from jaxatari.modification import JaxAtariInternalModPlugin, JaxAtariPostStepModPlugin
 from jaxatari.games.jax_kangaroo import KangarooState
+from jaxatari.games.kangaroo_levels import LevelConstants, Kangaroo_Level_1, Kangaroo_Level_2, Kangaroo_Level_3
 
 # --- 1. Internal Mods (Group 1) ---
 
@@ -247,4 +248,87 @@ class SpawnAtSecondLevelMod(JaxAtariInternalModPlugin):
     # overwrite constants
     constants_overrides = {
         "PLAYER_START_Y": 52,
+    }
+
+
+# --- Ladder Modification Mods ---
+
+def _remove_ladders(level_constants):
+    """Remove all ladders by setting positions to invalid values."""
+    num_ladders = level_constants.ladder_positions.shape[0]
+    invalid_ladders = jnp.full((num_ladders, 2), -1, dtype=jnp.int32)
+    invalid_sizes = jnp.zeros((num_ladders, 2), dtype=jnp.int32)
+    
+    return LevelConstants(
+        ladder_positions=invalid_ladders,
+        ladder_sizes=invalid_sizes,
+        platform_positions=level_constants.platform_positions,
+        platform_sizes=level_constants.platform_sizes,
+        fruit_positions=level_constants.fruit_positions,
+        bell_position=level_constants.bell_position,
+        child_position=level_constants.child_position,
+    )
+
+class NoLaddersMod(JaxAtariInternalModPlugin):
+    """
+    Internal mod to remove all ladders from all levels.
+    Uses constants_overrides to directly modify LEVEL_1, LEVEL_2, LEVEL_3.
+    """
+    # Create modified level constants with no ladders
+    _level1_no_ladders = _remove_ladders(Kangaroo_Level_1)
+    _level2_no_ladders = _remove_ladders(Kangaroo_Level_2)
+    _level3_no_ladders = _remove_ladders(Kangaroo_Level_3)
+    
+    # Override constants directly
+    constants_overrides = {
+        "LEVEL_1": _level1_no_ladders,
+        "LEVEL_2": _level2_no_ladders,
+        "LEVEL_3": _level3_no_ladders,
+    }
+
+
+def _center_ladders(level_constants):
+    """Center all ladders horizontally on the screen while keeping their y positions."""
+    # Screen width is 160, ladder width is 8
+    # Center x position: (160 - 8) / 2 = 76
+    center_x = 76
+    
+    # Keep invalid positions (-1) as invalid
+    is_valid = level_constants.ladder_positions[:, 0] >= 0
+    
+    # Create new positions: center x, keep original y
+    original_y = level_constants.ladder_positions[:, 1]
+    centered_positions = jnp.where(
+        is_valid[:, jnp.newaxis],
+        jnp.stack([jnp.full_like(original_y, center_x), original_y], axis=1),
+        level_constants.ladder_positions  # Keep invalid positions as -1
+    )
+    
+    return LevelConstants(
+        ladder_positions=centered_positions,
+        ladder_sizes=level_constants.ladder_sizes,
+        platform_positions=level_constants.platform_positions,
+        platform_sizes=level_constants.platform_sizes,
+        fruit_positions=level_constants.fruit_positions,
+        bell_position=level_constants.bell_position,
+        child_position=level_constants.child_position,
+    )
+
+class CenterLaddersMod(JaxAtariInternalModPlugin):
+    """
+    Internal mod to center all ladder positions horizontally on the screen.
+    All ladders will be perfectly aligned at x=76 (center of 160px screen).
+    Uses constants_overrides to directly modify LEVEL_1, LEVEL_2, LEVEL_3.
+    """
+    
+    # Create modified level constants with centered ladders
+    _level1_centered = _center_ladders(Kangaroo_Level_1)
+    _level2_centered = _center_ladders(Kangaroo_Level_2)
+    _level3_centered = _center_ladders(Kangaroo_Level_3)
+    
+    # Override constants directly
+    constants_overrides = {
+        "LEVEL_1": _level1_centered,
+        "LEVEL_2": _level2_centered,
+        "LEVEL_3": _level3_centered,
     }
