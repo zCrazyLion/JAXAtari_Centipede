@@ -154,7 +154,6 @@ class AtlantisInfo(NamedTuple):
     wave_cooldown_remaining: jnp.ndarray
     command_post_alive: jnp.ndarray  # bool scalar
     installations_alive: jnp.ndarray  # (6,) bool
-    all_rewards: jnp.ndarray
 
 
 class AtlantisConstants(NamedTuple):
@@ -1158,8 +1157,7 @@ class JaxAtlantis(
         )
         observation = self._get_observation(state)
         done = self._get_done(state)
-        all_rewards = self._get_all_reward(previous_state, state)
-        info = self._get_info(state, all_rewards)
+        info = self._get_info(state)
         new_reward = state.score - previous_state.score
         state = state._replace(reward=new_reward)
 
@@ -1312,7 +1310,7 @@ class JaxAtlantis(
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_info(
-        self, state: AtlantisState, all_rewards: chex.Array = None
+        self, state: AtlantisState
     ) -> AtlantisInfo:
         enemies_alive = jnp.sum((state.enemies[:, 5] == 1).astype(jnp.int32))
         bullets_alive = jnp.sum(state.bullets_alive.astype(jnp.int32))
@@ -1326,22 +1324,7 @@ class JaxAtlantis(
             wave_cooldown_remaining=state.wave_end_cooldown_remaining,
             command_post_alive=state.command_post_alive,
             installations_alive=state.installations,
-            all_rewards=all_rewards,
         )
-
-    @partial(jax.jit, static_argnums=(0,))
-    def _get_all_reward(
-        self, previous_state: AtlantisState, state: AtlantisState
-    ):
-        if self.reward_funcs is None:
-            return jnp.zeros(1)
-        rewards = jnp.array(
-            [
-                reward_func(previous_state, state)
-                for reward_func in self.reward_funcs
-            ]
-        )
-        return rewards
 
     def _get_reward(
         self, previous_state: AtlantisState, state: AtlantisState
