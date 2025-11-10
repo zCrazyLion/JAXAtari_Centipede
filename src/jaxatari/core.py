@@ -20,8 +20,8 @@ GAME_MODULES = {
 MOD_MODULES = {
     "pong": "jaxatari.games.mods.pong_mods.PongEnvMod",
     "kangaroo": "jaxatari.games.mods.kangaroo_mods.KangarooEnvMod",
-    #"freeway": "jaxatari.games.mods.freeway_mods.FreewayEnvMod",
-    #"breakout": "jaxatari.games.mods.breakout_mods.BreakoutEnvMod",
+    "freeway": "jaxatari.games.mods.freeway_mods.FreewayEnvMod",
+    "breakout": "jaxatari.games.mods.breakout_mods.BreakoutEnvMod",
 }
 
 

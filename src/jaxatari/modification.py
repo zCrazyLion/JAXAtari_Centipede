@@ -42,11 +42,15 @@ class JaxAtariPostStepModPlugin(ABC):
 
     @abstractmethod
     @partial(jax.jit, static_argnums=(0,))
-    def run(self, new_state):
+    def run(self, prev_state, new_state):
         """
         This function is called by the wrapper *after*
         the main step is complete.
         Access the environment via self._env (set by JaxAtariModWrapper).
+        
+        Args:
+            prev_state: The state before the step was taken
+            new_state: The state after the step was taken
         """
         raise NotImplementedError
 
@@ -375,7 +379,7 @@ class JaxAtariModWrapper(JaxatariWrapper):
         
         # 2. Run all post-step mods in order
         for mod_fn in self.post_step_mods:
-            new_state = mod_fn(new_state)
+            new_state = mod_fn(state, new_state)
             
         return obs, new_state, reward, done, info
 
