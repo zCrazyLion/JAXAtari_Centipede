@@ -84,3 +84,26 @@ class BlackCarsMod(JaxAtariInternalModPlugin):
             (0, 0, 0),  # Lane 9 - black
         ]
     }
+
+
+class CenterCarsOnResetMod(JaxAtariPostStepModPlugin):
+    """
+    Positions all cars in the center of the screen when the environment resets.
+    """
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def after_reset(self, obs, state: FreewayState):
+        """
+        Called after reset to modify initial state.
+        Positions all cars in the center of the screen horizontally.
+        """
+        # Calculate center x position
+        center_x = self._env.consts.screen_width // 2
+        
+        # Create new cars array with all cars at center x position
+        # Keep the original y positions (lane positions)
+        centered_cars = state.cars.at[:, 0].set(center_x)
+        
+        # Return modified observation and state
+        modified_state = state._replace(cars=centered_cars)
+        return obs, modified_state

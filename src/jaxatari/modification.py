@@ -39,20 +39,44 @@ class JaxAtariPostStepModPlugin(ABC):
     conflicts_with: list = []
     # For core.make to override constants at construction time
     constants_overrides: dict = {}
+    # For overriding member attributes set in __init__
+    attribute_overrides: dict = {}
+    # Read by core.make to override assets via constants at construction time. This is a list of dicts, each with a 'name' key and a 'file' key.
+    asset_overrides: dict = {}
 
-    @abstractmethod
     @partial(jax.jit, static_argnums=(0,))
     def run(self, prev_state, new_state):
         """
-        This function is called by the wrapper *after*
-        the main step is complete.
+        Optional function called by the wrapper *after* the main step is complete.
+        If implemented, this allows the plugin to modify state after each step.
         Access the environment via self._env (set by JaxAtariModWrapper).
         
         Args:
             prev_state: The state before the step was taken
             new_state: The state after the step was taken
+            
+        Returns:
+            Modified state (or unchanged state)
         """
-        raise NotImplementedError
+        # Default implementation: no-op, just return state as-is
+        return new_state
+
+    @partial(jax.jit, static_argnums=(0,))
+    def after_reset(self, obs, state):
+        """
+        Optional function called by the wrapper *after* reset is complete.
+        If implemented, this allows the plugin to modify the initial state.
+        Access the environment via self._env (set by JaxAtariModWrapper).
+        
+        Args:
+            obs: The observation returned by reset
+            state: The initial state returned by reset
+            
+        Returns:
+            Tuple of (obs, state) - can return modified versions
+        """
+        # Default implementation: no-op, just return as-is
+        return obs, state
 
 # --- 2. Shared Helper Function ---
 
@@ -144,6 +168,61 @@ def _build_modded_asset_config(base_consts, registry, expanded_mods_config):
     return list(modded_asset_map.values()), asset_conflicts
 
 
+def _collect_and_check_attribute_overrides(
+    mods_config: list,
+    registry: dict,
+    env,
+    allow_conflicts: bool = False
+):
+    """
+    Helper function to collect attribute overrides from all plugins and check for conflicts.
+    Returns a dict mapping mod_key to attribute_overrides dict, and reports conflicts.
+    """
+    all_attribute_overrides = {}
+    attr_conflicts = defaultdict(list)
+    
+    # Collect attribute overrides from all plugins (both Internal and PostStep)
+    for mod_key in mods_config:
+        plugin_class = registry[mod_key]
+        if hasattr(plugin_class, "attribute_overrides") and plugin_class.attribute_overrides:
+            for attr_name in plugin_class.attribute_overrides:
+                attr_conflicts[attr_name].append(mod_key)
+            all_attribute_overrides[mod_key] = plugin_class.attribute_overrides
+    
+    # Check for attribute conflicts
+    attr_conflicts_found = False
+    attr_report_lines = []
+    for attr_name, mods in attr_conflicts.items():
+        if len(mods) > 1:
+            attr_conflicts_found = True
+            winner = mods[-1]
+            attr_report_lines.append(
+                f"  - The attribute '{attr_name}' is overridden by multiple mods: {mods}. "
+                f"With allow_conflicts=True, the last mod in the list ('{winner}') would take priority."
+            )
+    
+    # Report conflicts (but don't raise here - will be combined with other conflict types)
+    return all_attribute_overrides, attr_conflicts_found, attr_report_lines
+
+
+def _apply_attribute_overrides(env, attribute_overrides_dict: dict, mod_key: str):
+    """
+    Helper function to apply attribute overrides to an environment.
+    
+    Args:
+        env: The environment to apply overrides to
+        attribute_overrides_dict: Dictionary of attribute_name -> value
+        mod_key: The mod key (for error messages)
+    """
+    for attr_name, value in attribute_overrides_dict.items():
+        if not hasattr(env, attr_name):
+            raise AttributeError(
+                f"Mod '{mod_key}' tries to override attribute '{attr_name}', "
+                f"but this attribute does not exist on the base environment."
+            )
+        setattr(env, attr_name, value)
+
+
 class JaxAtariModController:
     """
     A generic Mod Controller that contains all the logic for:
@@ -152,6 +231,12 @@ class JaxAtariModController:
     3. Applying 'internal' type patches (method replacement).
     This class is intended to be inherited by game-specific
     controllers (e.g., PongEnvMod, KangarooEnvMod).
+    
+    Conflict Detection:
+    - Constants: Checked in pre_scan_for_overrides (all mods: Internal + PostStep)
+    - Assets: Checked in pre_scan_for_overrides (all mods: Internal + PostStep)
+    - Attributes: Checked in _collect_and_check_attribute_overrides (all mods: Internal + PostStep)
+    - Methods: Checked in __init__ (Internal mods only, as PostStep don't patch methods)
     """
     @staticmethod
     def pre_scan_for_overrides(
@@ -160,6 +245,10 @@ class JaxAtariModController:
         base_consts,
         allow_conflicts: bool = False
     ) -> dict:
+        """
+        Scans all mods (both Internal and PostStep) for constant and asset overrides.
+        Checks for conflicts across ALL mod types and reports them.
+        """
         const_overrides = {}
         const_conflicts = defaultdict(list)  # Track which mods override which constants
         
@@ -272,15 +361,7 @@ class JaxAtariModController:
                 active_internal_plugins[mod_key] = plugin_instance
                 internal_mod_keys.append(mod_key)
                 
-                # --- Strict Check (Attributes) ---
-                if hasattr(plugin_instance, "attribute_overrides"):
-                    for attr_name in plugin_instance.attribute_overrides:
-                        if not hasattr(self._env, attr_name):
-                            # Strict: Fail on typo or missing attribute
-                            raise AttributeError(
-                                f"Mod '{mod_key}' tries to override attribute '{attr_name}', "
-                                f"but this attribute does not exist on the base environment."
-                            )
+                # Attribute overrides will be collected and applied later via helper function
                 # Build patch map for functional conflicts
                 for fn_name, _ in inspect.getmembers(plugin_instance, predicate=inspect.ismethod):
                     if not fn_name.startswith("__"):
@@ -295,32 +376,52 @@ class JaxAtariModController:
         # 2. --- REPORTING (Gameplay Conflicts) ---
         _check_gameplay_conflicts(active_internal_plugins, allow_conflicts)
         
-        # 2b. --- REPORTING (Functional Conflicts) ---
-        conflicts_found = False
-        report_lines = []
+        # 2b. --- REPORTING (Functional Conflicts - Method Patches) ---
+        # Check for conflicts in method patches (functional conflicts)
+        functional_conflicts_found = False
+        functional_report_lines = []
         for fn_name, mods in patch_map.items():
             if len(mods) > 1:
-                conflicts_found = True
+                functional_conflicts_found = True
                 winner = mods[-1]
-                report_lines.append(
-                    f"  - The function or attribute '{fn_name}' is modified by multiple mods: {mods}. "
+                functional_report_lines.append(
+                    f"  - The function '{fn_name}' is modified by multiple mods: {mods}. "
                     f"With allow_conflicts=True, the last mod in the list ('{winner}') would take priority."
                 )
-        if conflicts_found and not allow_conflicts:
+        
+        # Note: Attribute conflicts are checked and reported in the APPLY PHASE below
+        # to ensure they're checked across ALL mods (both Internal and PostStep)
+        
+        if functional_conflicts_found and not allow_conflicts:
             raise ValueError(
-                "Functional conflicts detected:\n" + "\n".join(report_lines) + "\n(Pass allow_conflicts=True to ignore this warning.)"
+                "Functional conflicts detected:\n" + "\n".join(functional_report_lines) + "\n(Pass allow_conflicts=True to ignore this warning.)"
             )
-        elif conflicts_found:
-            print("WARNING: Functional conflicts detected:\n" + "\n".join(report_lines))
+        elif functional_conflicts_found:
+            print("WARNING: Functional conflicts detected:\n" + "\n".join(functional_report_lines))
         
         # 3. --- APPLY PHASE (Simplified) ---
+        # Collect and check attribute overrides for ALL mods (both Internal and PostStep)
+        # This ensures conflicts are detected across all plugin types
+        all_attr_overrides, attr_conflicts_found, attr_report_lines = _collect_and_check_attribute_overrides(
+            mods_config, self.registry, self._env, allow_conflicts
+        )
+        
+        # Report attribute conflicts along with functional conflicts
+        if attr_conflicts_found:
+            if not allow_conflicts:
+                raise ValueError(
+                    "Attribute conflicts detected:\n" + "\n".join(attr_report_lines) + 
+                    "\n(Pass allow_conflicts=True to ignore this warning.)"
+                )
+            else:
+                print("WARNING: Attribute conflicts detected:\n" + "\n".join(attr_report_lines))
+        
         for mod_key in internal_mod_keys:
             plugin = active_internal_plugins[mod_key]
             
-            # Apply Attribute Overrides (to env)
-            if hasattr(plugin, "attribute_overrides"):
-                for attr_name, value in plugin.attribute_overrides.items():
-                    setattr(self._env, attr_name, value)
+            # Apply Attribute Overrides (to env) if this Internal mod has any
+            if mod_key in all_attr_overrides:
+                _apply_attribute_overrides(self._env, all_attr_overrides[mod_key], mod_key)
             
             # Provide env reference for plugin logic
             plugin._env = self._env
@@ -406,6 +507,7 @@ class JaxAtariModWrapper(JaxatariWrapper):
         
         if not active_plugins:
             self.post_step_mods = []
+            self.after_reset_mods = []
             return
         
         # 2. --- REPORT PHASE (Gameplay Conflicts) ---
@@ -413,20 +515,52 @@ class JaxAtariModWrapper(JaxatariWrapper):
         _check_gameplay_conflicts(active_plugins, allow_conflicts)
         
         # 3. --- APPLY PHASE ---
-        # Store env reference on each plugin instance
-        for plugin in active_plugins.values():
-            plugin._env = self._env._env
+        # Note: Attribute overrides were already collected and checked in JaxAtariModController
+        # We just need to apply them for PostStep plugins here
+        # Get attribute overrides that were already collected (stored in controller's registry check)
+        # We'll collect them again but skip conflict checking since it was already done
+        all_attr_overrides = {}
+        for mod_key in mods_config:
+            plugin_class = registry[mod_key]
+            if hasattr(plugin_class, "attribute_overrides") and plugin_class.attribute_overrides:
+                all_attr_overrides[mod_key] = plugin_class.attribute_overrides
         
-        # Store the bound run methods (they're already bound to plugin instances)
-        self.post_step_mods = [
-            plugin.run 
-            for plugin in active_plugins.values()
-        ]
+        # Store env reference on each plugin instance
+        for mod_key, plugin in active_plugins.items():
+            plugin._env = self._env._env
+            
+            # Apply Attribute Overrides (to base env) if this PostStep mod has any
+            if mod_key in all_attr_overrides:
+                _apply_attribute_overrides(self._env._env, all_attr_overrides[mod_key], mod_key)
+        
+        # Store run methods (only for plugins that implement it)
+        # Check if the method is overridden (not just using the default implementation)
+        self.post_step_mods = []
+        for plugin in active_plugins.values():
+            # Check if plugin class has overridden run by checking if it's in the class __dict__
+            plugin_class = type(plugin)
+            if 'run' in plugin_class.__dict__:
+                self.post_step_mods.append(plugin.run)
+        
+        # Store after_reset methods (only for plugins that implement it)
+        # Check if the method is overridden (not just using the default implementation)
+        self.after_reset_mods = []
+        for plugin in active_plugins.values():
+            # Check if plugin class has overridden after_reset by checking if it's in the class __dict__
+            plugin_class = type(plugin)
+            if 'after_reset' in plugin_class.__dict__:
+                self.after_reset_mods.append(plugin.after_reset)
 
-    # this is explictly defined to show that we do not apply any post-step logic to the reset! This should be fine. Hopefully.
     @partial(jax.jit, static_argnums=(0,))
     def reset(self, key: chex.PRNGKey):
-        return self._env.reset(key)
+        # 1. Run the base reset
+        obs, state = self._env.reset(key)
+        
+        # 2. Run all after_reset mods in order
+        for after_reset_fn in self.after_reset_mods:
+            obs, state = after_reset_fn(obs, state)
+        
+        return obs, state
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state, action):

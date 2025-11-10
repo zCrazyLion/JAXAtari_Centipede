@@ -1,5 +1,5 @@
 from jaxatari.modification import JaxAtariModController
-from jaxatari.games.mods.freeway_mod_plugins import StopAllCarsMod, AlwaysStopAllCarsMod, SpeedModeMod, BlackCarsMod
+from jaxatari.games.mods.freeway_mod_plugins import StopAllCarsMod, AlwaysStopAllCarsMod, SpeedModeMod, BlackCarsMod, CenterCarsOnResetMod
 
 class FreewayEnvMod(JaxAtariModController):
     """
@@ -12,6 +12,7 @@ class FreewayEnvMod(JaxAtariModController):
         "always_stop_all_cars": AlwaysStopAllCarsMod,
         "speed_mode": SpeedModeMod,
         "black_cars": BlackCarsMod,
+        "center_cars_on_reset": CenterCarsOnResetMod,
     }
 
     def __init__(self,
