@@ -86,11 +86,15 @@ def _build_modded_asset_config(base_consts, registry, expanded_mods_config):
         return None
 
     all_asset_overrides = {}
+    asset_conflicts = defaultdict(list)  # Track which mods override which assets
+    
     for mod_key in expanded_mods_config:
         plugin_class = registry[mod_key]
         if hasattr(plugin_class, "asset_overrides"):
+            for asset_name in plugin_class.asset_overrides:
+                asset_conflicts[asset_name].append(mod_key)
             all_asset_overrides.update(plugin_class.asset_overrides)
-
+    
     if not all_asset_overrides:
         return None
 
@@ -137,7 +141,7 @@ def _build_modded_asset_config(base_consts, registry, expanded_mods_config):
             f"'{type(override_value).__name__}'."
         )
 
-    return list(modded_asset_map.values())
+    return list(modded_asset_map.values()), asset_conflicts
 
 
 class JaxAtariModController:
@@ -153,19 +157,71 @@ class JaxAtariModController:
     def pre_scan_for_overrides(
         mods_config: list,
         registry: dict,
-        base_consts
+        base_consts,
+        allow_conflicts: bool = False
     ) -> dict:
         const_overrides = {}
+        const_conflicts = defaultdict(list)  # Track which mods override which constants
+        
+        # Collect constants and detect conflicts
         for mod_key in mods_config:
             plugin_class = registry[mod_key]
             if hasattr(plugin_class, "constants_overrides"):
+                for const_name in plugin_class.constants_overrides:
+                    const_conflicts[const_name].append(mod_key)
                 const_overrides.update(plugin_class.constants_overrides)
 
-        modded_asset_config = _build_modded_asset_config(
+        # Check for constant conflicts
+        constant_conflicts_found = False
+        constant_report_lines = []
+        for const_name, mods in const_conflicts.items():
+            if len(mods) > 1:
+                constant_conflicts_found = True
+                winner = mods[-1]
+                constant_report_lines.append(
+                    f"  - The constant '{const_name}' is overridden by multiple mods: {mods}. "
+                    f"With allow_conflicts=True, the last mod in the list ('{winner}') would take priority."
+                )
+        
+        # Build asset config and get asset conflicts
+        asset_result = _build_modded_asset_config(
             base_consts, registry, mods_config
         )
-        if modded_asset_config is not None:
+        
+        if asset_result is not None:
+            modded_asset_config, asset_conflicts = asset_result
             const_overrides["ASSET_CONFIG"] = modded_asset_config
+            
+            # Check for asset conflicts
+            asset_conflicts_found = False
+            asset_report_lines = []
+            for asset_name, mods in asset_conflicts.items():
+                if len(mods) > 1:
+                    asset_conflicts_found = True
+                    winner = mods[-1]
+                    asset_report_lines.append(
+                        f"  - The asset '{asset_name}' is overridden by multiple mods: {mods}. "
+                        f"With allow_conflicts=True, the last mod in the list ('{winner}') would take priority."
+                    )
+        else:
+            asset_conflicts_found = False
+            asset_report_lines = []
+        
+        # Report all conflicts
+        if (constant_conflicts_found or asset_conflicts_found) and not allow_conflicts:
+            report_parts = []
+            if constant_conflicts_found:
+                report_parts.append("Constant conflicts detected:\n" + "\n".join(constant_report_lines))
+            if asset_conflicts_found:
+                report_parts.append("Asset conflicts detected:\n" + "\n".join(asset_report_lines))
+            raise ValueError(
+                "\n".join(report_parts) + "\n(Pass allow_conflicts=True to ignore this warning.)"
+            )
+        elif constant_conflicts_found or asset_conflicts_found:
+            if constant_conflicts_found:
+                print("WARNING: Constant conflicts detected:\n" + "\n".join(constant_report_lines))
+            if asset_conflicts_found:
+                print("WARNING: Asset conflicts detected:\n" + "\n".join(asset_report_lines))
 
         return const_overrides
 
@@ -454,7 +510,8 @@ def apply_modifications(
     const_overrides = ControllerClass.pre_scan_for_overrides(
         expanded_mods_config,
         registry,
-        base_consts
+        base_consts,
+        allow_conflicts
     )
 
     modded_consts = base_consts._replace(**const_overrides)

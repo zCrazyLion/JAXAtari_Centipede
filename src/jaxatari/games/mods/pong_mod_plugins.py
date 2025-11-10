@@ -52,7 +52,7 @@ class RandomEnemyMod(JaxAtariInternalModPlugin):
 
 class AlwaysZeroScoreMod(JaxAtariPostStepModPlugin):    
     @partial(jax.jit, static_argnums=(0,))
-    def run(self, new_state):
+    def run(self, prev_state, new_state):
         """
         This function is called by the wrapper *after*
         the main step is complete.

@@ -22,6 +22,7 @@ MOD_MODULES = {
     "kangaroo": "jaxatari.games.mods.kangaroo_mods.KangarooEnvMod",
     "freeway": "jaxatari.games.mods.freeway_mods.FreewayEnvMod",
     "breakout": "jaxatari.games.mods.breakout_mods.BreakoutEnvMod",
+    "seaquest": "jaxatari.games.mods.seaquest_mods.SeaquestEnvMod",
 }
 
 

@@ -59,7 +59,7 @@ class PinChildMod(JaxAtariPostStepModPlugin):
     Post-step mod to pin the child kangaroo in place.
     """
     @partial(jax.jit, static_argnums=(0,))
-    def run(self, new_state: KangarooState):
+    def run(self, prev_state: KangarooState, new_state: KangarooState):
         """
         Called *after* the main step. Overwrites the child's
         position with its static starting position.
@@ -190,7 +190,7 @@ class LethalFlameMod(JaxAtariPostStepModPlugin):
     """
     
     @partial(jax.jit, static_argnums=(0,))
-    def run(self, new_state: KangarooState):
+    def run(self, prev_state: KangarooState, new_state: KangarooState):
         """
         Called by the wrapper after the main step is complete.
         """
