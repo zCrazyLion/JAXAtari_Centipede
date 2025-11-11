@@ -6,6 +6,7 @@ from jaxatari.renderers import JAXGameRenderer
 from jaxatari.wrappers import JaxatariWrapper
 
 
+
 # Map of game names to their module paths
 GAME_MODULES = {
     "pong": "jaxatari.games.jax_pong",
@@ -27,6 +28,10 @@ MOD_MODULES = {
 def list_available_games() -> list[str]:
     """Lists all available, registered games."""
     return list(GAME_MODULES.keys())
+
+def list_available_mods() -> list[str]:
+    """Lists all available, registered mods."""
+    return list(MOD_MODULES.keys())
 
 def make(game_name: str, mode: int = 0, difficulty: int = 0) -> JaxEnvironment:
     """
@@ -87,17 +92,18 @@ def make_renderer(game_name: str) -> JAXGameRenderer:
         module = importlib.import_module(GAME_MODULES[game_name])
         
         # 2. Find the correct environment class within the module
-        renderer_class = None
+        env_class = None
         for _, obj in inspect.getmembers(module):
             if inspect.isclass(obj) and issubclass(obj, JAXGameRenderer) and obj is not JAXGameRenderer:
-                renderer_class = obj
+                env_class = obj
                 break # Found it
-
-        if renderer_class is None:
-            raise ImportError(f"No AXGameRenderer subclass found in {GAME_MODULES[game_name]}")
-
+        
+        if env_class is None:
+            raise ImportError(f"No JaxRenderer subclass found in {GAME_MODULES[game_name]}")
+        
         # 3. Instantiate the class, passing along the arguments, and return it
-        return renderer_class()
+        # TODO: none of our environments use mode / difficulty yet, but we might want to add it here and in the single envs
+        return env_class()
     except (ImportError, AttributeError) as e:
         raise ImportError(f"Failed to load renderer for '{game_name}': {e}") from e
     
@@ -127,6 +133,7 @@ def modify(env: JaxEnvironment, game_name: str, mod_name: str) -> JaxatariWrappe
             raise ImportError(f"No mod {mod_name} subclass found in {MOD_MODULES[game_name]}")
         
         # 3. Instantiate the class, passing along the arguments, and return it
+        # TODO: none of our environments use mode / difficulty yet, but we might want to add it here and in the single envs
         return wrapper_class(env)
 
     except (ImportError, AttributeError) as e:
