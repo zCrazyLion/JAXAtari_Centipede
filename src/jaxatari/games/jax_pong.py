@@ -454,6 +454,17 @@ class JaxPong(JaxEnvironment[PongState, PongObservation, PongInfo, PongConstants
             buffer=state.buffer,
             key=state.key,
         )
+        initial_obs = self._get_observation(state)
+
+        return initial_obs, state
+
+    @partial(jax.jit, static_argnums=(0,))
+    def step(self, state: PongState, action: chex.Array) -> Tuple[PongObservation, PongState, float, bool, PongInfo]:
+        previous_state = state
+        state = self._player_step(state, action)
+        state = self._enemy_step(state)
+        state = self._ball_step(state, action)
+        state = self._score_and_reset(state)
 
     def _reset_ball_after_goal(self, state_and_goal: Tuple[PongState, bool]) -> Tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
         state, scored_right = state_and_goal
