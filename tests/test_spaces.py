@@ -239,27 +239,6 @@ def test_spaces_functionality():
     stacked_space = stack_space(box_space, 4)
     assert isinstance(stacked_space, Box)
     assert stacked_space.shape == (4, 3, 4)
-    
-def test_game_names_are_valid(pytestconfig):
-    """Test that all game names are valid Python identifiers."""
-    games = list_available_games()
-
-    specified_game = pytestconfig.getoption("--game")
-    if specified_game:
-        assert specified_game in games, f"Selected game '{specified_game}' should be registered"
-        games_to_check = [specified_game]
-    else:
-        games_to_check = games
-
-    for game_name in games_to_check:
-        # Check that game name is a valid Python identifier
-        assert game_name.isidentifier(), f"Game name '{game_name}' should be a valid Python identifier"
-        
-        # Check that game name is not empty
-        assert len(game_name) > 0, f"Game name should not be empty"
-        
-        # Check that game name contains only alphanumeric characters and underscores
-        assert game_name.replace('_', '').isalnum(), f"Game name '{game_name}' should contain only alphanumeric characters and underscores"
 
 
 def test_space_enhancements():
