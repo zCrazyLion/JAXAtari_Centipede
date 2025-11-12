@@ -142,8 +142,6 @@ class FreewayConstants(NamedTuple):
         None,  # Lane 8 - use original color
         None,  # Lane 9 - use original color
     ]
-    # sprites to enable asset overrides
-    ASSET_CONFIG: tuple = get_default_asset_config()
 
     # Asset config baked into constants (immutable default) for asset overrides
     ASSET_CONFIG: tuple = _get_default_asset_config()
@@ -516,7 +514,7 @@ class FreewayRenderer(JAXGameRenderer):
         black_bar_sprite = self._create_black_bar_sprite()
         
         # 3. Append procedural assets
-        final_asset_config.append({
+        asset_config.append({
             'name': 'black_bar', 
             'type': 'procedural', 
             'data': black_bar_sprite
@@ -531,7 +529,7 @@ class FreewayRenderer(JAXGameRenderer):
             self.BACKGROUND,
             self.COLOR_TO_ID,
             self.FLIP_OFFSETS
-        ) = self.jr.load_and_setup_assets(final_asset_config, sprite_path)
+        ) = self.jr.load_and_setup_assets(asset_config, sprite_path)
         
         # Recolor cars if specified in constants
         self._recolor_cars(sprite_path)

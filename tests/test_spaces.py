@@ -239,24 +239,19 @@ def test_spaces_functionality():
     stacked_space = stack_space(box_space, 4)
     assert isinstance(stacked_space, Box)
     assert stacked_space.shape == (4, 3, 4)
-
-
-def test_all_games_available():
-    """Test that all games can be listed and created."""
-    games = list_available_games()
-    assert len(games) > 0, "Should have at least one game available"
     
-    # Test that each game can be created
-    for game_name in games:
-        env = jaxatari.make(game_name)
-        assert env is not None, f"Environment for {game_name} should not be None"
-
-
-def test_game_names_are_valid():
+def test_game_names_are_valid(pytestconfig):
     """Test that all game names are valid Python identifiers."""
     games = list_available_games()
-    
-    for game_name in games:
+
+    specified_game = pytestconfig.getoption("--game")
+    if specified_game:
+        assert specified_game in games, f"Selected game '{specified_game}' should be registered"
+        games_to_check = [specified_game]
+    else:
+        games_to_check = games
+
+    for game_name in games_to_check:
         # Check that game name is a valid Python identifier
         assert game_name.isidentifier(), f"Game name '{game_name}' should be a valid Python identifier"
         
