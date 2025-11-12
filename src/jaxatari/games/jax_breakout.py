@@ -108,13 +108,10 @@ class BreakoutState(NamedTuple):
     all_blocks_cleared: chex.Array
 
 class JaxBreakout(JaxEnvironment[BreakoutState, BreakoutObservation, BreakoutInfo, BreakoutConstants]):
-    def __init__(self, consts: BreakoutConstants = None, reward_funcs: list[callable]=None):
+    def __init__(self, consts: BreakoutConstants = None):
         consts = consts or BreakoutConstants()
         super().__init__(consts)
         self.renderer = BreakoutRenderer(self.consts)
-        if reward_funcs is not None:
-            reward_funcs = tuple(reward_funcs) 
-        self.reward_funcs = reward_funcs
     
     def _get_player_x_max(self) -> int:
         """Calculate the maximum X position for the player paddle.
