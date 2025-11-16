@@ -639,9 +639,11 @@ class FreewayRenderer(JAXGameRenderer):
         start_index = jax.lax.select(is_single_digit, 1, 0)
         num_to_render = jax.lax.select(is_single_digit, 1, 2)
         render_x = jax.lax.select(is_single_digit, 49 + 8 // 2, 49)
-        
         raster = self.jr.render_label_selective(raster, render_x, 5, score_digits, score_digit_masks, start_index, num_to_render, spacing=8)
-
+        
+        enemy_score = self.jr.int_to_digits(0, max_digits=1)
+        raster = self.jr.render_label_selective(raster, 113, 5, enemy_score, score_digit_masks, 0, 1, spacing=8)
+        
         # Render black bar on the left side
         black_bar_mask = self.SHAPE_MASKS["black_bar"]
         raster = self.jr.render_at(raster, 0, 0, black_bar_mask)
