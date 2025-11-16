@@ -332,3 +332,50 @@ class CenterLaddersMod(JaxAtariInternalModPlugin):
         "LEVEL_2": _level2_centered,
         "LEVEL_3": _level3_centered,
     }
+
+def _invert_ladders(level_constants):
+    """Invert ladder positions horizontally on the screen."""
+    # Screen width is 160, ladder width is 8
+    screen_width = 160
+    ladder_width = 8
+    
+    # Invert x positions: new_x = screen_width - ladder_width - original_x
+    inverted_x = screen_width - ladder_width - level_constants.ladder_positions[:, 0]
+    
+    inverted_positions = jnp.stack([inverted_x, level_constants.ladder_positions[:, 1]], axis=1)
+
+    inverted_platform_x = screen_width - level_constants.platform_positions[:, 0] - level_constants.platform_sizes[:, 0]
+
+    inverted_platform_positions = jnp.stack([inverted_platform_x, level_constants.platform_positions[:, 1]], axis=1)
+
+    inverted_bell_x = screen_width - level_constants.bell_position[0] - 6  # Bell width is 6
+
+    inverted_bell_position = jnp.array([inverted_bell_x, level_constants.bell_position[1]])
+    
+    return LevelConstants(
+        ladder_positions=inverted_positions,
+        ladder_sizes=level_constants.ladder_sizes,
+        platform_positions=inverted_platform_positions,
+        platform_sizes=level_constants.platform_sizes,
+        fruit_positions=level_constants.fruit_positions,
+        bell_position=inverted_bell_position,
+        child_position=level_constants.child_position,
+    )
+
+class InvertLaddersMod(JaxAtariInternalModPlugin):
+    """
+    Internal mod to invert all ladder positions horizontally on the screen.
+    Uses constants_overrides to directly modify LEVEL_1, LEVEL_2, LEVEL_3.
+    """
+    
+    # Create modified level constants with inverted ladders
+    _level1_inverted = _invert_ladders(Kangaroo_Level_1)
+    _level2_inverted = _invert_ladders(Kangaroo_Level_2)
+    _level3_inverted = _invert_ladders(Kangaroo_Level_3)
+    
+    # Override constants directly
+    constants_overrides = {
+        "LEVEL_1": _level1_inverted,
+        "LEVEL_2": _level2_inverted,
+        "LEVEL_3": _level3_inverted,
+    }
