@@ -1,4 +1,12 @@
 {
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "baseBranches": ["test_renovate"],
-  "extends": ["config:recommended"]
+  "dependencyDashboard": true,
+  "dependencyDashboardApproval": true,
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch", "major"],
+      "dependencyDashboardApproval": true
+    }
+  ]
 }
