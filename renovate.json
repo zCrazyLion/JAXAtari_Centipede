@@ -3,6 +3,7 @@
   "baseBranches": ["dev"],
   "dependencyDashboard": true,
   "dependencyDashboardApproval": true,
+  "ignorePaths": ["docs/**"],
   "packageRules": [
     {
       "matchUpdateTypes": ["minor", "patch", "major"],
