@@ -1,0 +1,4 @@
+{
+  "baseBranches": ["test_renovate"],
+  "extends": ["config:recommended"]
+}
