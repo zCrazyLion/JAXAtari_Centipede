@@ -54,6 +54,24 @@ class NoFallingCoconutMod(JaxAtariInternalModPlugin):
         )
 
 
+class NoThrownCoconutMod(JaxAtariInternalModPlugin):
+    """
+    Internal mod to disable the single falling coconut.
+    This patches the environment's '_falling_coconut_controller' method.
+    """
+    @partial(jax.jit, static_argnums=(0,))
+    def _update_coco_state(
+        self,
+        old_m_state: chex.Array,
+        new_m_state: chex.Array,
+        old_m_timer: chex.Array,
+        new_m_timer: chex.Array,
+        c_state: chex.Array,
+        c_pos_x: chex.Array,
+    ) -> chex.Array:
+        return jnp.zeros((4), dtype=jnp.int32)
+
+
 class FirstLevelOnlyMod(JaxAtariInternalModPlugin):
     """
     Internal mod to force the game to always stay on level 1.
@@ -468,7 +486,6 @@ class SpawnOnSecondFloorMod(JaxAtariInternalModPlugin):
 
 
 # --- Ladder Modification Mods ---
-
 def _center_ladders(level_constants):
     """Center all ladders horizontally on the screen while keeping their y positions."""
     # Screen width is 160, ladder width is 8
@@ -496,7 +513,6 @@ def _center_ladders(level_constants):
         level_constants.platform_positions
     )
 
-
     return LevelConstants(
         ladder_positions=centered_positions,
         ladder_sizes=level_constants.ladder_sizes,
@@ -507,13 +523,14 @@ def _center_ladders(level_constants):
         child_position=level_constants.child_position,
     )
 
+
 class CenterLaddersMod(JaxAtariInternalModPlugin):
     """
     Internal mod to center all ladder positions horizontally on the screen.
     All ladders will be perfectly aligned at x=76 (center of 160px screen).
     Uses constants_overrides to directly modify LEVEL_1, LEVEL_2, LEVEL_3.
     """
-    
+
     # Create modified level constants with centered ladders
     _level1_centered = _center_ladders(Kangaroo_Level_1)
     _level2_centered = _center_ladders(Kangaroo_Level_2)
@@ -573,6 +590,47 @@ class InvertLaddersMod(JaxAtariInternalModPlugin):
         "LEVEL_3": _level3_inverted,
     }
 
+
+# Create modified level constants with four ladders
+def _add_fourth_ladder(level_constants, level_number):
+    # Get existing ladder positions and sizes
+    ladder_positions = level_constants.ladder_positions
+    ladder_sizes = level_constants.ladder_sizes
+    
+    # Identify the third ladder (index 2)
+    fourth_ladder_pos = jnp.array([132, 84])  # Default position for the fourth ladder
+    fourth_ladder_size = jnp.array([8, 36])  # Standard ladder size
+    
+
+    # Append the fourth ladder
+    new_ladder_positions = jnp.vstack([ladder_positions, fourth_ladder_pos])
+    new_ladder_sizes = jnp.vstack([ladder_sizes, fourth_ladder_size])
+    return LevelConstants(
+        ladder_positions=new_ladder_positions,
+        ladder_sizes=new_ladder_sizes,
+        platform_positions=level_constants.platform_positions,
+        platform_sizes=level_constants.platform_sizes,
+        fruit_positions=level_constants.fruit_positions,
+        bell_position=level_constants.bell_position,
+        child_position=level_constants.child_position,
+    )
+
+class FourLaddersMod(JaxAtariInternalModPlugin):
+    """
+    Internal mod to add a fourth ladder to each level.
+    The fourth ladder is placed symmetrically to the third ladder.
+    """
+    _level1_with_four = _add_fourth_ladder(Kangaroo_Level_1, 0)
+    _level2_with_four = _add_fourth_ladder(Kangaroo_Level_2, 1)
+    _level3_with_four = _add_fourth_ladder(Kangaroo_Level_3, 2)
+    
+    constants_overrides = {
+        "LEVEL_1": _level1_with_four,
+        "LEVEL_2": _level2_with_four,
+        "LEVEL_3": _level3_with_four,
+    }
+
+
 def flame_trap(level_constants):
     """Moves the flame to the first floor position."""
     return LevelConstants(
@@ -585,11 +643,11 @@ def flame_trap(level_constants):
         child_position=level_constants.child_position,
     )
 
-
 class FlameTrapMod(JaxAtariInternalModPlugin):
     """
     Internal mod to place the flame (bell) on the way to the fruit at each level.
     """
+
     _level1_centered = _center_ladders(Kangaroo_Level_1)
     _level2_centered = _center_ladders(Kangaroo_Level_2)
     _level3_centered = _center_ladders(Kangaroo_Level_3)

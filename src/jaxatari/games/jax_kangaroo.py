@@ -76,7 +76,6 @@ class KangarooConstants(NamedTuple):
     MONKEY_WIDTH: int = 6
     MONKEY_HEIGHT: int = 15
     MONKEY_COLOR: Tuple[int, int, int] = (227, 159, 89)
-    BACKGROUND_COLOR: Tuple[int, int, int] = (80, 0, 132)
     PLAYER_COLOR: Tuple[int, int, int] = (223, 183, 85)
     ENEMY_COLOR: Tuple[int, int, int] = (227, 151, 89)
     FRUIT_COLOR_STATE_1: Tuple[int, int, int] = (214, 92, 92)
@@ -1318,16 +1317,59 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
             score_addition,
         )
 
-    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
-    def _monkey_controller2(self, state: KangarooState, punching: chex.Array):
-        return (
-            state.level.monkey_states,       # new_monkey_states (all zeros)
-            state.level.monkey_positions,    # new_monkey_positions (all spawn coords/off-screen)
-            state.level.monkey_throw_timers, # new_monkey_throw_timers (all zeros)
-            jnp.zeros((), dtype=jnp.int32),  # score_addition (0)
-            state.level.coco_positions,      # new_coco_positions (all off-screen)
-            state.level.coco_states,         # new_coco_states (all zeros)
-            jnp.array(False),                # flip (should be False)
+    @partial(jax.jit, static_argnums=(0,))
+    def _update_coco_state(
+        self,
+        old_m_state: chex.Array,
+        new_m_state: chex.Array,
+        old_m_timer: chex.Array,
+        new_m_timer: chex.Array,
+        c_state: chex.Array,
+        c_pos_x: chex.Array,
+    ) -> chex.Array:
+        return jnp.where(
+            (old_m_state != 3) & (new_m_state == 3),
+            1,
+            jnp.where(
+                (c_state == 1) & (old_m_timer == 3) & (new_m_timer == 2),
+                2,
+                jnp.where(c_pos_x <= 15, 0, c_state),
+            ),
+        )
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _update_coco_positions(
+        self,
+        new_c_state: chex.Array,
+        old_c_state: chex.Array,
+        stepc: chex.Array,
+        old_c_pos: chex.Array,
+        new_m_pos: chex.Array,
+        spawn_position: chex.Array,
+    ) -> chex.Array:
+        return jnp.where(
+            new_c_state == 2,
+            jnp.where(
+                stepc % 2 == 0,
+                jnp.array([old_c_pos[0] - 2, old_c_pos[1]]),
+                old_c_pos,
+            ),
+            jnp.where(
+                (new_c_state == 1) & (old_c_state == 0),
+                jnp.array(
+                    [
+                        new_m_pos[0] - 6,
+                        jnp.where(
+                            spawn_position,
+                            new_m_pos[1] - 5,
+                            new_m_pos[1]
+                            + self.consts.MONKEY_HEIGHT
+                            - self.consts.COCONUT_HEIGHT,
+                        ),
+                    ]
+                ),
+                old_c_pos,
+            ),
         )
 
     @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
@@ -1383,7 +1425,9 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
         )
 
         in_state_1 = new_monkey_states == 1
-        should_transition = (state.level.monkey_positions[:, 1] + self.consts.MONKEY_HEIGHT) >= 172
+        should_transition = (
+            state.level.monkey_positions[:, 1] + self.consts.MONKEY_HEIGHT
+        ) >= 172
         new_monkey_states = jnp.where(
             in_state_1 & should_transition,
             5,
@@ -1504,20 +1548,8 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
             state.level.step_counter,
         )
 
-        def update_coco_state(
-            old_m_state, new_m_state, old_m_timer, new_m_timer, c_state, c_pos_x
-        ):
-            return jnp.where(
-                (old_m_state != 3) & (new_m_state == 3),
-                1,
-                jnp.where(
-                    (c_state == 1) & (old_m_timer == 3) & (new_m_timer == 2),
-                    2,
-                    jnp.where(c_pos_x <= 15, 0, c_state),
-                ),
-            )
-
-        new_coco_states = jax.vmap(update_coco_state, in_axes=(0, 0, 0, 0, 0, 0))(
+        # Call the extracted _update_coco_state method
+        new_coco_states = jax.vmap(self._update_coco_state, in_axes=(0, 0, 0, 0, 0, 0))(
             state.level.monkey_states,
             new_monkey_states,
             state.level.monkey_throw_timers,
@@ -1526,39 +1558,19 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
             state.level.coco_positions[:, 0],
         )
 
-        def update_coco_positions(new_c_state, old_c_state, stepc, old_c_pos, new_m_pos):
-            return jnp.where(
-                new_c_state == 2,
-                jnp.where(
-                    stepc % 2 == 0,
-                    jnp.array([old_c_pos[0] - 2, old_c_pos[1]]),
-                    old_c_pos,
-                ),
-                jnp.where(
-                    (new_c_state == 1) & (old_c_state == 0),
-                    jnp.array(
-                        [
-                            new_m_pos[0] - 6,
-                            jnp.where(
-                                state.level.spawn_position,
-                                new_m_pos[1] - 5,
-                                new_m_pos[1] + self.consts.MONKEY_HEIGHT - self.consts.COCONUT_HEIGHT,
-                            ),
-                        ]
-                    ),
-                    old_c_pos,
-                ),
-            )
-
-        new_coco_positions = jax.vmap(update_coco_positions, in_axes=(0, 0, None, 0, 0))(
+        # Call the extracted _update_coco_positions method
+        new_coco_positions = jax.vmap(
+            self._update_coco_positions, in_axes=(0, 0, None, 0, 0, None)
+        )(
             new_coco_states,
             state.level.coco_states,
             state.level.step_counter,
             state.level.coco_positions,
             new_monkey_positions,
+            state.level.spawn_position,
         )
 
-        # Handle punching at the very end, after all other state transitions to avoid race conditions
+        # Handle punching at the very end
         fist_w = 3
         fist_h = 4
         fist_x = jnp.where(
@@ -1597,7 +1609,7 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
         )
         new_monkey_positions = jax.vmap(
             lambda pos, punched: jnp.where(punched, jnp.array([152, 5]), pos),
-            in_axes=(0, 0)
+            in_axes=(0, 0),
         )(new_monkey_positions, monkeys_punched)
 
         flip = jnp.any((state.level.monkey_states != 3) & (new_monkey_states == 3))
