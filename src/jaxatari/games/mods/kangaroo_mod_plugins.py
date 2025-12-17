@@ -56,9 +56,11 @@ class NoFallingCoconutMod(JaxAtariInternalModPlugin):
 
 class NoThrownCoconutMod(JaxAtariInternalModPlugin):
     """
-    Internal mod to disable the single falling coconut.
-    This patches the environment's '_falling_coconut_controller' method.
+    Internal mod to disable thrown coconuts.
+    This patches the environment's '_update_coco_state' method to prevent 
+    coconuts from transitioning to active states (1 or 2).
     """
+    
     @partial(jax.jit, static_argnums=(0,))
     def _update_coco_state(
         self,
@@ -69,8 +71,49 @@ class NoThrownCoconutMod(JaxAtariInternalModPlugin):
         c_state: chex.Array,
         c_pos_x: chex.Array,
     ) -> chex.Array:
-        return jnp.zeros((4), dtype=jnp.int32)
+        """
+        Override to prevent coconut state updates.
+        Returns 0 (non-existent) regardless of monkey state.
+        """
+        return jnp.array(0, dtype=jnp.int32)
 
+
+class AlwaysHighCoconutMod(JaxAtariInternalModPlugin):
+    """
+    Internal mod to force coconuts to always spawn at the 'head' (high) position.
+    """
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def _update_coco_positions(
+        self,
+        new_c_state: chex.Array,
+        old_c_state: chex.Array,
+        stepc: chex.Array,
+        old_c_pos: chex.Array,
+        new_m_pos: chex.Array,
+        spawn_position: chex.Array,
+    ) -> chex.Array:
+        
+        return jnp.where(
+            new_c_state == 2,
+            # --- Flight Logic (Unchanged) ---
+            jnp.where(
+                stepc % 2 == 0,
+                jnp.array([old_c_pos[0] - 2, old_c_pos[1]]),
+                old_c_pos,
+            ),
+            # --- Spawn Logic (Modified) ---
+            jnp.where(
+                (new_c_state == 1) & (old_c_state == 0),
+                jnp.array(
+                    [
+                        new_m_pos[0] - 6,
+                        new_m_pos[1] - 5 
+                    ]
+                ),
+                old_c_pos,
+            ),
+        )
 
 class FirstLevelOnlyMod(JaxAtariInternalModPlugin):
     """
