@@ -454,6 +454,97 @@ class ReplaceBellWithFlameMod(JaxAtariInternalModPlugin):
         )
         return raster
 
+class ReplaceLadderWithRopeMod(JaxAtariInternalModPlugin):
+    """
+    Replaces the ladder sprites with rope sprites.
+    Ropes are drawn as a 2-pixel wide zig-zag pattern.
+    """
+    @partial(jax.jit, static_argnums=(0,))
+    def _draw_ladders(self, raster: jnp.ndarray, state: KangarooState):
+        """
+        Draws ropes: a 2-pixel wide zig-zag pattern centered on the provided coordinates.
+        This ignores the input 'width' for drawing purposes, forcing a 2-pixel visual width.
+
+        Args:
+            raster: The 2D raster array to draw on.
+            positions: An array of (x, y) coordinates.
+            sizes: An array of (width, height). 
+            color_id: The palette ID to use.
+        """
+        positions = state.level.ladder_positions,
+        sizes = state.level.ladder_sizes,
+            
+        # 1. Get dimensions and scale factors from the config stored in self.jr
+        h, w = (raster.shape[0], raster.shape[1])
+        h_scale = 1
+        w_scale = 1
+        
+        # 2. Create the meshgrid (coordinate system)
+        # We recreate this locally to ensure this function is standalone
+        scaled_h, scaled_w = h * h_scale, w * w_scale
+        xx, yy = jnp.meshgrid(jnp.arange(scaled_w), jnp.arange(scaled_h))
+
+        # 3. Scale the game coordinates to render coordinates
+        # We calculate the center X of the object to force the 2px width alignment
+        import ipdb; ipdb.set_trace()
+        pos_scaled = jnp.round(positions * jnp.array([w_scale, h_scale])).astype(jnp.int32)
+        size_scaled = jnp.round(sizes * jnp.array([w_scale, h_scale])).astype(jnp.int32)
+        
+        # Define rope specific visual constants
+        # A rope is 2 game-pixels wide.
+        rope_visual_width = 2 * w_scale 
+        # The 'twist' height (how tall one segment is before switching sides)
+        twist_height = 2 * h_scale 
+
+        def _create_single_rope_mask(pos, size):
+            # Check if this rope exists (x != -1)
+            should_draw = pos[0] != -1
+            
+            # Center the rope within the provided hitbox
+            hitbox_width = size[0]
+            center_x = pos[0] + (hitbox_width // 2)
+            
+            # Start drawing from center - 1 game pixel
+            draw_x_start = center_x - (rope_visual_width // 2)
+            y_start = pos[1]
+            height = size[1]
+            
+            # 1. Bounding Box Mask (Restricted to the narrow rope width)
+            area_mask = (xx >= draw_x_start) & (xx < draw_x_start + rope_visual_width) & \
+                        (yy >= y_start) & (yy < y_start + height)
+            
+            # 2. Pattern Mask (The Zipper/Twist)
+            # Relative coordinates inside the rope
+            rel_y = yy - y_start
+            rel_x = xx - draw_x_start
+            
+            # Determine which vertical segment we are in (0, 1, 2, 3...)
+            segment_idx = (rel_y // twist_height).astype(jnp.int32)
+            
+            # Determine which horizontal side we are on (Left=0, Right=1)
+            # We split the rope_visual_width in half
+            side_idx = (rel_x // (rope_visual_width // 2)).astype(jnp.int32)
+            
+            # Logic: 
+            # If segment is Even (0, 2, 4), draw Left side (0).
+            # If segment is Odd (1, 3, 5), draw Right side (1).
+            # We use bitwise logic: (Segment is Even) == (Side is Left)
+            pattern_mask = (segment_idx % 2) == (side_idx % 2)
+            
+            final_mask = area_mask & pattern_mask
+            
+            return jax.lax.select(should_draw, final_mask, jnp.zeros_like(final_mask))
+
+        # Vectorize over all ropes in the array
+        all_masks = jax.vmap(_create_single_rope_mask)(pos_scaled, size_scaled)
+        
+        # Combine all rope masks into one layer
+        combined_mask = jnp.logical_or.reduce(all_masks, axis=0)
+        
+        # Apply to raster
+        return jnp.where(combined_mask, jnp.asarray(self.LADDER_COLOR_ID, raster.dtype), raster)
+
+
 # --- MOD B: Make the "Flame" (Bell) Lethal ---
 
 class LethalFlameMod(JaxAtariPostStepModPlugin):

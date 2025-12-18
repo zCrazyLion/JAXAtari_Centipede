@@ -2117,6 +2117,18 @@ class KangarooRenderer(JAXGameRenderer):
             lambda r: self.jr.render_at(r, state.level.bell_position[0].astype(int), state.level.bell_position[1].astype(int), bell_mask, flip_horizontal=flip_bell, flip_offset=bell_offset),
             lambda r: r, raster)
         return raster
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def _draw_ladders(self, raster: jnp.ndarray, state: KangarooState):
+        """Draws the ladders using the utility function."""
+        return self.jr.draw_ladders(
+            raster,
+            state.level.ladder_positions,
+            state.level.ladder_sizes,
+            self.ladder_rung_height,
+            self.ladder_space_height,
+            self.LADDER_COLOR_ID
+        )    
 
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state: KangarooState) -> chex.Array:
@@ -2130,14 +2142,7 @@ class KangarooRenderer(JAXGameRenderer):
             self.PLATFORM_COLOR_ID
         )
 
-        raster = self.jr.draw_ladders(
-            raster,
-            state.level.ladder_positions,
-            state.level.ladder_sizes,
-            self.ladder_rung_height,
-            self.ladder_space_height,
-            self.LADDER_COLOR_ID
-        )
+        raster = self._draw_ladders(raster, state)
         
         # --- 3. Draw Dynamic Objects ---
         # Fruits

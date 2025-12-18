@@ -1,8 +1,8 @@
 from jaxatari.modification import JaxAtariModController
 from jaxatari.games.mods.kangaroo_mod_plugins import (
     NoMonkeyMod, NoFallingCoconutMod, NoThrownCoconutMod, AlwaysHighCoconutMod,
-    PinChildMod, RenderDebugInfo, ReplaceChildWithMonkeyMod, ReplaceBellWithFlameMod, LethalFlameMod, 
-    SpawnOnSecondFloorMod, FlameTrapMod, CenterLaddersMod, InvertLaddersMod,
+    PinChildMod, RenderDebugInfo, ReplaceChildWithMonkeyMod, ReplaceBellWithFlameMod, ReplaceLadderWithRopeMod,
+    LethalFlameMod, SpawnOnSecondFloorMod, FlameTrapMod, CenterLaddersMod, InvertLaddersMod,
     FirstLevelOnlyMod, SecondLevelOnlyMod, ThirdLevelOnlyMod, FourLaddersMod
 )
 # --- 3. The Registry ---
@@ -16,6 +16,7 @@ KANGAROO_MOD_REGISTRY = {
     "render_debug_info": RenderDebugInfo,
     "replace_child_with_monkey": ReplaceChildWithMonkeyMod,
     "replace_bell_with_flame": ReplaceBellWithFlameMod,
+    "replace_ladder_with_rope": ReplaceLadderWithRopeMod,
     "_lethal_bell": LethalFlameMod,
     "lethal_flame": ["_lethal_bell", "replace_bell_with_flame"], # bundle into a modpack
     "spawn_on_second_floor": SpawnOnSecondFloorMod,
