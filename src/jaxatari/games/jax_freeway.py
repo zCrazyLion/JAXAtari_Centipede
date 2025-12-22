@@ -11,9 +11,12 @@ import jaxatari.spaces as spaces
 from jaxatari.renderers import JAXGameRenderer
 from jaxatari.rendering import jax_rendering_utils as render_utils
 
-def get_default_asset_config() -> tuple:
-    """Returns the declarative manifest of all assets for the game."""
-    asset_config = [
+def _get_default_asset_config() -> tuple:
+    """
+    Returns the default declarative asset manifest for Freeway.
+    Kept immutable (tuple of dicts) to fit NamedTuple defaults.
+    """
+    return (
         {'name': 'background', 'type': 'background', 'file': 'background.npy'},
         {
             'name': 'player', 'type': 'group',
@@ -30,9 +33,27 @@ def get_default_asset_config() -> tuple:
         {'name': 'car_green', 'type': 'single', 'file': 'car_green.npy'},
         {'name': 'car_yellow', 'type': 'single', 'file': 'car_yellow.npy'},
         {'name': 'score_digits', 'type': 'digits', 'pattern': 'score_{}.npy'},
-    ]
-    return tuple(asset_config)
+    )
+ 
+"""Per-lane car movement timing (frames per pixel, sign = direction).
+Negative values move left, positive values move right. Absolute value is the
+frame interval at which the car advances by one pixel.
+THIS IS THE CONSTANT THAT DEFINES THE 10 DIFFERENT PATTERNS.
+"""
+CAR_UPDATE: List[int] = [
+    -5,  # Lane 0
+    -4,  # Lane 1
+    -3,  # Lane 2
+    -2,  # Lane 3
+    -1,  # Lane 4
+    1,   # Lane 5
+    2,   # Lane 6
+    3,   # Lane 7
+    4,   # Lane 8
+    5,   # Lane 9
+]
 
+ 
 
 class FreewayConstants(NamedTuple):
     screen_width: int = 160
@@ -132,8 +153,9 @@ class FreewayConstants(NamedTuple):
         None,  # Lane 8 - use original color
         None,  # Lane 9 - use original color
     ]
-    # sprites to enable asset overrides
-    ASSET_CONFIG: tuple = get_default_asset_config()
+
+    # Asset config baked into constants (immutable default) for asset overrides
+    ASSET_CONFIG: tuple = _get_default_asset_config()
 
 
 class FreewayState(NamedTuple):
@@ -168,13 +190,10 @@ class FreewayInfo(NamedTuple):
 
 
 class JaxFreeway(JaxEnvironment[FreewayState, FreewayObservation, FreewayInfo, FreewayConstants]):
-    def __init__(self, consts: FreewayConstants = None, reward_funcs: list[callable]=None):
+    def __init__(self, consts: FreewayConstants = None):
         if consts is None:
             consts = FreewayConstants()
         super().__init__(consts)
-        if reward_funcs is not None:
-            reward_funcs = tuple(reward_funcs)
-        self.reward_funcs = reward_funcs
         self.state = self.reset()
         self.renderer = FreewayRenderer(self.consts)
 
@@ -505,13 +524,16 @@ class FreewayRenderer(JAXGameRenderer):
         # Create black bar sprite at initialization time
         black_bar_sprite = self._create_black_bar_sprite()
         
-        # Add black bar sprite to the asset config as procedural asset
+        # 3. Append procedural assets
         asset_config.append({
             'name': 'black_bar', 
             'type': 'procedural', 
             'data': black_bar_sprite
         })
         
+        sprite_path = f"{os.path.dirname(os.path.abspath(__file__))}/sprites/freeway"
+        
+        # 4. Load all assets, create palette, and generate ID masks
         (
             self.PALETTE,
             self.SHAPE_MASKS,

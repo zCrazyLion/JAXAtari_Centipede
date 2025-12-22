@@ -52,11 +52,7 @@ def get_default_asset_config() -> tuple:
             {
                 'name': 'time_digits', 'type': 'digits',
                 'pattern': 'time_{}.npy'
-            },
-            {
-                'name': 'flame', 'type': 'group',
-                'files': ['flame_0.npy', 'flame_1.npy']
-            },
+            }
         ]
         return asset_config
 
@@ -233,12 +229,8 @@ class KangarooInfo(NamedTuple):
 
 
 class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInfo, KangarooConstants]):
-    def __init__(self, consts: KangarooConstants = None, reward_funcs: list[callable]=None):
+    def __init__(self, consts: KangarooConstants = None):
         super().__init__(consts)
-        self.frame_stack_size = 4
-        if reward_funcs is not None:
-            reward_funcs = tuple(reward_funcs)
-        self.reward_funcs = reward_funcs
         self.action_set = [
             Action.NOOP,
             Action.FIRE,
@@ -1377,6 +1369,18 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
         )
 
     @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
+    def _monkey_controller2(self, state: KangarooState, punching: chex.Array):
+        return (
+            state.level.monkey_states,       # new_monkey_states (all zeros)
+            state.level.monkey_positions,    # new_monkey_positions (all spawn coords/off-screen)
+            state.level.monkey_throw_timers, # new_monkey_throw_timers (all zeros)
+            jnp.zeros((), dtype=jnp.int32),  # score_addition (0)
+            state.level.coco_positions,      # new_coco_positions (all off-screen)
+            state.level.coco_states,         # new_coco_states (all zeros)
+            jnp.array(False),                # flip (should be False)
+        )
+
+    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
     def _monkey_controller(self, state: KangarooState, punching: chex.Array):
         current_monkeys_existing = jnp.sum(state.level.monkey_states != 0)
 
@@ -2059,7 +2063,7 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
 
 
 class KangarooRenderer(JAXGameRenderer):
-    def __init__(self, consts=None):
+    def __init__(self, consts: KangarooConstants = None):
         """
         Initializes the renderer by loading sprites, including level backgrounds.
 

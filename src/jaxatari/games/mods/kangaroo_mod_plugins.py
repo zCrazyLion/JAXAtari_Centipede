@@ -944,14 +944,12 @@ def _center_ladders(level_constants):
         child_position=level_constants.child_position,
     )
 
-
 class CenterLaddersMod(JaxAtariInternalModPlugin):
     """
     Internal mod to center all ladder positions horizontally on the screen.
     All ladders will be perfectly aligned at x=76 (center of 160px screen).
     Uses constants_overrides to directly modify LEVEL_1, LEVEL_2, LEVEL_3.
     """
-
     # Create modified level constants with centered ladders
     _level1_centered = _center_ladders(Kangaroo_Level_1)
     _level2_centered = _center_ladders(Kangaroo_Level_2)
