@@ -1,7 +1,8 @@
 from jaxatari.modification import JaxAtariModController
 from jaxatari.games.mods.kangaroo_mod_plugins import (
     NoMonkeyMod, NoFallingCoconutMod, NoThrownCoconutMod, AlwaysHighCoconutMod,
-    PinChildMod, RenderDebugInfo, ReplaceChildWithMonkeyMod, ReplaceBellWithFlameMod, ReplaceLadderWithRopeMod,
+    PinChildMod, RenderDebugInfo, ReplaceChildWithMonkeyMod, ReplaceBellWithCactusMod,
+    ReplaceBellWithFlameMod, ReplaceLadderWithRopeMod, ReplaceLadderWithChainMod, ReplaceMonkeyWithTankMod,
     LethalFlameMod, SpawnOnSecondFloorMod, FlameTrapMod, CenterLaddersMod, InvertLaddersMod,
     FirstLevelOnlyMod, SecondLevelOnlyMod, ThirdLevelOnlyMod, FourLaddersMod
 )
@@ -16,12 +17,16 @@ KANGAROO_MOD_REGISTRY = {
     "render_debug_info": RenderDebugInfo,
     "replace_child_with_monkey": ReplaceChildWithMonkeyMod,
     "replace_bell_with_flame": ReplaceBellWithFlameMod,
-    "replace_ladder_with_rope": ReplaceLadderWithRopeMod,
+    "replace_bell_with_cactus": ReplaceBellWithCactusMod,
+    "ropes": ReplaceLadderWithRopeMod,
+    "chains": ReplaceLadderWithChainMod,
+    "tanks": ReplaceMonkeyWithTankMod,
     "_lethal_bell": LethalFlameMod,
     "lethal_flame": ["_lethal_bell", "replace_bell_with_flame"], # bundle into a modpack
     "spawn_on_second_floor": SpawnOnSecondFloorMod,
     "_flame_trap": FlameTrapMod,
     "flame_trap": ["_lethal_bell", "replace_bell_with_flame", "_flame_trap"], # modpack
+    "cactus_trap": ["_lethal_bell", "replace_bell_with_cactus", "_flame_trap"], # modpack
     "center_ladders": CenterLaddersMod,
     "invert_ladders": InvertLaddersMod,
     "four_ladders": FourLaddersMod,

@@ -52,7 +52,11 @@ def get_default_asset_config() -> tuple:
             {
                 'name': 'time_digits', 'type': 'digits',
                 'pattern': 'time_{}.npy'
-            }
+            },
+            {
+                'name': 'flame', 'type': 'group',
+                'files': ['flame_0.npy', 'flame_1.npy']
+            },
         ]
         return asset_config
 
@@ -2131,6 +2135,40 @@ class KangarooRenderer(JAXGameRenderer):
         )    
 
     @partial(jax.jit, static_argnums=(0,))
+    def _draw_single_monkey(self, i, raster, state: KangarooState):
+            """
+            Draws a single monkey based on index i. 
+            Designed to be called within a jax.lax.fori_loop.
+            """
+            state_idx = state.level.monkey_states[i].astype(int)
+            pos = state.level.monkey_positions[i]
+            
+            # Map game state to sprite index
+            monkey_sprite_idx = jnp.array([0, 1, 2, 3, 2, 4])[state_idx] 
+            
+            is_walking = (state_idx == 2) | (state_idx == 4)
+            use_standing_anim = is_walking & ((state.level.step_counter % 32) < 16)
+            
+            # Index 0 is 'standing'
+            final_sprite_idx = jax.lax.select(use_standing_anim, 0, monkey_sprite_idx) 
+            
+            monkey_mask = self.SHAPE_MASKS["ape"][final_sprite_idx]
+            flip_offset = self.FLIP_OFFSETS["ape"]
+            flip_h = (state_idx == 4)
+            should_draw = (state_idx != 0)
+            
+            draw_fn = lambda r: self.jr.render_at_clipped(
+                r, 
+                pos[0].astype(int), 
+                pos[1].astype(int), 
+                monkey_mask, 
+                flip_horizontal=flip_h, 
+                flip_offset=flip_offset
+            )
+            
+            return jax.lax.cond(should_draw, draw_fn, lambda r: r, raster)
+
+    @partial(jax.jit, static_argnums=(0,))
     def render(self, state: KangarooState) -> chex.Array:
         # --- 1. Initialize Raster ---
         raster = self.jr.create_object_raster(self.BACKGROUND)
@@ -2151,7 +2189,7 @@ class KangarooRenderer(JAXGameRenderer):
             fruit_type = state.level.fruit_stages[i].astype(int)
             pos = state.level.fruit_positions[i]
             fruit_mask = self.SHAPE_MASKS["fruit"][fruit_type]
-            fruit_offset = self.FLIP_OFFSETS["fruit"]         
+            fruit_offset = self.FLIP_OFFSETS["fruit"]          
             draw_fn = lambda r: self.jr.render_at(r, pos[0].astype(int), pos[1].astype(int), fruit_mask, flip_offset=fruit_offset)
             return jax.lax.cond(should_draw, draw_fn, lambda r: r, current_raster)
         raster = jax.lax.fori_loop(0, state.level.fruit_positions.shape[0], _draw_fruit, raster)
@@ -2159,21 +2197,14 @@ class KangarooRenderer(JAXGameRenderer):
         # Bell
         raster = self._draw_bell(raster, state)
 
-        # Monkeys (Apes)
-        def _draw_monkey(i, current_raster):
-            state_idx = state.level.monkey_states[i].astype(int)
-            pos = state.level.monkey_positions[i]
-            monkey_sprite_idx = jnp.array([0, 1, 2, 3, 2, 4])[state_idx] # Map game state to sprite index
-            is_walking = (state_idx == 2) | (state_idx == 4)
-            use_standing_anim = is_walking & ((state.level.step_counter % 32) < 16)
-            final_sprite_idx = jax.lax.select(use_standing_anim, 0, monkey_sprite_idx) # Index 0 is 'standing'
-            monkey_mask = self.SHAPE_MASKS["ape"][final_sprite_idx]
-            flip_offset = self.FLIP_OFFSETS["ape"]
-            flip_h = (state_idx == 4)
-            should_draw = (state_idx != 0)
-            draw_fn = lambda r: self.jr.render_at_clipped(r, pos[0].astype(int), pos[1].astype(int), monkey_mask, flip_horizontal=flip_h, flip_offset=flip_offset)
-            return jax.lax.cond(should_draw, draw_fn, lambda r: r, current_raster)
-        raster = jax.lax.fori_loop(0, state.level.monkey_positions.shape[0], _draw_monkey, raster)
+        # Monkeys (Apes) - UPDATED CALL
+        # We use a lambda to bind 'state' to the extracted method
+        raster = jax.lax.fori_loop(
+            0, 
+            state.level.monkey_positions.shape[0], 
+            lambda i, r: self._draw_single_monkey(i, r, state), 
+            raster
+        )
 
         # Player (Kangaroo)
         is_walking_anim = (state.player.walk_animation > 6) & (state.player.walk_animation < 16) & \
