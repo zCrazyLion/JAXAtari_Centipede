@@ -1,13 +1,15 @@
 from jaxatari.modification import JaxAtariModController
 from jaxatari.games.mods.kangaroo_mod_plugins import (
-    NoMonkeyMod, NoFallingCoconutMod, NoThrownCoconutMod, AlwaysHighCoconutMod,
-    PinChildMod, RenderDebugInfo, ReplaceChildWithMonkeyMod, ReplaceBellWithCactusMod,
+    NoMonkeyMod, NoFallingCoconutMod, NoThrownCoconutMod, NoBellMod, NoFruitMod,
+    AlwaysHighCoconutMod, PinChildMod, RenderDebugInfo, ReplaceChildWithMonkeyMod, ReplaceBellWithCactusMod,
     ReplaceBellWithFlameMod, ReplaceLadderWithRopeMod, ReplaceLadderWithChainMod, ReplaceMonkeyWithTankMod,
     LethalFlameMod, SpawnOnSecondFloorMod, FlameTrapMod, CenterLaddersMod, InvertLaddersMod,
     FirstLevelOnlyMod, SecondLevelOnlyMod, ThirdLevelOnlyMod, FourLaddersMod
 )
 # --- 3. The Registry ---
 KANGAROO_MOD_REGISTRY = {
+    "no_bell": NoBellMod,
+    "no_fruit": NoFruitMod,
     "no_monkey": NoMonkeyMod,
     "no_falling_coconut": NoFallingCoconutMod,
     "no_thrown_coconut": NoThrownCoconutMod,

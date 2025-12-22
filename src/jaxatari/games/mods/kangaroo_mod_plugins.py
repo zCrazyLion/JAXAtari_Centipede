@@ -2,12 +2,69 @@ import jax
 import jax.numpy as jnp
 import chex
 from functools import partial
+from typing import Tuple
 
 from jaxatari.modification import JaxAtariInternalModPlugin, JaxAtariPostStepModPlugin
 from jaxatari.games.jax_kangaroo import KangarooState, PlayerState, LevelState, KangarooConstants
 from jaxatari.games.kangaroo_levels import LevelConstants, Kangaroo_Level_1, Kangaroo_Level_2, Kangaroo_Level_3
 
 # --- 1. Internal Mods (Group 1) ---
+class NoBellMod(JaxAtariInternalModPlugin):
+    """
+    Internal mod to disable the Bell.
+    Patches '_bell_step'.
+    """
+    
+    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
+    def _bell_step(self, state: KangarooState):
+        """
+        No-op override for _bell_step.
+        Returns 0 for the timer and False for the respawn flag, 
+        effectively disabling the bell mechanics.
+        """
+        return jnp.zeros_like(state.level.bell_timer), jnp.array(False)
+
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _draw_bell(self, raster: jnp.ndarray, state: KangarooState):
+        """
+        Overrides the KangarooRenderer._draw_bell method.
+        Draws a static sprite (no animation) shifted 4 pixels up.
+        """
+
+        return raster
+
+
+class NoFruitMod(JaxAtariInternalModPlugin):
+    """
+    Internal mod to remove Fruits.
+    Patches '_fruits_step'.
+    """   
+
+    @partial(jax.jit, static_argnums=(0,), donate_argnums=(1,))
+    def _fruits_step(self, state: KangarooState):
+        """
+        Override for _fruits_step to remove fruits.
+        """
+        # We must still call _bell_step because the environment logic 
+        # normally chains these together.
+        bell_timer, _ = self._env._bell_step(state)
+
+        return (
+            jnp.zeros((), dtype=jnp.int32),                             # Score addition
+            jnp.zeros_like(state.level.fruit_actives, dtype=jnp.bool_), # Set actives to False (Hides them visually)
+            state.level.fruit_stages,                                   # Keep stages (irrelevant since inactive)
+            bell_timer                                                  # Pass through the bell timer
+        )
+    
+    @partial(jax.jit, static_argnums=(0,))
+    def _draw_single_fruit(self, i, raster, state: KangarooState):
+        """
+        Overrides the KangarooRenderer._draw_fruits method.
+        Does not draw any fruits.
+        """
+        return raster
+
 
 class NoMonkeyMod(JaxAtariInternalModPlugin):
     """

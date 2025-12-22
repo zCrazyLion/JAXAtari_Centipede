@@ -2092,7 +2092,6 @@ class KangarooRenderer(JAXGameRenderer):
         self.ladder_rung_height = 4
         self.ladder_space_height = 4
             
-    
     def _load_sprites(self):
         """Defines the asset manifest for Kangaroo and loads them via the utility function."""
         sprite_path = f"{os.path.dirname(os.path.abspath(__file__))}/sprites/kangaroo"
@@ -2103,7 +2102,6 @@ class KangarooRenderer(JAXGameRenderer):
     @partial(jax.jit, static_argnums=(0,))
     def _render_hook_post_ui(self, raster: jnp.ndarray, state: KangarooState):
         return raster
-
 
     @partial(jax.jit, static_argnums=(0,))
     def _draw_bell(self, raster: jnp.ndarray, state: KangarooState):
@@ -2132,7 +2130,30 @@ class KangarooRenderer(JAXGameRenderer):
             self.ladder_rung_height,
             self.ladder_space_height,
             self.LADDER_COLOR_ID
-        )    
+        )     
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _draw_single_fruit(self, i, raster, state: KangarooState):
+        """
+        Draws a single fruit based on index i. 
+        Designed to be called within a jax.lax.fori_loop.
+        """
+        should_draw = state.level.fruit_actives[i]
+        fruit_type = state.level.fruit_stages[i].astype(int)
+        pos = state.level.fruit_positions[i]
+        
+        fruit_mask = self.SHAPE_MASKS["fruit"][fruit_type]
+        fruit_offset = self.FLIP_OFFSETS["fruit"]           
+        
+        draw_fn = lambda r: self.jr.render_at(
+            r, 
+            pos[0].astype(int), 
+            pos[1].astype(int), 
+            fruit_mask, 
+            flip_offset=fruit_offset
+        )
+        
+        return jax.lax.cond(should_draw, draw_fn, lambda r: r, raster)
 
     @partial(jax.jit, static_argnums=(0,))
     def _draw_single_monkey(self, i, raster, state: KangarooState):
@@ -2183,22 +2204,18 @@ class KangarooRenderer(JAXGameRenderer):
         raster = self._draw_ladders(raster, state)
         
         # --- 3. Draw Dynamic Objects ---
-        # Fruits
-        def _draw_fruit(i, current_raster):
-            should_draw = state.level.fruit_actives[i]
-            fruit_type = state.level.fruit_stages[i].astype(int)
-            pos = state.level.fruit_positions[i]
-            fruit_mask = self.SHAPE_MASKS["fruit"][fruit_type]
-            fruit_offset = self.FLIP_OFFSETS["fruit"]          
-            draw_fn = lambda r: self.jr.render_at(r, pos[0].astype(int), pos[1].astype(int), fruit_mask, flip_offset=fruit_offset)
-            return jax.lax.cond(should_draw, draw_fn, lambda r: r, current_raster)
-        raster = jax.lax.fori_loop(0, state.level.fruit_positions.shape[0], _draw_fruit, raster)
+        # Fruits - UPDATED CALL
+        raster = jax.lax.fori_loop(
+            0, 
+            state.level.fruit_positions.shape[0], 
+            lambda i, r: self._draw_single_fruit(i, r, state), 
+            raster
+        )
 
         # Bell
         raster = self._draw_bell(raster, state)
 
-        # Monkeys (Apes) - UPDATED CALL
-        # We use a lambda to bind 'state' to the extracted method
+        # Monkeys (Apes)
         raster = jax.lax.fori_loop(
             0, 
             state.level.monkey_positions.shape[0], 
