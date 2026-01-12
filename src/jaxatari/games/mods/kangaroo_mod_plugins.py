@@ -463,7 +463,7 @@ class ReplaceMonkeyWithTankMod(JaxAtariInternalModPlugin):
         "ape": {
             'name': 'ape',
             'type': 'group',
-            'files': ['tank.npy']
+            'files': ['tank_15x8.npy']
         }
     }
 
@@ -495,8 +495,10 @@ class ReplaceMonkeyWithTankMod(JaxAtariInternalModPlugin):
         
         draw_fn = lambda r: self._env.renderer.jr.render_at_clipped(
             r, 
-            x-7, 
-            y-5, 
+            # x-7, # use this if tank is (20,13) -> note: hit-box will be off
+            # y-5, 
+            x, 
+            y, 
             monkey_mask, 
             flip_horizontal=flip_h, 
             flip_offset=flip_offset
