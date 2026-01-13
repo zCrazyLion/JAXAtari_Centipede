@@ -467,7 +467,7 @@ class ReplaceMonkeyWithTankMod(JaxAtariInternalModPlugin):
         }
     }
 
-
+    #note: this is not necessary with 15x8 tank sprite
     @partial(jax.jit, static_argnums=(0,))
     def _draw_single_monkey(self, i, raster, state: KangarooState):
         """

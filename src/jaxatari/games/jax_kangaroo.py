@@ -823,19 +823,36 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
                     action == Action.RIGHT,
                     action == Action.UPRIGHT,
                     action == Action.DOWNRIGHT,
+                    action == Action.RIGHTFIRE,
+                    action == Action.UPRIGHTFIRE,
+                    action == Action.DOWNRIGHTFIRE,
                 ]
             )
         )
 
         press_left = jnp.any(
             jnp.array(
-                [action == Action.LEFT, action == Action.UPLEFT, action == Action.DOWNLEFT]
+                [
+                    action == Action.LEFT,
+                    action == Action.UPLEFT,
+                    action == Action.DOWNLEFT,
+                    action == Action.LEFTFIRE,
+                    action == Action.UPLEFTFIRE,
+                    action == Action.DOWNLEFTFIRE,
+                ]
             )
         )
 
         press_up = jnp.any(
             jnp.array(
-                [action == Action.UP, action == Action.UPRIGHT, action == Action.UPLEFT]
+                [
+                    action == Action.UP,
+                    action == Action.UPRIGHT,
+                    action == Action.UPLEFT,
+                    action == Action.UPFIRE,
+                    action == Action.UPRIGHTFIRE,
+                    action == Action.UPLEFTFIRE,
+                ]
             )
         )
 
@@ -844,6 +861,9 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
             jnp.array(
                 [
                     action == Action.FIRE,
+                    action == Action.RIGHTFIRE,
+                    action == Action.LEFTFIRE,
+                    action == Action.UPFIRE,
                     action == Action.DOWNFIRE,
                     action == Action.UPLEFTFIRE,
                     action == Action.UPRIGHTFIRE,
@@ -859,6 +879,9 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
                     action == Action.DOWN,
                     action == Action.DOWNLEFT,
                     action == Action.DOWNRIGHT,
+                    action == Action.DOWNFIRE,
+                    action == Action.DOWNLEFTFIRE,
+                    action == Action.DOWNRIGHTFIRE,
                 ]
             )
         )
@@ -940,11 +963,7 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
         new_is_crouching = press_down & ~new_is_climbing & ~new_is_jumping
 
         candidate_vel_x = jnp.where(
-            new_is_crouching,
-            0,
-            jnp.where(
                 press_left, -self.consts.MOVEMENT_SPEED, jnp.where(press_right, self.consts.MOVEMENT_SPEED, 0)
-            ),
         )
 
         standing_still = jnp.equal(candidate_vel_x, 0)
