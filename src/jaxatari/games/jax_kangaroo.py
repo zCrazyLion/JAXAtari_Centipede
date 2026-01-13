@@ -43,7 +43,7 @@ def get_default_asset_config() -> tuple:
                 'files': ['child.npy', 'child_jump.npy']
             },
             {'name': 'coconut', 'type': 'single', 'file': 'coconut.npy'},
-            {'name': 'thrown_coconut', 'type': 'single', 'file': 'thrown_coconut.npy'},
+            {'name': 'falling_coconut', 'type': 'single', 'file': 'falling_coconut.npy'},
             {'name': 'lives', 'type': 'single', 'file': 'kangaroo_lives.npy'},
             {
                 'name': 'score_digits', 'type': 'digits',
@@ -97,8 +97,10 @@ class KangarooConstants(NamedTuple):
     MOVEMENT_SPEED: int = 1
     LEFT_CLIP: int = 16
     RIGHT_CLIP: int = 144
-    COCONUT_WIDTH: int = 2
-    COCONUT_HEIGHT: int = 3
+    FALLING_COCONUT_WIDTH: int = 2
+    FALLING_COCONUT_HEIGHT: int = 3
+    THROWN_COCONUT_WIDTH: int = 2
+    THROWN_COCONUT_HEIGHT: int = 3
     LADDER_HEIGHT: chex.Array = jnp.array(35)
     LADDER_WIDTH: chex.Array = jnp.array(8)
     P_HEIGHT: chex.Array = jnp.array(4)
@@ -1157,8 +1159,8 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
             state.player.height,
             state.level.coco_positions[:, 0],
             state.level.coco_positions[:, 1],
-            self.consts.COCONUT_WIDTH,
-            self.consts.COCONUT_HEIGHT,
+            self.consts.THROWN_COCONUT_WIDTH,
+            self.consts.THROWN_COCONUT_HEIGHT,
             state.level.coco_states,
         )
 
@@ -1171,8 +1173,8 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
             state.player.height - 8,
             state.level.falling_coco_position[0],
             state.level.falling_coco_position[1],
-            self.consts.COCONUT_WIDTH,
-            self.consts.COCONUT_HEIGHT,
+            self.consts.FALLING_COCONUT_WIDTH,
+            self.consts.FALLING_COCONUT_HEIGHT,
             0.1,
         )
 
@@ -1231,7 +1233,7 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
             ~state.level.falling_coco_dropping
             & falling_coco_exists
             & (
-                ((state.level.falling_coco_position[0] + self.consts.COCONUT_WIDTH) > state.player.x)
+                ((state.level.falling_coco_position[0] + self.consts.FALLING_COCONUT_WIDTH) > state.player.x)
                 & (state.level.falling_coco_position[0] < (state.player.x + self.consts.PLAYER_WIDTH))
             )
             & update_positions
@@ -1288,8 +1290,8 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
                 fist_h,
                 state.level.falling_coco_position[0],
                 state.level.falling_coco_position[1],
-                self.consts.COCONUT_WIDTH,
-                self.consts.COCONUT_HEIGHT,
+                self.consts.FALLING_COCONUT_WIDTH,
+                self.consts.FALLING_COCONUT_HEIGHT,
                 0.01,
             )
             & punching
@@ -1379,7 +1381,7 @@ class JaxKangaroo(JaxEnvironment[KangarooState, KangarooObservation, KangarooInf
                             new_m_pos[1] - 5,
                             new_m_pos[1]
                             + self.consts.MONKEY_HEIGHT
-                            - self.consts.COCONUT_HEIGHT,
+                            - self.consts.THROWN_COCONUT_HEIGHT,
                         ),
                     ]
                 ),
@@ -2286,10 +2288,10 @@ class KangarooRenderer(JAXGameRenderer):
             lambda r: r, raster)
 
         # Coconuts
-        coconut_offset = self.FLIP_OFFSETS["thrown_coconut"]
+        coconut_offset = self.FLIP_OFFSETS["falling_coconut"]
         should_draw_falling_coco = state.level.falling_coco_dropping
         raster = jax.lax.cond(should_draw_falling_coco,
-            lambda r: self.jr.render_at(r, state.level.falling_coco_position[0].astype(int), state.level.falling_coco_position[1].astype(int), self.SHAPE_MASKS["thrown_coconut"], flip_offset=coconut_offset),
+            lambda r: self.jr.render_at(r, state.level.falling_coco_position[0].astype(int), state.level.falling_coco_position[1].astype(int), self.SHAPE_MASKS["falling_coconut"], flip_offset=coconut_offset),
             lambda r: r, raster)
         def _draw_coco(i, current_raster):
             should_draw = (state.level.coco_states[i] != 0)

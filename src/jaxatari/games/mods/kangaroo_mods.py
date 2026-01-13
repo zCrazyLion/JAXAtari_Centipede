@@ -4,7 +4,9 @@ from jaxatari.games.mods.kangaroo_mod_plugins import (
     AlwaysHighCoconutMod, PinChildMod, RenderDebugInfo, ReplaceChildWithMonkeyMod, ReplaceBellWithCactusMod,
     ReplaceBellWithFlameMod, ReplaceLadderWithRopeMod, ReplaceLadderWithChainMod, ReplaceMonkeyWithTankMod,
     LethalFlameMod, SpawnOnSecondFloorMod, FlameTrapMod, CenterLaddersMod, InvertLaddersMod,
-    FirstLevelOnlyMod, SecondLevelOnlyMod, ThirdLevelOnlyMod, FourLaddersMod
+    FirstLevelOnlyMod, SecondLevelOnlyMod, ThirdLevelOnlyMod, FourLaddersMod, ReplaceCoconutWithFireball,
+    ReplaceCoconutWithHoneyBee, ReplaceCoconutWithWasp, ReplaceMonkeyWithChickenMod, ReplaceMonkeyWithDragonMod,
+    ReplaceMonkeyWithDangerSignMod, ReplaceMonkeyWithPolarbearMod, ReplaceMonkeyWithSnakeMod
 )
 # --- 3. The Registry ---
 KANGAROO_MOD_REGISTRY = {
@@ -23,6 +25,20 @@ KANGAROO_MOD_REGISTRY = {
     "ropes": ReplaceLadderWithRopeMod,
     "chains": ReplaceLadderWithChainMod,
     "tanks": ReplaceMonkeyWithTankMod,
+    "replace_coconut_fireball": ReplaceCoconutWithFireball,
+    "replace_coconut_honey_bee": ReplaceCoconutWithHoneyBee,
+    "replace_coconut_wasp": ReplaceCoconutWithWasp,
+
+    "_chickens": ReplaceMonkeyWithChickenMod,
+    "_dragons": ReplaceMonkeyWithDragonMod,
+    "_danger_signs": ReplaceMonkeyWithDangerSignMod,
+    "_polarbears": ReplaceMonkeyWithPolarbearMod,
+    "_snakes": ReplaceMonkeyWithSnakeMod,
+    "chickens": ["no_thrown_coconut", "_chickens"], # modpack
+    "dragons": ["replace_coconut_fireball", "_dragons"], # dragons throw fireballs
+    "danger_signs": ["no_thrown_coconut", "_danger_signs"], # modpack
+    "polarbears": ["no_thrown_coconut", "_polarbears"], # modpack
+    "snakes": ["no_thrown_coconut", "_snakes"], # modpack
     "_lethal_bell": LethalFlameMod,
     "lethal_flame": ["_lethal_bell", "replace_bell_with_flame"], # bundle into a modpack
     "spawn_on_second_floor": SpawnOnSecondFloorMod,

@@ -457,6 +457,44 @@ class ReplaceChildWithMonkeyMod(JaxAtariInternalModPlugin):
 
 # Multiple Plugins to change bell to a fire (bundled into *modpack* in the kangaroo_mods.py file)
 
+class ReplaceCoconutWithFireball(JaxAtariInternalModPlugin):
+    asset_overrides = {
+        "coconut": {
+            'name': 'coconut',
+            'type': 'single',
+            'file': 'fireball.npy'
+        }
+    }
+    constants_overrides = {
+        "THROWN_COCONUT_WIDTH": 16,
+        "THROWN_COCONUT_HEIGHT": 12,
+    }
+
+class ReplaceCoconutWithWasp(JaxAtariInternalModPlugin):
+    asset_overrides = {
+        "coconut": {
+            'name': 'coconut',
+            'type': 'single',
+            'file': 'wasp.npy'
+        }
+    }
+    constants_overrides = {
+        "THROWN_COCONUT_WIDTH": 16,
+        "THROWN_COCONUT_HEIGHT": 12,
+    }
+
+class ReplaceCoconutWithHoneyBee(JaxAtariInternalModPlugin):
+    asset_overrides = {
+        "coconut": {
+            'name': 'coconut',
+            'type': 'single',
+            'file': 'honey_bee.npy'
+        }
+    }
+    constants_overrides = {
+        "THROWN_COCONUT_WIDTH": 16,
+        "THROWN_COCONUT_HEIGHT": 12,
+    }
 
 class ReplaceMonkeyWithTankMod(JaxAtariInternalModPlugin):
     asset_overrides = {
@@ -467,45 +505,50 @@ class ReplaceMonkeyWithTankMod(JaxAtariInternalModPlugin):
         }
     }
 
-    #note: this is not necessary with 15x8 tank sprite
-    @partial(jax.jit, static_argnums=(0,))
-    def _draw_single_monkey(self, i, raster, state: KangarooState):
-        """
-        Draws a single monkey based on index i. 
-        Designed to be called within a jax.lax.fori_loop.
-        """
-        state_idx = state.level.monkey_states[i].astype(int)
-        pos = state.level.monkey_positions[i]
+class ReplaceMonkeyWithChickenMod(JaxAtariInternalModPlugin):
+    asset_overrides = {
+        "ape": {
+            'name': 'ape',
+            'type': 'group',
+            'files': ['chicken.npy']
+        }
+    }
 
-        x, y = pos
-        
-        # Map game state to sprite index
-        monkey_sprite_idx = jnp.array([0, 1, 2, 3, 2, 4])[state_idx] 
-        
-        is_walking = (state_idx == 2) | (state_idx == 4)
-        use_standing_anim = is_walking & ((state.level.step_counter % 32) < 16)
-        
-        # Index 0 is 'standing'
-        final_sprite_idx = jax.lax.select(use_standing_anim, 0, monkey_sprite_idx) 
-        
-        monkey_mask = self._env.renderer.SHAPE_MASKS["ape"][final_sprite_idx]
-        flip_offset = self._env.renderer.FLIP_OFFSETS["ape"]
-        flip_h = (state_idx == 4)
-        should_draw = (state_idx != 0)
-        
-        draw_fn = lambda r: self._env.renderer.jr.render_at_clipped(
-            r, 
-            # x-7, # use this if tank is (20,13) -> note: hit-box will be off
-            # y-5, 
-            x, 
-            y, 
-            monkey_mask, 
-            flip_horizontal=flip_h, 
-            flip_offset=flip_offset
-        )
-        
-        return jax.lax.cond(should_draw, draw_fn, lambda r: r, raster)
+class ReplaceMonkeyWithDangerSignMod(JaxAtariInternalModPlugin):
+    asset_overrides = {
+        "ape": {
+            'name': 'ape',
+            'type': 'group',
+            'files': ['danger_sign.npy']
+        }
+    }
 
+class ReplaceMonkeyWithDragonMod(JaxAtariInternalModPlugin):
+    asset_overrides = {
+        "ape": {
+            'name': 'ape',
+            'type': 'group',
+            'files': ['dragon.npy']
+        }
+    }
+
+class ReplaceMonkeyWithPolarbearMod(JaxAtariInternalModPlugin):
+    asset_overrides = {
+        "ape": {
+            'name': 'ape',
+            'type': 'group',
+            'files': ['polarbear.npy']
+        }
+    }
+
+class ReplaceMonkeyWithSnakeMod(JaxAtariInternalModPlugin):
+    asset_overrides = {
+        "ape": {
+            'name': 'ape',
+            'type': 'group',
+            'files': ['snake.npy']
+        }
+    }
 
 # --- MOD A: Replace Bell Sprite + Patch Animation ---
 class ReplaceBellWithCactusMod(JaxAtariInternalModPlugin):
