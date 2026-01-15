@@ -6,7 +6,7 @@ from jaxatari.games.mods.kangaroo_mod_plugins import (
     LethalFlameMod, SpawnOnSecondFloorMod, FlameTrapMod, CenterLaddersMod, InvertLaddersMod,
     FirstLevelOnlyMod, SecondLevelOnlyMod, ThirdLevelOnlyMod, FourLaddersMod, ReplaceCoconutWithFireball,
     ReplaceCoconutWithHoneyBee, ReplaceCoconutWithWasp, ReplaceMonkeyWithChickenMod, ReplaceMonkeyWithDragonMod,
-    ReplaceMonkeyWithDangerSignMod, ReplaceMonkeyWithPolarbearMod, ReplaceMonkeyWithSnakeMod
+    ReplaceMonkeyWithDangerSignMod, ReplaceMonkeyWithPolarbearMod, ReplaceMonkeyWithSnakeMod, ReplaceBellWithDangerSignMod
 )
 # --- 3. The Registry ---
 KANGAROO_MOD_REGISTRY = {
@@ -22,6 +22,7 @@ KANGAROO_MOD_REGISTRY = {
     "replace_child_with_monkey": ReplaceChildWithMonkeyMod,
     "replace_bell_with_flame": ReplaceBellWithFlameMod,
     "replace_bell_with_cactus": ReplaceBellWithCactusMod,
+    "replace_bell_with_danger_sign": ReplaceBellWithDangerSignMod,
     "ropes": ReplaceLadderWithRopeMod,
     "chains": ReplaceLadderWithChainMod,
     "tanks": ReplaceMonkeyWithTankMod,
@@ -31,12 +32,12 @@ KANGAROO_MOD_REGISTRY = {
 
     "_chickens": ReplaceMonkeyWithChickenMod,
     "_dragons": ReplaceMonkeyWithDragonMod,
-    "_danger_signs": ReplaceMonkeyWithDangerSignMod,
+    # "_danger_signs": ReplaceMonkeyWithDangerSignMod,
     "_polarbears": ReplaceMonkeyWithPolarbearMod,
     "_snakes": ReplaceMonkeyWithSnakeMod,
     "chickens": ["no_thrown_coconut", "_chickens"], # modpack
     "dragons": ["replace_coconut_fireball", "_dragons"], # dragons throw fireballs
-    "danger_signs": ["no_thrown_coconut", "_danger_signs"], # modpack
+    # "danger_signs": ["no_thrown_coconut", "_danger_signs"], # modpack
     "polarbears": ["no_thrown_coconut", "_polarbears"], # modpack
     "snakes": ["no_thrown_coconut", "_snakes"], # modpack
     "_lethal_bell": LethalFlameMod,
@@ -45,6 +46,7 @@ KANGAROO_MOD_REGISTRY = {
     "_flame_trap": FlameTrapMod,
     "flame_trap": ["_lethal_bell", "replace_bell_with_flame", "_flame_trap"], # modpack
     "cactus_trap": ["_lethal_bell", "replace_bell_with_cactus", "_flame_trap"], # modpack
+    "danger_trap": ["_lethal_bell", "replace_bell_with_danger_sign", "_flame_trap"], # modpack
     "center_ladders": CenterLaddersMod,
     "invert_ladders": InvertLaddersMod,
     "four_ladders": FourLaddersMod,

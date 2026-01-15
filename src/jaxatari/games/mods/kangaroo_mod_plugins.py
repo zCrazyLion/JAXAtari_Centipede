@@ -654,6 +654,54 @@ class ReplaceBellWithFlameMod(JaxAtariInternalModPlugin):
         )
         return raster
 
+class ReplaceBellWithDangerSignMod(JaxAtariInternalModPlugin):
+    """
+    Replaces the 'bell' asset group with a new 'danger_sign' asset group.
+    
+    Expects 'danger_sign.npy' to exist.
+    """
+    
+    # 1. Swap the assets (using Method 2: manually overriding a key in the asset_overrides dict)
+    asset_overrides = {
+        "bell": {
+            'name': 'bell', 
+            'type': 'group',
+            'files': ['danger_sign.npy']
+        }
+    }
+    @partial(jax.jit, static_argnums=(0,))
+    def _draw_bell(self, raster: jnp.ndarray, state: KangarooState):
+        """
+        Overrides the KangarooRenderer._draw_bell method.
+        Draws a static sprite (no animation) shifted 4 pixels up.
+        """
+        jr = self._env.renderer.jr
+        
+        # CHANGED: Removed flicker logic. Hardcoded to index 0 for a static image.
+        flame_idx = 0 
+        
+        # We use "bell" as the key because our override mapped to it
+        flame_mask = self._env.renderer.SHAPE_MASKS["bell"][flame_idx]
+        flame_offset = self._env.renderer.FLIP_OFFSETS["bell"]
+        
+        # Keep original logic for *when* to draw
+        should_draw_flame = (state.level.bell_position[0] != -1) & ~jnp.any(state.level.fruit_stages == 3)
+        
+        # CHANGED: Adjusted Y position logic inside render_at
+        raster = jax.lax.cond(should_draw_flame,
+            lambda r: jr.render_at(
+                r, 
+                state.level.bell_position[0].astype(int), 
+                state.level.bell_position[1].astype(int), 
+                flame_mask, 
+                flip_horizontal=jnp.array(False),
+                flip_offset=flame_offset
+            ),
+            lambda r: r, 
+            raster
+        )
+        return raster
+
 class ReplaceLadderWithChainMod(JaxAtariInternalModPlugin):
     """
     Replaces the ladder sprites with grey chain sprites.
