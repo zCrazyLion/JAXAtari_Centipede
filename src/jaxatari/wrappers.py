@@ -75,7 +75,7 @@ class AtariWrapper(JaxatariWrapper):
         frame_skip: The number of frames to skip.
     """
     # TODO: change sticky_actions to float
-    def __init__(self, env, sticky_actions: bool = True, frame_stack_size: int = 4, frame_skip: int = 4, max_episode_length: int = 10_000, episodic_life: bool = True, first_fire: bool = True, noop_reset: int = 0, clip_reward: bool = False, max_pooling: bool = False):
+    def __init__(self, env, sticky_actions: bool = True, frame_stack_size: int = 4, frame_skip: int = 4, max_episode_length: int = 10_000, episodic_life: bool = True, first_fire: bool = True, noop_reset: int = 0, clip_reward: bool = False, max_pooling: bool = False, full_action_space: bool = False,):
         super().__init__(env)
         self._env = env
         self.sticky_actions = sticky_actions
@@ -88,6 +88,30 @@ class AtariWrapper(JaxatariWrapper):
         self.noop_max = noop_reset
         self.clip_reward = clip_reward
         self.max_pooling = max_pooling
+        self.full_action_space = full_action_space
+
+        # --- 1) HANDLE FULL ACTION SPACE LOGIC ---
+        # If requested, swap the environment's (minimal) action set for the full identity set.
+        # This keeps each game env "clean" while enabling a central switch for experimentation.
+        if self.full_action_space and hasattr(self._env, "ACTION_SET"):
+            # Overwrite the instance attribute with [0, 1, ... 17]
+            self._env.ACTION_SET = jnp.arange(18, dtype=jnp.int32)
+
+        # --- 2) RESOLVE CORRECT 'FIRE' ACTION INDEX ---
+        # The wrapped env expects an *index* into ACTION_SET (agent action), not the ALE action constant.
+        self.fire_action_index: int = int(Action.FIRE)  # fallback if env doesn't expose ACTION_SET
+        self.first_fire = first_fire
+
+        if hasattr(self._env, "ACTION_SET"):
+            # Convert to numpy for search (safe in __init__)
+            action_set_np = np.array(self._env.ACTION_SET)
+            fire_indices = np.where(action_set_np == int(Action.FIRE))[0]
+            if len(fire_indices) > 0:
+                self.fire_action_index = int(fire_indices[0])
+            else:
+                # Game has no FIRE action (e.g. Freeway).
+                # Disable first_fire to prevent sending a random command by mistake.
+                self.first_fire = False
 
         self._observation_space = spaces.stack_space(self._env.observation_space(), self.frame_stack_size)
 
@@ -142,8 +166,8 @@ class AtariWrapper(JaxatariWrapper):
         # ========== FIRST FIRE ==========
         def perform_first_fire(carry):
             env_state, obs, step, _ = carry
-            fire_obs, fire_env_state, _, _, _ = self._env.step(env_state, Action.FIRE)
-            return fire_env_state, fire_obs, step + 1, Action.FIRE
+            fire_obs, fire_env_state, _, _, _ = self._env.step(env_state, self.fire_action_index)
+            return fire_env_state, fire_obs, step + 1, self.fire_action_index
 
         def identity_fire(carry):
             return carry

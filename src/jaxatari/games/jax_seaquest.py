@@ -2020,10 +2020,9 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
         return jnp.minimum(base_points + additional_points, max_points)
 
 
-    def __init__(self, consts: SeaquestConstants = None):
-        consts = consts or SeaquestConstants()
-        super().__init__(consts)
-        self.action_set = [
+    # Minimal ALE action set for Seaquest (from scripts/action_space_helper.py)
+    ACTION_SET: jnp.ndarray = jnp.array(
+        [
             Action.NOOP,
             Action.FIRE,
             Action.UP,
@@ -2041,8 +2040,14 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
             Action.UPRIGHTFIRE,
             Action.UPLEFTFIRE,
             Action.DOWNRIGHTFIRE,
-            Action.DOWNLEFTFIRE
-        ]
+            Action.DOWNLEFTFIRE,
+        ],
+        dtype=jnp.int32,
+    )
+
+    def __init__(self, consts: SeaquestConstants = None):
+        consts = consts or SeaquestConstants()
+        super().__init__(consts)
         self.obs_size = 6 + 12 * 5 + 12 * 5 + 4 * 5 + 4 * 5 + 5 + 5 + 4
         self.renderer = SeaquestRenderer(self.consts)
 
@@ -2088,7 +2093,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
 
 
     def action_space(self) -> spaces.Discrete:
-        return spaces.Discrete(len(self.action_set))
+        return spaces.Discrete(len(self.ACTION_SET))
 
     def observation_space(self) -> spaces.Dict:
         """Returns the observation space for Seaquest.
@@ -2276,6 +2281,8 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
     def step(
         self, state: SeaquestState, action: chex.Array
     ) -> Tuple[SeaquestObservation, SeaquestState, float, bool, SeaquestInfo]:
+        # Translate compact agent action index to ALE console action
+        atari_action = jnp.take(self.ACTION_SET, action.astype(jnp.int32))
 
         previous_state = state
         _, reset_state = self.reset(state.rng_key)
@@ -2423,7 +2430,7 @@ class JaxSeaquest(JaxEnvironment[SeaquestState, SeaquestObservation, SeaquestInf
             player_y = jnp.where(
                 should_block, jnp.array(46, dtype=jnp.int32), state.player_y
             )
-            action_mod = jnp.where(should_block, jnp.array(Action.NOOP), action)
+            action_mod = jnp.where(should_block, jnp.array(Action.NOOP), atari_action)
 
             # Now calculate movement using potentially modified positions and action
             next_x, next_y, player_direction = self.player_step(

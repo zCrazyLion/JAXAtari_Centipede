@@ -217,18 +217,17 @@ class SpaceInvadersInfo(NamedTuple):
     time: jnp.ndarray
 
 class JaxSpaceInvaders(JaxEnvironment[SpaceInvadersState, SpaceInvadersObservation, SpaceInvadersInfo, SpaceInvadersConstants]):
+    # Minimal ALE action set for Space Invaders:
+    # 0=NOOP, 1=FIRE, 2=RIGHT, 3=LEFT, 4=RIGHTFIRE, 5=LEFTFIRE
+    ACTION_SET: jnp.ndarray = jnp.array(
+        [Action.NOOP, Action.FIRE, Action.RIGHT, Action.LEFT, Action.RIGHTFIRE, Action.LEFTFIRE],
+        dtype=jnp.int32,
+    )
+
     def __init__(self, consts: SpaceInvadersConstants = None):
         consts = consts or SpaceInvadersConstants()
         super().__init__(consts)
         self.renderer = SpaceInvadersRenderer(self.consts)
-        self.action_set = [
-            Action.NOOP,
-            Action.FIRE,
-            Action.RIGHT,
-            Action.LEFT,
-            Action.RIGHTFIRE,
-            Action.LEFTFIRE,
-        ]
         self.obs_size = 3 * 4 + 1 + 1
         self.renderer = SpaceInvadersRenderer(consts)
 
@@ -988,6 +987,9 @@ class JaxSpaceInvaders(JaxEnvironment[SpaceInvadersState, SpaceInvadersObservati
 
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: SpaceInvadersState, action: chex.Array) -> Tuple[SpaceInvadersObservation, SpaceInvadersState, float, bool, SpaceInvadersInfo]:
+        # Translate compact agent action index to ALE console action
+        atari_action = jnp.take(self.ACTION_SET, action.astype(jnp.int32))
+
         new_step_counter = state.step_counter + 1
         state = state._replace(step_counter = new_step_counter)
 
@@ -997,7 +999,7 @@ class JaxSpaceInvaders(JaxEnvironment[SpaceInvadersState, SpaceInvadersObservati
         new_state: SpaceInvadersState = jax.lax.cond(
             state.player_dead > 0,
             lambda: self.step_paused(state),
-            lambda: self.step_running(state, action, step_key)
+            lambda: self.step_running(state, atari_action, step_key)
         )
 
         # Persist next RNG regardless of branch path
@@ -1103,7 +1105,7 @@ class JaxSpaceInvaders(JaxEnvironment[SpaceInvadersState, SpaceInvadersObservati
         )
 
     def action_space(self) -> spaces.Discrete:
-        return spaces.Discrete(len(self.action_set))
+        return spaces.Discrete(len(self.ACTION_SET))
 
     def image_space(self) -> spaces.Box:
         return spaces.Box(
