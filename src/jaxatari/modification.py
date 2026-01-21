@@ -113,6 +113,11 @@ def _build_modded_asset_config(base_consts, registry, expanded_mods_config):
     asset_conflicts = defaultdict(list)  # Track which mods override which assets
     
     for mod_key in expanded_mods_config:
+        if mod_key not in registry:
+            raise ValueError(
+                f"Mod '{mod_key}' not recognized in registry. "
+                f"Available mods: {list(registry.keys())}"
+            )
         plugin_class = registry[mod_key]
         if hasattr(plugin_class, "asset_overrides"):
             for asset_name in plugin_class.asset_overrides:
@@ -254,6 +259,11 @@ class JaxAtariModController:
         
         # Collect constants and detect conflicts
         for mod_key in mods_config:
+            if mod_key not in registry:
+                raise ValueError(
+                    f"Mod '{mod_key}' not recognized in registry. "
+                    f"Available mods: {list(registry.keys())}"
+                )
             plugin_class = registry[mod_key]
             if hasattr(plugin_class, "constants_overrides"):
                 for const_name in plugin_class.constants_overrides:
