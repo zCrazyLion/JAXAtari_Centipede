@@ -103,7 +103,7 @@ class FireBallsMod(JaxAtariInternalModPlugin):
     """
 
     asset_overrides = {
-        "shark_base": {
+        "enemy_torp": {
             'name': 'enemy_torp',
             'type': 'single',
             'file': 'mods/fireball.npy'
