@@ -71,20 +71,23 @@ class EnemyMinesMod(JaxAtariInternalModPlugin):
     Replaces both Sharks and Enemy Submarines with Mine sprites.
     
     This is a visual-only mod. Hitboxes and movement logic remain identical 
-    to the original enemies. The 'Sharks' (now Mines) will still change color 
+    to the original enemies. The 'Sharks' (now Mines) will not change color 
     based on difficulty level due to the game's rendering logic.
-
     """
 
     asset_overrides = {
         "shark_base": {
             'name': 'shark_base',
-            'type': 'single',
-            'files': 'mods/mine.npy'
+            'type': 'group',
+            'files': ['mods/mine.npy', 'mods/mine.npy']
         },
         "enemy_sub": {
             'name': 'enemy_sub',
-            'type': 'single',
-            'files': 'mods/mine.npy'
+            'type': 'group',
+            'files': ['mods/mine.npy', 'mods/mine.npy']
         }
+    }
+
+    constants_overrides = {
+        "SHARK_DIFFICULTY_COLORS": jnp.array([[128, 128, 128]] * 5),
     }
