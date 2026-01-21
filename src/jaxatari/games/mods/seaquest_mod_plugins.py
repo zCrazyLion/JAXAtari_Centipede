@@ -91,3 +91,22 @@ class EnemyMinesMod(JaxAtariInternalModPlugin):
     constants_overrides = {
         "SHARK_DIFFICULTY_COLORS": jnp.array([[128, 128, 128]] * 5),
     }
+
+
+class FireBallsMod(JaxAtariInternalModPlugin):
+    """
+    Replaces both Sharks and Enemy Submarines with Mine sprites.
+    
+    This is a visual-only mod. Hitboxes and movement logic remain identical 
+    to the original enemies. The 'Sharks' (now Mines) will not change color 
+    based on difficulty level due to the game's rendering logic.
+    """
+
+    asset_overrides = {
+        "shark_base": {
+            'name': 'enemy_torp',
+            'type': 'single',
+            'file': 'mods/fireball.npy'
+        }
+    }
+

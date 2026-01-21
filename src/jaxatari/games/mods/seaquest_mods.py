@@ -1,5 +1,5 @@
 from jaxatari.modification import JaxAtariModController
-from jaxatari.games.mods.seaquest_mod_plugins import DisableEnemiesMod, NoDiversMod, EnemyMinesMod
+from jaxatari.games.mods.seaquest_mod_plugins import DisableEnemiesMod, NoDiversMod, EnemyMinesMod, FireBallsMod
 
 class SeaquestEnvMod(JaxAtariModController):
     """
@@ -10,6 +10,7 @@ class SeaquestEnvMod(JaxAtariModController):
     REGISTRY = {
         "disable_enemies": DisableEnemiesMod,
         "no_divers": NoDiversMod,
+        "fireballs": FireBallsMod,
         # "peaceful_enemies": PeacefulEnemiesMod,
         # "lethal_divers": LethalDiversMod,
         # "infinite_oxygen": NoOxygenDepletionMod,
