@@ -1,70 +1,28 @@
-import functools
-import time
-from typing import Any
+from jaxatari.games.mods.centipede_mod_plugins import SlowSpellMod, RandomMushroomsMod, RandomPlayerMovementMod
+from jaxatari.modification import JaxAtariModController
 
-import chex
-import jax
-import jax.numpy as jnp
 
-from jaxatari.games.jax_centipede import CentipedeState
-from jaxatari.wrappers import JaxatariWrapper
+class CentipedeEnvMod(JaxAtariModController):
+    """
+    Game-specific Mod Controller for Centipede.
+    It simply inherits all logic from JaxAtariModController and defines the CENTIPEDE_MOD_REGISTRY.
+    """
 
-class SlowSpell(JaxatariWrapper):
-    """Player spells have half the speed."""
-    def __init__(self, env):
-        super().__init__(env)
-        self._env = env
-        self._env.consts.PLAYER_SPELL_SPEED = 3
+    REGISTRY = {
+        "slow_spell": SlowSpellMod,
+        "random_mushrooms": RandomMushroomsMod,
+        # "random_player_movement": RandomPlayerMovementMod,
+    }
 
-class RandomMushrooms(JaxatariWrapper):
-    """Initialize mushroom positions randomly."""
-    def __init__(self, env):
-        super().__init__(env)
-        self._env = env
-        # Overrides initialize_mushroom_positions from env
-        self._env.initialize_mushroom_positions = self.initialize_mushroom_positions.__get__(self._env)
+    def __init__(self,
+                 env,
+                 mods_config: list = [],
+                 allow_conflicts: bool = False
+                 ):
 
-    @functools.partial(jax.jit, static_argnums=(0,))
-    def initialize_mushroom_positions(self):
-        # Overrides the default function from the env
-        rows = jnp.arange(self.consts.MUSHROOM_NUMBER_OF_ROWS) # 19
-        cols = jnp.arange(self.consts.MUSHROOM_NUMBER_OF_COLS) # 16
-        key = jax.random.PRNGKey(time.time_ns() % (2 ** 32))
-        p = 0.0888  # ~ 27 / 304 -> roughly same number of mushrooms on screen
-
-        spawn = jax.random.bernoulli(key, p, (19,16))
-
-        # --- Per-cell computation ---
-        def cell_fn(row, col):
-            row_is_even = (row % 2) == 0
-            column_start = jnp.where(
-                row_is_even,
-                self.consts.MUSHROOM_COLUMN_START_EVEN,
-                self.consts.MUSHROOM_COLUMN_START_ODD,
-            )
-            x = column_start + self.consts.MUSHROOM_X_SPACING * col
-            y = row * self.consts.MUSHROOM_Y_SPACING + 7
-            lives = jnp.where(spawn[row, col] != 0, 3, 0)
-            return jnp.array([x, y, 0, lives], dtype=jnp.int32)
-
-        # Vectorize across grid with nested vmaps
-        grid = jax.vmap(lambda r: jax.vmap(lambda c: cell_fn(r, c))(cols))(rows)
-
-        # Flatten to (N*M, 4)
-        return grid.reshape(-1, 4)
-
-class RandomPlayerMovement(JaxatariWrapper):
-    """Overwrites player movement with random action with probability 0.2"""
-    @functools.partial(jax.jit, static_argnums=(0,))
-    def get_action(self, action: int|float, key: chex.PRNGKey) -> jnp.ndarray:
-        random_movement_key, random_action_key = jax.random.split(key)
-
-        random_movement_indicator = jax.random.bernoulli(random_movement_key, 0.2)    # might be a bit heavy, lower also possible
-        random_action = jax.random.randint(random_action_key, (), 0, 18)
-
-        return jnp.where(random_movement_indicator, random_action, action)
-
-    @functools.partial(jax.jit, static_argnums=(0,))
-    def step(self, state: CentipedeState, action: int|float) -> tuple[chex.Array, CentipedeState, float, bool, dict[Any, Any]]:
-        new_action = self.get_action(action, state.rng_key)
-        return self._env.step(state, new_action)
+        super().__init__(
+            env=env,
+            mods_config=mods_config,
+            allow_conflicts=allow_conflicts,
+            registry=self.REGISTRY
+        )

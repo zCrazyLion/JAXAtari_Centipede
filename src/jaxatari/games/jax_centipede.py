@@ -81,7 +81,7 @@ def _get_default_asset_config() -> tuple:
         {'name': 'digits', 'type': 'digits', 'pattern': 'big_numbers/{}.npy'},
     )
 
-class CentipedeConstants:
+class CentipedeConstants(NamedTuple):
     # -------- Game constants --------
     WIDTH = 160
     HEIGHT = 210
