@@ -14,6 +14,21 @@ from jaxatari.rendering import jax_rendering_utils as render_utils
 import numpy as np
 from jaxatari.renderers import JAXGameRenderer
 
+def _get_default_asset_config() -> tuple:
+    """
+    Returns the default declarative asset manifest for Tetris.
+    Kept immutable (tuple of dicts) to fit NamedTuple defaults.
+    """
+    return (
+        {'name': 'background', 'type': 'background', 'file': 'background.npy'},
+        {'name': 'board_overlay', 'type': 'single', 'file': 'board.npy'},
+        {'name': 'score_digits', 'type': 'digits', 'pattern': 'score/score_{}.npy'},
+        {'name': 'banner_one', 'type': 'single', 'file': 'text_one.npy'},
+        {'name': 'banner_two', 'type': 'single', 'file': 'text_two.npy'},
+        {'name': 'banner_triple', 'type': 'single', 'file': 'text_triple.npy'},
+        {'name': 'banner_tetris', 'type': 'single', 'file': 'text_tetris.npy'},
+    )
+
 class TetrisConstants(NamedTuple):
     # logical grid (Board)
     BOARD_WIDTH: int = 10
@@ -91,6 +106,9 @@ class TetrisConstants(NamedTuple):
     ], dtype=jnp.int32)
     RESET: int = Action.DOWNLEFTFIRE  # keep a reserved reset action
 
+    # Asset config baked into constants (immutable default) for asset overrides
+    ASSET_CONFIG: tuple = _get_default_asset_config()
+
 # ======================== State/Obs/Info =================
 class TetrisState(NamedTuple):
 
@@ -134,14 +152,22 @@ class TetrisInfo(NamedTuple):
 # ======================= Environment =====================
 
 class JaxTetris(JaxEnvironment[TetrisState, TetrisObservation, TetrisInfo, TetrisConstants]):
-    def __init__(self, consts: TetrisConstants = None, reward_funcs: list[callable]=None, instant_drop: bool = False):
+    # ALE minimal action set: [NOOP, FIRE, RIGHT, LEFT, DOWN]
+    ACTION_SET: jnp.ndarray = jnp.array([
+        Action.NOOP,
+        Action.FIRE,
+        Action.RIGHT,
+        Action.LEFT,
+        Action.DOWN
+    ], dtype=jnp.int32)
+
+    def __init__(self, consts: TetrisConstants = None):
         """ Initialize the JaxTetris environment"""
 
         consts = consts or TetrisConstants()
         super().__init__(consts)
         self.renderer = TetrisRenderer(self.consts)
-        self.instant_drop = instant_drop
-        self.reward_funcs = reward_funcs
+        self.instant_drop = False
 
     # ----- Helpers -----
     @partial(jax.jit, static_argnums=0)
@@ -334,7 +360,7 @@ class JaxTetris(JaxEnvironment[TetrisState, TetrisObservation, TetrisInfo, Tetri
         """
         Return the action space for the environment.
         """
-        return spaces.Discrete(5)
+        return spaces.Discrete(len(self.ACTION_SET))
 
     def observation_space(self) -> spaces.Dict:
         """
@@ -385,17 +411,18 @@ class JaxTetris(JaxEnvironment[TetrisState, TetrisObservation, TetrisInfo, Tetri
         Returns the new observation, state, reward, done flag, and info.
         """
         previous_state = state
-        a = action.astype(jnp.int32)
+        # Translate agent action (0,1,2,3,4) to ALE action
+        atari_action = jnp.take(self.ACTION_SET, action)
 
         # Decode inputs
-        is_left = (a == Action.LEFT) | (a == Action.UPLEFT) | (a == Action.DOWNLEFT)
-        is_right = (a == Action.RIGHT) | (a == Action.UPRIGHT) | (a == Action.DOWNRIGHT)
-        is_up = (a == Action.UP) | (a == Action.UPLEFT) | (a == Action.UPRIGHT)
-        is_down = (a == Action.DOWN) | (a == Action.DOWNLEFT) | (a == Action.DOWNRIGHT)
-        is_fire = (a == Action.FIRE) | (a == Action.DOWNFIRE) | (a == Action.UPFIRE) \
-                  | (a == Action.LEFTFIRE) | (a == Action.RIGHTFIRE) \
-                  | (a == Action.UPLEFTFIRE) | (a == Action.UPRIGHTFIRE) \
-                  | (a == Action.DOWNLEFTFIRE) | (a == Action.DOWNRIGHTFIRE)
+        is_left = (atari_action == Action.LEFT) | (atari_action == Action.UPLEFT) | (atari_action == Action.DOWNLEFT)
+        is_right = (atari_action == Action.RIGHT) | (atari_action == Action.UPRIGHT) | (atari_action == Action.DOWNRIGHT)
+        is_up = (atari_action == Action.UP) | (atari_action == Action.UPLEFT) | (atari_action == Action.UPRIGHT)
+        is_down = (atari_action == Action.DOWN) | (atari_action == Action.DOWNLEFT) | (atari_action == Action.DOWNRIGHT)
+        is_fire = (atari_action == Action.FIRE) | (atari_action == Action.DOWNFIRE) | (atari_action == Action.UPFIRE) \
+                  | (atari_action == Action.LEFTFIRE) | (atari_action == Action.RIGHTFIRE) \
+                  | (atari_action == Action.UPLEFTFIRE) | (atari_action == Action.UPRIGHTFIRE) \
+                  | (atari_action == Action.DOWNLEFTFIRE) | (atari_action == Action.DOWNRIGHTFIRE)
 
         # Allow only single-key actions: if multiple logical keys pressed, treat as NOOP
         pressed_count = (
@@ -412,7 +439,7 @@ class JaxTetris(JaxEnvironment[TetrisState, TetrisObservation, TetrisInfo, Tetri
         is_down = is_down & exactly_one
         is_fire = is_fire & exactly_one
 
-        do_reset = (a == self.consts.RESET)
+        do_reset = (atari_action == self.consts.RESET)
 
         tick_next = state.tick + jnp.int32(1)
         gravity_drop = (tick_next % jnp.int32(self.consts.GRAVITY_FRAMES) == 0).astype(jnp.int32)
@@ -432,8 +459,8 @@ class JaxTetris(JaxEnvironment[TetrisState, TetrisObservation, TetrisInfo, Tetri
         # ---- Rotation repeat gating ----
         # Allow FIRE to rotate only when instant_drop is disabled
         allow_fire_rotate = jnp.logical_not(jnp.bool_(self.instant_drop))
-        is_up_single = (a == Action.UP)
-        is_fire_single = (a == Action.FIRE)
+        is_up_single = (atari_action == Action.UP)
+        is_fire_single = (atari_action == Action.FIRE)
         rotate_pressed = is_up_single | (allow_fire_rotate & is_fire_single)
         last_was_rotate = ((state.last_action == Action.UP) |
                            (allow_fire_rotate & (state.last_action == Action.FIRE)))
@@ -521,7 +548,7 @@ class JaxTetris(JaxEnvironment[TetrisState, TetrisObservation, TetrisInfo, Tetri
             move_dir=new_move_dir,
             rot_timer=jnp.where(do_rotate_now, jnp.int32(self.consts.ROT_DAS_FRAMES), rot_timer),
             soft_timer=jnp.where(do_soft_now, jnp.int32(self.consts.SOFT_PACE_FRAMES), soft_timer),
-            last_action=a,
+            last_action=atari_action,
             banner_timer=next_banner_timer,
             banner_code=jnp.where(next_banner_timer == 0, jnp.int32(0), state.banner_code)
         )
@@ -595,47 +622,35 @@ class TetrisRenderer(JAXGameRenderer):
         )
         self.jr = render_utils.JaxRenderingUtils(self.config)
 
-        # 1. Load all assets using the declarative pattern
-        asset_config = self._get_asset_config()
+        # 1. Start from (possibly modded) asset config provided via constants
+        final_asset_config = list(self.consts.ASSET_CONFIG)
+        
+        # 2. Create procedural assets using modded constants
+        # Procedurally generate 1x1 pixel sprites for each of the 22 row colors.
+        # This ensures they are all included in the final color palette.
         sprite_path = f"{os.path.dirname(os.path.abspath(__file__))}/sprites/tetris"
-
+        for i in range(22):
+            # The file is loaded here to get the color, then converted to a procedural sprite.
+            color_rgba = self.jr.loadFrame(
+                f"{sprite_path}/height_colors/h_{i}.npy"
+            )[0, 0] # Get the color from the top-left pixel
+            final_asset_config.append({
+                'name': f'row_color_{i}',
+                'type': 'procedural',
+                'data': color_rgba.reshape(1, 1, 4)
+            })
+        
+        # 3. Load all assets, create palette, and generate ID masks
         (
             self.PALETTE,
             self.SHAPE_MASKS,
             self.BACKGROUND,
             self.COLOR_TO_ID,
             self.FLIP_OFFSETS,
-        ) = self.jr.load_and_setup_assets(asset_config, sprite_path)
+        ) = self.jr.load_and_setup_assets(final_asset_config, sprite_path)
 
-        # 2. Precompute the color map for the board grid
+        # 4. Precompute the color map for the board grid
         self.BOARD_COLOR_MAP = self._precompute_board_color_map()
-
-    def _get_asset_config(self) -> list:
-        """Returns the declarative manifest of all assets for the game."""
-        # This list defines all sprites that need to be loaded from files.
-        config = [
-            {'name': 'background', 'type': 'background', 'file': 'background.npy'},
-            {'name': 'board_overlay', 'type': 'single', 'file': 'board.npy'},
-            {'name': 'score_digits', 'type': 'digits', 'pattern': 'score/score_{}.npy'},
-            {'name': 'banner_one', 'type': 'single', 'file': 'text_one.npy'},
-            {'name': 'banner_two', 'type': 'single', 'file': 'text_two.npy'},
-            {'name': 'banner_triple', 'type': 'single', 'file': 'text_triple.npy'},
-            {'name': 'banner_tetris', 'type': 'single', 'file': 'text_tetris.npy'},
-        ]
-
-        # Procedurally generate 1x1 pixel sprites for each of the 22 row colors.
-        # This ensures they are all included in the final color palette.
-        for i in range(22):
-            # The file is loaded here to get the color, then converted to a procedural sprite.
-            color_rgba = self.jr.loadFrame(
-                f"{os.path.dirname(os.path.abspath(__file__))}/sprites/tetris/height_colors/h_{i}.npy"
-            )[0, 0] # Get the color from the top-left pixel
-            config.append({
-                'name': f'row_color_{i}',
-                'type': 'procedural',
-                'data': color_rgba.reshape(1, 1, 4)
-            })
-        return config
 
     def _precompute_board_color_map(self) -> jnp.ndarray:
         """Creates a lookup table mapping a row's object ID to its color ID."""

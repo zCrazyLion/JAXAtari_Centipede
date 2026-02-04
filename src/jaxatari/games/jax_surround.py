@@ -10,6 +10,13 @@ from jaxatari.renderers import JAXGameRenderer
 from jaxatari.rendering import jax_rendering_utils as render_utils
 import jaxatari.spaces as spaces
 
+def _get_default_asset_config() -> tuple:
+    """
+    Returns the default declarative asset manifest for Surround.
+    Kept immutable (tuple of dicts) to fit NamedTuple defaults.
+    Note: Surround uses mostly procedural sprites, so this is empty.
+    """
+    return ()
 
 class SurroundConstants(NamedTuple):
     """Parameters defining the Surround grid and visuals."""
@@ -65,6 +72,9 @@ class SurroundConstants(NamedTuple):
     # Rough logic rate control when caller steps at ~60 FPS
     # Move only every N calls to step (e.g., 60/4 = 15 for ~4 Hz)
     MOVE_EVERY_N_STEPS: int = 15
+
+    # Asset config baked into constants (immutable default) for asset overrides
+    ASSET_CONFIG: tuple = _get_default_asset_config()
     # --- Speed-up schedule (game accelerates over time) ---
     # Every SPEEDUP_STEPS logic ticks, reduce the effective MOVE_EVERY by SPEEDUP_DELTA, but not below MIN_MOVE_EVERY.
     # SPEEDUP_STEPS: int = 200          # how many logic ticks until next speed bump
@@ -119,25 +129,27 @@ class JaxSurround(
     JaxEnvironment[SurroundState, SurroundObservation, SurroundInfo, SurroundConstants]
 ):
     """A very small two player Surround implementation."""
-
-    def __init__(
-        self,
-        consts: Optional[SurroundConstants] = None,
-        reward_funcs: Optional[Sequence[Callable[[SurroundState, SurroundState], jnp.ndarray]]] = None,
-    ):
-        consts = consts or SurroundConstants()
-        super().__init__(consts)
-        self.renderer = SurroundRenderer(self.consts)
-        self.action_set = [
+    
+    # Minimal ALE action set for Surround (from scripts/action_space_helper.py)
+    # Note: FIRE is NOT in the ALE action set for this game
+    ACTION_SET: jnp.ndarray = jnp.array(
+        [
             Action.NOOP,
-            Action.FIRE,
             Action.UP,
             Action.RIGHT,
             Action.LEFT,
             Action.DOWN,
-        ]
-        # Bleibt während der Laufzeit statisch -> JAX-jit-freundlich.
-        self.reward_funcs = reward_funcs
+        ],
+        dtype=jnp.int32,
+    )
+
+    def __init__(
+        self,
+        consts: Optional[SurroundConstants] = None,
+    ):
+        consts = consts or SurroundConstants()
+        super().__init__(consts)
+        self.renderer = SurroundRenderer(self.consts)
 
     # --- Internal AI helper for P1 (left player) ---
 
@@ -355,8 +367,10 @@ class JaxSurround(
         do_logic = (substep % jnp.maximum(self.consts.MOVE_EVERY_N_STEPS, 1)) == 0
 
 
-        # Parse action(s)
+        # Parse action(s) - translate compact agent action indices to ALE console actions
         actions = jnp.asarray(actions, dtype=jnp.int32)
+        atari_actions = jnp.take(self.ACTION_SET, actions)
+        
         # Scalar -> treat as P2 only (human); compute AI for P1
         def _joint_from_scalar(a_scalar):
             ai = self._opponent_policy(state)
@@ -364,13 +378,13 @@ class JaxSurround(
         def _joint_from_array(a_array):
             a_array = jnp.reshape(a_array, (-1,))
             return jnp.where(a_array.shape[0] == 2, a_array, _joint_from_scalar(a_array[0]))
-        joint_action = jax.lax.cond(actions.ndim == 0, lambda: _joint_from_scalar(actions), lambda: _joint_from_array(actions))
+        joint_action = jax.lax.cond(atari_actions.ndim == 0, lambda: _joint_from_scalar(atari_actions), lambda: _joint_from_array(atari_actions))
 
-        # Movement vectors for each direction
+        # Movement vectors for each direction (mapped to Action constants)
+        # Index mapping: 0=NOOP, 1=UP, 2=RIGHT, 3=LEFT, 4=DOWN
         offsets = jnp.array(
             [
                 [0, 0],   # NOOP
-                [0, 0],   # FIRE -> no movement
                 [0, -1],  # UP
                 [1, 0],   # RIGHT
                 [-1, 0],  # LEFT
@@ -384,15 +398,19 @@ class JaxSurround(
             is_move = jnp.logical_and(action >= Action.UP, action <= Action.DOWN)
             candidate = jax.lax.select(is_move, action, curr_dir)
             if not self.consts.ALLOW_REVERSE:
-                opp = jnp.array([
-                    Action.NOOP,   # NOOP
-                    Action.NOOP,   # FIRE
-                    Action.DOWN,   # UP -> DOWN
-                    Action.LEFT,   # RIGHT -> LEFT
-                    Action.RIGHT,  # LEFT -> RIGHT
-                    Action.UP,     # DOWN -> UP
-                ], dtype=jnp.int32)
-                candidate = jax.lax.cond(candidate == opp[curr_dir], lambda: curr_dir, lambda: candidate)
+                # Map Action constants to their opposites (for reverse prevention)
+                # Check if candidate is opposite of current direction
+                is_opposite = jnp.logical_or(
+                    jnp.logical_and(curr_dir == Action.UP, candidate == Action.DOWN),
+                    jnp.logical_or(
+                        jnp.logical_and(curr_dir == Action.DOWN, candidate == Action.UP),
+                        jnp.logical_or(
+                            jnp.logical_and(curr_dir == Action.LEFT, candidate == Action.RIGHT),
+                            jnp.logical_and(curr_dir == Action.RIGHT, candidate == Action.LEFT)
+                        )
+                    )
+                )
+                candidate = jax.lax.cond(is_opposite, lambda: curr_dir, lambda: candidate)
             return candidate
 
         new_dir0 = update_dir(state.dir0, joint_action[0])
@@ -414,7 +432,6 @@ class JaxSurround(
             offsets = jnp.array(
                 [
                     [0, 0],   # NOOP
-                    [0, 0],   # FIRE
                     [0, -1],  # UP
                     [1, 0],   # RIGHT
                     [-1, 0],  # LEFT
@@ -546,7 +563,7 @@ class JaxSurround(
 
     def action_space(self) -> spaces.Discrete:
         """Returns the action space for the controllable player."""
-        return spaces.Discrete(len(self.action_set))
+        return spaces.Discrete(len(self.ACTION_SET))
 
     def observation_space(self) -> spaces.Dict:
         # Prefer per-dimension bounds; fall back to scalar bounds if unsupported by spaces.Box
@@ -597,33 +614,16 @@ class SurroundRenderer(JAXGameRenderer):
         )
         self.jr = render_utils.JaxRenderingUtils(self.config)
 
-        # --- FIX: Centralize all estimated colors as instance attributes ---
         self.P1_HEAD_COLOR_TUPLE = (214, 214, 42)    # Yellow
         self.P2_HEAD_COLOR_TUPLE = (198, 89, 179)    # Red/Pink
         self.PLAYFIELD_COLOR_TUPLE = (181, 119, 181) # Lavender
         self.BORDER_COLOR_TUPLE = (214, 92, 92)      # Pink
         self.DIVIDER_COLOR_TUPLE = (142, 142, 142)   # Grey
 
-        asset_config = self._get_asset_config()
-        (
-            self.PALETTE,
-            self.SHAPE_MASKS,
-            self.BACKGROUND,
-            self.COLOR_TO_ID,
-            self.FLIP_OFFSETS,
-        ) = self.jr.load_and_setup_assets(asset_config, "")
-
-        self.TRAIL_COLOR_MAP = jnp.array([
-            self.jr.TRANSPARENT_ID,
-            self.COLOR_TO_ID[self.consts.P1_TRAIL_COLOR],
-            self.COLOR_TO_ID[self.consts.P2_TRAIL_COLOR],
-        ])
-
-    def _get_asset_config(self) -> list:
-        """Returns the declarative manifest of all assets for the game."""
-        config = []
-
-        # --- FIX: Use the instance attributes defined in __init__ ---
+        # 1. Start from (possibly modded) asset config provided via constants
+        final_asset_config = list(self.consts.ASSET_CONFIG)
+        
+        # 2. Create procedural assets using modded constants
         procedural_sprites = {
             'p1_head': jnp.array(list(self.P1_HEAD_COLOR_TUPLE) + [255], dtype=jnp.uint8).reshape(1, 1, 4),
             'p2_head': jnp.array(list(self.P2_HEAD_COLOR_TUPLE) + [255], dtype=jnp.uint8).reshape(1, 1, 4),
@@ -634,10 +634,10 @@ class SurroundRenderer(JAXGameRenderer):
             'playfield': jnp.array(list(self.PLAYFIELD_COLOR_TUPLE) + [255], dtype=jnp.uint8).reshape(1, 1, 4),
         }
 
-        config.append({'name': 'background', 'type': 'background', 'data': jnp.array([0, 0, 0, 255], dtype=jnp.uint8).reshape(1, 1, 4)})
+        final_asset_config.append({'name': 'background', 'type': 'background', 'data': jnp.array([0, 0, 0, 255], dtype=jnp.uint8).reshape(1, 1, 4)})
 
         for name, data in procedural_sprites.items():
-            config.append({'name': name, 'type': 'procedural', 'data': data})
+            final_asset_config.append({'name': name, 'type': 'procedural', 'data': data})
 
         module_dir = os.path.dirname(os.path.abspath(__file__))
         digit_path = os.path.join(module_dir, "sprites/seaquest/digits/{}" + ".npy")
@@ -650,10 +650,23 @@ class SurroundRenderer(JAXGameRenderer):
         p1_digits_rgba = jnp.concatenate([jnp.where(alpha_mask, jnp.array(self.P1_HEAD_COLOR_TUPLE), 0), scaled_digits[..., 3:]], axis=-1)
         p2_digits_rgba = jnp.concatenate([jnp.where(alpha_mask, jnp.array(self.P2_HEAD_COLOR_TUPLE), 0), scaled_digits[..., 3:]], axis=-1)
 
-        config.append({'name': 'p1_digits', 'type': 'procedural', 'data': p1_digits_rgba})
-        config.append({'name': 'p2_digits', 'type': 'procedural', 'data': p2_digits_rgba})
+        final_asset_config.append({'name': 'p1_digits', 'type': 'procedural', 'data': p1_digits_rgba})
+        final_asset_config.append({'name': 'p2_digits', 'type': 'procedural', 'data': p2_digits_rgba})
+        
+        # 3. Load all assets, create palette, and generate ID masks
+        (
+            self.PALETTE,
+            self.SHAPE_MASKS,
+            self.BACKGROUND,
+            self.COLOR_TO_ID,
+            self.FLIP_OFFSETS,
+        ) = self.jr.load_and_setup_assets(final_asset_config, "")
 
-        return config
+        self.TRAIL_COLOR_MAP = jnp.array([
+            self.jr.TRANSPARENT_ID,
+            self.COLOR_TO_ID[self.consts.P1_TRAIL_COLOR],
+            self.COLOR_TO_ID[self.consts.P2_TRAIL_COLOR],
+        ])
 
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state: SurroundState) -> jnp.ndarray:
@@ -679,7 +692,6 @@ class SurroundRenderer(JAXGameRenderer):
         by = self.consts.BORDER_CELLS_Y * cell_h
         border_positions = jnp.array([[0, y_off], [0, y_off + field_h - by], [0, y_off], [field_w - bx, y_off]])
         border_sizes = jnp.array([[field_w, by], [field_w, by], [bx, field_h], [bx, field_h]])
-        # --- FIX: Use the consistent color attribute for the border ---
         raster = self.jr.draw_rects(raster, border_positions, border_sizes, self.COLOR_TO_ID[self.BORDER_COLOR_TUPLE])
 
         occupied_grid = jnp.logical_or(state.trail != 0, state.border).T.astype(jnp.int32)
@@ -693,7 +705,6 @@ class SurroundRenderer(JAXGameRenderer):
         divider_thickness = max(1, self.consts.DIVIDER_THICKNESS)
         band_mask = (relative_y % cell_h >= mid) & (relative_y % cell_h < mid + divider_thickness)
         final_divider_mask = jnp.logical_and(grid_mask_raster, band_mask)
-        # --- FIX: Use the consistent color attribute for the divider ---
         raster = jnp.where(final_divider_mask, self.COLOR_TO_ID[self.DIVIDER_COLOR_TUPLE], raster)
 
         p1x = state.pos0[0] * cell_w
@@ -703,7 +714,6 @@ class SurroundRenderer(JAXGameRenderer):
 
         p1_trail_mask = jnp.ones((cell_h, cell_w), dtype=jnp.uint8) * self.COLOR_TO_ID[self.consts.P1_TRAIL_COLOR]
         p2_trail_mask = jnp.ones((cell_h, cell_w), dtype=jnp.uint8) * self.COLOR_TO_ID[self.consts.P2_TRAIL_COLOR]
-        # --- FIX: Use the consistent color attributes for the heads ---
         p1_head_mask = jnp.ones((cell_h, cell_w), dtype=jnp.uint8) * self.COLOR_TO_ID[self.P1_HEAD_COLOR_TUPLE]
         p2_head_mask = jnp.ones((cell_h, cell_w), dtype=jnp.uint8) * self.COLOR_TO_ID[self.P2_HEAD_COLOR_TUPLE]
 
