@@ -1,16 +1,98 @@
-import argparse
+import os
 import sys
+
+# Force JAX on CPU before importing jax (must run before `import jax`).
+if "--cpu" in sys.argv:
+    os.environ.setdefault("JAX_PLATFORMS", "cpu")
+    os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
+
+import argparse
 import pygame
 
 import jax
+import jax.numpy as jnp
 import jax.random as jrandom
 import numpy as np
 
 from jaxatari.environment import JAXAtariAction
-from utils import get_human_action, update_pygame, load_game_environment, load_game_mods
+from utils import (
+    get_human_action,
+    load_game_environment,
+    load_game_mods,
+    print_observation_tree,
+    reset_or_load_state,
+    save_env_state_json,
+    update_pygame,
+)
 from jaxatari.core import make as jaxatari_make
 
 UPSCALE_FACTOR = 4
+
+
+def _process_rss_bytes() -> int:
+    """Resident set size (RSS) of this process in bytes. Linux: /proc/self/status."""
+    try:
+        with open("/proc/self/status", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    kb = int(line.split()[1])
+                    return kb * 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    try:
+        import resource
+
+        maxrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        # Linux: kilobytes; macOS: bytes
+        if sys.platform == "darwin":
+            return maxrss
+        return maxrss * 1024
+    except Exception:
+        return -1
+
+
+def _print_post_init_memory(use_cpu: bool) -> None:
+    rss = _process_rss_bytes()
+    if rss >= 0:
+        mib = rss / (1024 * 1024)
+        print(
+            f"RAM (process RSS after env init / first jitted reset): {mib:.2f} MiB ({rss:,} bytes)"
+        )
+    else:
+        print("RAM (process RSS): could not be determined on this platform.")
+    if use_cpu:
+        print(f"JAX devices (--cpu): {jax.devices()}")
+
+
+def _normalize_mods(mods):
+    """Convert common CLI mods input into a list of mod name strings.
+
+    Accepts:
+      - None -> None
+      - Space-separated (argparse nargs='+'): ['mod1', 'mod2']
+      - Comma-separated: ['mod1,mod2'] or ['mod1, mod2'] -> ['mod1', 'mod2']
+      - Single string (e.g. from config): 'mod1' or 'mod1,mod2' -> list
+      - Mixed: ['mod1', 'mod2,mod3'] -> ['mod1', 'mod2', 'mod3']
+    """
+    if mods is None:
+        return None
+    if isinstance(mods, str):
+        mods = [mods]
+    result = []
+    for item in mods:
+        if not isinstance(item, str):
+            item = str(item).strip()
+        else:
+            item = item.strip()
+        if not item:
+            continue
+        # Split by comma so "mod1, mod2" and "mod1,mod2" both work
+        for part in item.split(","):
+            part = part.strip()
+            if part:
+                result.append(part)
+    return result if result else None
+
 
 # Map action names to their integer values
 ACTION_NAMES = {
@@ -18,7 +100,6 @@ ACTION_NAMES = {
     for k, v in vars(JAXAtariAction).items()
     if not k.startswith("_") and isinstance(v, int)
 }
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -36,7 +117,7 @@ def main():
         nargs='+',
         type=str,
         required=False,
-        help="Name of the mods class.",
+        help="Mod name(s). Space-separated (e.g. -m ModA ModB) or comma-separated (e.g. -m ModA,ModB).",
     )
 
     parser.add_argument(
@@ -81,17 +162,46 @@ def main():
         action="store_true",
         help="Verbose mode.",
     )
+    parser.add_argument(
+        "--cpu",
+        action="store_true",
+        help="Run JAX on CPU (sets JAX_PLATFORMS=cpu before backend init).",
+    )
+    parser.add_argument(
+        "--load-state",
+        type=str,
+        metavar="FILE",
+        help=(
+            "On each reset (and at startup), merge leaves from this JSON into the state "
+            "from reset() (written with S or save_env_state_json). Unknown JSON keys warn; "
+            "missing leaves keep reset values."
+        ),
+    )
+    parser.add_argument(
+        "--save-state-path",
+        type=str,
+        default="jaxatari_play_state.json",
+        help="Path written when pressing S during play (default: jaxatari_play_state.json).",
+    )
+
+    parser.add_argument(
+        "--profile",
+        action=argparse.BooleanOptionalAction,
+        help="Enable profiling.",
+    )
 
     args = parser.parse_args()
 
+    # Normalize mods so we accept space-separated, comma-separated, or mixed
+    args.mods = _normalize_mods(args.mods)
+
     execute_without_rendering = False
-    
 
     try:
         # 1. Try the registered path (core.make)
         env = jaxatari_make(
             game_name=args.game,
-            mods_config=args.mods,
+            mods=args.mods,
             allow_conflicts=args.allow_conflicts
         )
         print(f"Successfully loaded registered game: '{args.game}'")
@@ -141,11 +251,25 @@ def main():
     jitted_step = jax.jit(env.step)
     jitted_render = jax.jit(env.render)
 
-    # initialize the environment with the first reset key
-    reset_key = jrandom.fold_in(master_key, reset_counter)
-    obs, state = jitted_reset(reset_key)
-    reset_counter += 1
-    
+    # initialize the environment with the first reset key (or JSON state if --load-state)
+    load_path = args.load_state if not args.replay else None
+    if args.replay:
+        reset_key = jrandom.fold_in(master_key, reset_counter)
+        obs, state = jitted_reset(reset_key)
+        reset_counter += 1
+    else:
+        obs, state, reset_counter = reset_or_load_state(
+            load_path=load_path,
+            game=args.game,
+            mods=args.mods,
+            master_key=master_key,
+            reset_counter=reset_counter,
+            jitted_reset=jitted_reset,
+            label="startup",
+        )
+    if not args.replay:
+        _print_post_init_memory(args.cpu)
+
     # For random actions, we need a separate key stream
     action_key = jrandom.fold_in(master_key, 1000000)  # Use a large offset to avoid collision
 
@@ -162,21 +286,27 @@ def main():
     action_space = env.action_space()
 
     def map_action_to_index(action_constant):
-        """Convert Action constant to action index for environment's ACTION_SET."""
+        """Convert Action constant to the specific index within the game's ACTION_SET."""
         if hasattr(env, 'ACTION_SET'):
-            # Find the index in ACTION_SET that matches the action constant
+            # Convert JAX array/constant to standard Python int for comparison
             action_set = np.array(env.ACTION_SET)
             action_int = int(action_constant)
-            # Find index where ACTION_SET[index] == action_int
+            
+            # Find where this constant lives in the current game's minimal set
             matches = np.where(action_set == action_int)[0]
+            
             if len(matches) > 0:
-                return jax.numpy.array(matches[0], dtype=jax.numpy.int32)
-            else:
-                # If action not in ACTION_SET, default to NOOP (index 0)
-                return jax.numpy.array(0, dtype=jax.numpy.int32)
-        else:
-            # Fallback: use action constant directly (for environments without ACTION_SET)
-            return action_constant
+                idx = int(matches[0])
+                if args.verbose:
+                    name = ACTION_NAMES.get(action_int, "UNKNOWN")
+                    # Verification: "LEFT" (4) should map to Index 3 in Pong
+                    print(f"[Action Debug] Input: {name} | Constant: {action_int} -> Env Index: {idx}")
+                return jax.numpy.array(idx, dtype=jax.numpy.int32)
+            # Key not in this game's action set (e.g. UP in Phoenix) -> NOOP (index 0)
+            return jax.numpy.array(0, dtype=jax.numpy.int32)
+        
+        # Fallback if no ACTION_SET is defined: use constant as index
+        return jax.numpy.array(action_constant, dtype=jax.numpy.int32)
 
     save_keys = {}
     running = True
@@ -201,6 +331,7 @@ def main():
             master_key = jrandom.PRNGKey(seed)
             reset_key = jrandom.fold_in(master_key, 0)  # Use first reset key
             obs, state = jitted_reset(reset_key)
+            _print_post_init_memory(args.cpu)
 
         # loop over all the actions and play the game
         for action in actions_array:
@@ -233,77 +364,111 @@ def main():
         update_pygame(window, image, UPSCALE_FACTOR, 160, 210)
         clock.tick(frame_rate)
 
-    # main game loop
-    while running:
-        # check for external actions
-        if not execute_without_rendering:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                    continue
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_p:  # pause
-                        pause = not pause
-                    elif event.key == pygame.K_r:  # reset
-                        reset_key = jrandom.fold_in(master_key, reset_counter)
-                        obs, state = jitted_reset(reset_key)
-                        reset_counter += 1
-                        total_return = 0
-                    elif event.key == pygame.K_f:
-                        frame_by_frame = not frame_by_frame
-                    elif event.key == pygame.K_n:
-                        next_frame_asked = True
+    def running_fn():
+        nonlocal running, pause, frame_by_frame, next_frame_asked
+        nonlocal obs, state, reset_counter, total_return, action_key
+        while running:
+            # check for external actions
+            if not execute_without_rendering:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        running = False
+                        continue
+                    elif event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_p:  # pause
+                            pause = not pause
+                        elif event.key == pygame.K_r:  # reset
+                            obs, state, reset_counter = reset_or_load_state(
+                                load_path=load_path,
+                                game=args.game,
+                                mods=args.mods,
+                                master_key=master_key,
+                                reset_counter=reset_counter,
+                                jitted_reset=jitted_reset,
+                                label="manual reset",
+                            )
+                            total_return = 0
+                        elif event.key == pygame.K_s:  # save full state to JSON
+                            try:
+                                save_env_state_json(
+                                    args.save_state_path,
+                                    state,
+                                    game=args.game,
+                                    mods=args.mods,
+                                )
+                                print(f"Saved state to {args.save_state_path!r}")
+                            except OSError as e:
+                                print(f"Failed to save state: {e}")
+                        elif event.key == pygame.K_f:
+                            frame_by_frame = not frame_by_frame
+                        elif event.key == pygame.K_n:
+                            next_frame_asked = True
 
-            if pause or (frame_by_frame and not next_frame_asked):
+                if pause or (frame_by_frame and not next_frame_asked):
+                    image = jitted_render(state)
+                    update_pygame(window, image, UPSCALE_FACTOR, 160, 210)
+                    clock.tick(frame_rate)
+                    continue
+            
+            if args.random:
+                # sample an action from the action space array
+                action = action_space.sample(action_key)
+                action_key, _ = jax.random.split(action_key)
+            else:
+                # get the pressed keys (returns Action constant) and map to action index
+                action_constant = get_human_action()
+                action = map_action_to_index(action_constant)
+                # Save the action to the save_keys dictionary
+                if args.record:
+                    # Save the action to the save_keys dictionary
+                    save_keys[len(save_keys)] = action
+
+            if not frame_by_frame or next_frame_asked:
+
+                obs, state, reward, done, info = jitted_step(state, action)
+                # print(reward)
+                total_return += reward
+                if next_frame_asked:
+                    next_frame_asked = False
+            else:
+                # Need to get action to update event queue even if paused
+                action_constant = get_human_action()
+                action = map_action_to_index(action_constant)
+
+            if done:
+                print(f"Done. Total return {total_return}")
+                total_return = 0
+                obs, state, reset_counter = reset_or_load_state(
+                    load_path=load_path,
+                    game=args.game,
+                    mods=args.mods,
+                    master_key=master_key,
+                    reset_counter=reset_counter,
+                    jitted_reset=jitted_reset,
+                    label="episode",
+                )
+
+            # Render the environment
+            if not execute_without_rendering:
                 image = jitted_render(state)
                 update_pygame(window, image, UPSCALE_FACTOR, 160, 210)
                 clock.tick(frame_rate)
-                continue
-        
-        if args.random:
-            # sample an action from the action space array
-            action = action_space.sample(action_key)
-            action_key, _ = jax.random.split(action_key)
-        else:
-            # get the pressed keys (returns Action constant) and map to action index
-            action_constant = get_human_action()
-            action = map_action_to_index(action_constant)
-            # Save the action to the save_keys dictionary
-            if args.record:
-                # Save the action to the save_keys dictionary
-                save_keys[len(save_keys)] = action
+            
+            # Handle loop for no-rendering execution
+            if execute_without_rendering:
+                if done:
+                    running = False # Run for one episode if not rendering
+                if pause or (frame_by_frame and not next_frame_asked):
+                    continue
+                if frame_by_frame and next_frame_asked:
+                    next_frame_asked = False
 
-        if not frame_by_frame or next_frame_asked:
-            obs, state, reward, done, info = jitted_step(state, action)
-            total_return += reward
-            if next_frame_asked:
-                next_frame_asked = False
-        else:
-            # Need to get action to update event queue even if paused
-            action_constant = get_human_action()
-            action = map_action_to_index(action_constant)
-
-        if done:
-            print(f"Done. Total return {total_return}")
-            total_return = 0
-            reset_key = jrandom.fold_in(master_key, reset_counter)
-            obs, state = jitted_reset(reset_key)
-            reset_counter += 1
-
-        # Render the environment
-        if not execute_without_rendering:
-            image = jitted_render(state)
-            update_pygame(window, image, UPSCALE_FACTOR, 160, 210)
-            clock.tick(frame_rate)
-        
-        # Handle loop for no-rendering execution
-        if execute_without_rendering:
-            if done:
-                running = False # Run for one episode if not rendering
-            if pause or (frame_by_frame and not next_frame_asked):
-                continue
-            if frame_by_frame and next_frame_asked:
-                next_frame_asked = False
+    # main game loop
+    if args.profile:
+        with jax.profiler.trace("/tmp/jax-atari-play-profiler", create_perfetto_link=True):
+            running_fn()
+    else:
+        running_fn()
 
     if args.record:
         # Convert dictionary to array of actions

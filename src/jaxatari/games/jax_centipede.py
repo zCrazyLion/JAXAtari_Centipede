@@ -1,23 +1,16 @@
-"""
-
-Lukas Bergholz, Linus Orlob, Vincent Jahn
-
-"""
-
 import os
 import jax
 import jax.numpy as jnp
 import numpy as np
 import chex
+from flax import struct
 
-import jaxatari.rendering.jax_rendering_utils_legacy as jru
 import jaxatari.rendering.jax_rendering_utils as render_utils
-import time
 from functools import partial
 from typing import NamedTuple, Tuple, Dict, Any, Optional
 
 from jaxatari import spaces
-from jaxatari.environment import JaxEnvironment, JAXAtariAction as Action
+from jaxatari.environment import JaxEnvironment, ObjectObservation, JAXAtariAction as Action
 from jaxatari.renderers import JAXGameRenderer
 
 def _create_static_procedural_sprites() -> dict:
@@ -81,28 +74,28 @@ def _get_default_asset_config() -> tuple:
         {'name': 'digits', 'type': 'digits', 'pattern': 'big_numbers/{}.npy'},
     )
 
-class CentipedeConstants(NamedTuple):
+class CentipedeConstants(struct.PyTreeNode):
     # -------- Game constants --------
-    WIDTH = 160
-    HEIGHT = 210
-    SCALING_FACTOR = 6
+    WIDTH: int = struct.field(pytree_node=False, default=160)
+    HEIGHT: int = struct.field(pytree_node=False, default=210)
+    SCALING_FACTOR: int = struct.field(pytree_node=False, default=6)
 
     ## -------- Player constants --------
-    PLAYER_START_X = 76
-    PLAYER_START_Y = 172
-    PLAYER_BOUNDS = (16, 140), (141, 172)
+    PLAYER_START_X: int = struct.field(pytree_node=False, default=76)
+    PLAYER_START_Y: int = struct.field(pytree_node=False, default=172)
+    PLAYER_BOUNDS: Tuple[Tuple[int, int], Tuple[int, int]] = struct.field(pytree_node=False, default_factory=lambda: ((16, 140), (141, 172)))
 
-    PLAYER_SIZE = (4, 9)
+    PLAYER_SIZE: Tuple[int, int] = struct.field(pytree_node=False, default_factory=lambda: (4, 9))
 
-    PLAYER_Y_VALUES = jnp.array([141, 145, 147, 150, 154, 156, 159, 163, 165, 168, 172])      # Double to not need extra state value
+    PLAYER_Y_VALUES: chex.Array = struct.field(pytree_node=False, default_factory=lambda: jnp.array([141, 145, 147, 150, 154, 156, 159, 163, 165, 168, 172]))      # Double to not need extra state value
 
     ## -------- Player spell constants --------
-    PLAYER_SPELL_SPEED = 9
+    PLAYER_SPELL_SPEED: int = struct.field(pytree_node=False, default=9)
 
-    PLAYER_SPELL_SIZE = (1, 8)
+    PLAYER_SPELL_SIZE: Tuple[int, int] = struct.field(pytree_node=False, default_factory=lambda: (1, 8))
 
     ## -------- Starting Pattern (X -> placed, O -> not placed, P -> placed and poisoned) --------
-    MUSHROOM_STARTING_PATTERN = [
+    MUSHROOM_STARTING_PATTERN: chex.Array = struct.field(pytree_node=False, default_factory=lambda: [
         "OOOOOOOOOOOOOOOO",
         "OOOOOOOOXOOOOXOO",
         "OOOOOOOOOXOOOOXO",
@@ -122,85 +115,86 @@ class CentipedeConstants(NamedTuple):
         "OXOOOXOOOOOOOOOO",
         "OOOOXOOOOOOOOOOX",
         "OOOOOOOOOOOOOOOO",
-    ]
+    ])
 
     ## -------- Mushroom constants --------
-    MAX_MUSHROOMS = 304             # Default 304 (19*16) | Maximum number of mushrooms that can appear at the same time
-    MUSHROOM_NUMBER_OF_ROWS = 19    # Default 19 | Number of rows -> Determines value of MAX_MUSHROOMS
-    MUSHROOM_NUMBER_OF_COLS = 16    # Default 16 | Number of mushrooms per row -> Determines value of MAX_MUSHROOMS
-    MUSHROOM_X_SPACING = 8      #
-    MUSHROOM_Y_SPACING = 9
-    MUSHROOM_COLUMN_START_EVEN = 20
-    MUSHROOM_COLUMN_START_ODD = 16
-    MUSHROOM_SIZE = (4, 3)
-    MUSHROOM_HITBOX_Y_OFFSET = 6
+    MAX_MUSHROOMS: int = struct.field(pytree_node=False, default=304)             # Default 304 (19*16) | Maximum number of mushrooms that can appear at the same time
+    MUSHROOM_NUMBER_OF_ROWS: int = struct.field(pytree_node=False, default=19)    # Default 19 | Number of rows -> Determines value of MAX_MUSHROOMS
+    MUSHROOM_NUMBER_OF_COLS: int = struct.field(pytree_node=False, default=16)    # Default 16 | Number of mushrooms per row -> Determines value of MAX_MUSHROOMS
+    MUSHROOM_X_SPACING: int = struct.field(pytree_node=False, default=8)      #
+    MUSHROOM_Y_SPACING: int = struct.field(pytree_node=False, default=9)
+    MUSHROOM_COLUMN_START_EVEN: int = struct.field(pytree_node=False, default=20)
+    MUSHROOM_COLUMN_START_ODD: int = struct.field(pytree_node=False, default=16)
+    MUSHROOM_SIZE: Tuple[int, int] = struct.field(pytree_node=False, default_factory=lambda: (4, 3))
+    MUSHROOM_HITBOX_Y_OFFSET: int = struct.field(pytree_node=False, default=6)
 
     ## -------- Centipede constants --------
-    MAX_SEGMENTS = 9
-    SEGMENT_SIZE = (4, 6)
+    MAX_SEGMENTS: int = struct.field(pytree_node=False, default=9)
+    SEGMENT_SIZE: Tuple[int, int] = struct.field(pytree_node=False, default_factory=lambda: (4, 6))
 
     ## -------- Spider constants --------
-    SPIDER_X_POSITIONS = jnp.array([16, 133])
-    SPIDER_Y_POSITIONS = jnp.array([115, 124, 133, 142, 151, 160, 169, 178])
-    SPIDER_MOVE_PROBABILITY = 0.2
-    SPIDER_MIN_SPAWN_FRAMES = 55
-    SPIDER_MAX_SPAWN_FRAMES = 355
-    SPIDER_SIZE = (8, 6)
-    SPIDER_CLOSE_RANGE = 16
-    SPIDER_MID_RANGE = 32
+    SPIDER_X_POSITIONS: chex.Array = struct.field(pytree_node=False, default_factory=lambda: jnp.array([16, 133]))
+    SPIDER_Y_POSITIONS: chex.Array = struct.field(pytree_node=False, default_factory=lambda: jnp.array([115, 124, 133, 142, 151, 160, 169, 178]))
+    SPIDER_MOVE_PROBABILITY: float = struct.field(pytree_node=False, default=0.2)
+    SPIDER_MIN_SPAWN_FRAMES: int = struct.field(pytree_node=False, default=55)
+    SPIDER_MAX_SPAWN_FRAMES: int = struct.field(pytree_node=False, default=355)
+    SPIDER_SIZE: Tuple[int, int] = struct.field(pytree_node=False, default_factory=lambda: (8, 6))
+    SPIDER_CLOSE_RANGE: int = struct.field(pytree_node=False, default=16)
+    SPIDER_MID_RANGE: int = struct.field(pytree_node=False, default=32)
 
     ## -------- Scorpion constants --------
-    SCORPION_X_POSITIONS = jnp.array([16, 133])
-    SCORPION_Y_POSITIONS = jnp.array([7, 16, 25, 34, 43, 52, 61, 70, 79, 88, 97, 106, 115, 124, 133])
-    SCORPION_MIN_SPAWN_FRAMES = 355
-    SCORPION_MAX_SPAWN_FRAMES = 2000
-    SCORPION_SIZE = (8, 6)
-    SCORPION_POINTS = 1000
+    SCORPION_X_POSITIONS: chex.Array = struct.field(pytree_node=False, default_factory=lambda: jnp.array([16, 133]))
+    SCORPION_Y_POSITIONS: chex.Array = struct.field(pytree_node=False, default_factory=lambda: jnp.array([7, 16, 25, 34, 43, 52, 61, 70, 79, 88, 97, 106, 115, 124, 133]))
+    SCORPION_MIN_SPAWN_FRAMES: int = struct.field(pytree_node=False, default=355)
+    SCORPION_MAX_SPAWN_FRAMES: int = struct.field(pytree_node=False, default=2000)
+    SCORPION_SIZE: Tuple[int, int] = struct.field(pytree_node=False, default_factory=lambda: (8, 6))
+    SCORPION_POINTS: int = struct.field(pytree_node=False, default=1000)
 
     ## -------- Flea constants --------
-    FLEA_SIZE = (4, 6)
-    FLEA_SPAWN_MUSHROOM_PROBABILITY = 0.5
-    FLEA_POINTS = 200
+    FLEA_SIZE: Tuple[int, int] = struct.field(pytree_node=False, default_factory=lambda: (4, 6))
+    FLEA_SPAWN_MUSHROOM_PROBABILITY: float = struct.field(pytree_node=False, default=0.5)
+    FLEA_POINTS: int = struct.field(pytree_node=False, default=200)
 
     ## -------- Death animation constants --------
-    DEATH_ANIMATION_MUSHROOM_THRESHOLD = 64        # 4 Frames * 4 Sprites * 4 Repetitions
+    DEATH_ANIMATION_MUSHROOM_THRESHOLD: int = struct.field(pytree_node=False, default=64)        # 4 Frames * 4 Sprites * 4 Repetitions
 
     ## -------- Color constants --------
-    ORANGE = jnp.array([181, 83, 40])#B55328    # Mushrooms lvl1
-    DARK_ORANGE = jnp.array([198, 108, 58])#C66C3A
-    PINK = jnp.array([184, 70, 162])#B846A2      # Centipede lvl1
-    GREEN = jnp.array([110, 156, 66])#6E9C42     # Border lvl1
-    LIGHT_PURPLE = jnp.array([188, 144, 252])#BC90FC  # UI Elements
-    PURPLE = jnp.array([146, 70, 192])#9246C0        # Spider
-    DARK_PURPLE = jnp.array([66, 72, 200])#4248C8
-    LIGHT_BLUE = jnp.array([84, 138, 210])#548AD2    # Border lvl2
-    DARK_BLUE = jnp.array([45, 50, 184])#2D32B8     # Mushrooms lvl2
-    LIGHT_RED = jnp.array([200, 72, 72])#C84848
-    RED = jnp.array([184, 50, 50])#B83232       # Centipede lvl2
-    YELLOW = jnp.array([187, 187, 53])#BBBB35
-    DARK_YELLOW = jnp.array([162, 162, 42])#A2A22A
+    ORANGE: Tuple[int, int, int] = struct.field(pytree_node=False, default=(181, 83, 40))#B55328    # Mushrooms lvl1
+    DARK_ORANGE: Tuple[int, int, int] = struct.field(pytree_node=False, default=(198, 108, 58))#C66C3A
+    PINK: Tuple[int, int, int] = struct.field(pytree_node=False, default=(184, 70, 162))#B846A2      # Centipede lvl1
+    GREEN: Tuple[int, int, int] = struct.field(pytree_node=False, default=(110, 156, 66))#6E9C42     # Border lvl1
+    LIGHT_PURPLE: Tuple[int, int, int] = struct.field(pytree_node=False, default=(188, 144, 252))#BC90FC  # UI Elements
+    PURPLE: Tuple[int, int, int] = struct.field(pytree_node=False, default=(146, 70, 192))#9246C0        # Spider
+    DARK_PURPLE: Tuple[int, int, int] = struct.field(pytree_node=False, default=(66, 72, 200))#4248C8
+    LIGHT_BLUE: Tuple[int, int, int] = struct.field(pytree_node=False, default=(84, 138, 210))#548AD2    # Border lvl2
+    DARK_BLUE: Tuple[int, int, int] = struct.field(pytree_node=False, default=(45, 50, 184))#2D32B8     # Mushrooms lvl2
+    LIGHT_RED: Tuple[int, int, int] = struct.field(pytree_node=False, default=(200, 72, 72))#C84848
+    RED: Tuple[int, int, int] = struct.field(pytree_node=False, default=(184, 50, 50))#B83232       # Centipede lvl2
+    YELLOW: Tuple[int, int, int] = struct.field(pytree_node=False, default=(187, 187, 53))#BBBB35
+    DARK_YELLOW: Tuple[int, int, int] = struct.field(pytree_node=False, default=(162, 162, 42))#A2A22A
 
     ## -------- Sprite Frames --------
-    SPRITE_PLAYER_FRAMES = 1
-    SPRITE_PLAYER_SPELL_FRAMES = 1
-    SPRITE_CENTIPEDE_FRAMES = 1
-    SPRITE_MUSHROOM_FRAMES = 1
-    SPRITE_SPIDER_FRAMES = 4
-    SPRITE_SPIDER_300_FRAMES = 1
-    SPRITE_SPIDER_600_FRAMES = 1
-    SPRITE_SPIDER_900_FRAMES = 1
-    SPRITE_FLEA_FRAMES = 2
-    SPRITE_SCORPION_FRAMES = 2
-    SPRITE_SPARKS_FRAMES = 4
-    SPRITE_BOTTOM_BORDER_FRAMES = 1
-    SPRITE_POISONED_MUSHROOMS_FRAMES = 16
+    SPRITE_PLAYER_FRAMES: int = struct.field(pytree_node=False, default=1)
+    SPRITE_PLAYER_SPELL_FRAMES: int = struct.field(pytree_node=False, default=1)
+    SPRITE_CENTIPEDE_FRAMES: int = struct.field(pytree_node=False, default=1)
+    SPRITE_MUSHROOM_FRAMES: int = struct.field(pytree_node=False, default=1)
+    SPRITE_SPIDER_FRAMES: int = struct.field(pytree_node=False, default=4)
+    SPRITE_SPIDER_300_FRAMES: int = struct.field(pytree_node=False, default=1)
+    SPRITE_SPIDER_600_FRAMES: int = struct.field(pytree_node=False, default=1)
+    SPRITE_SPIDER_900_FRAMES: int = struct.field(pytree_node=False, default=1)
+    SPRITE_FLEA_FRAMES: int = struct.field(pytree_node=False, default=2)
+    SPRITE_SCORPION_FRAMES: int = struct.field(pytree_node=False, default=2)
+    SPRITE_SPARKS_FRAMES: int = struct.field(pytree_node=False, default=4)
+    SPRITE_BOTTOM_BORDER_FRAMES: int = struct.field(pytree_node=False, default=1)
+    SPRITE_POISONED_MUSHROOMS_FRAMES: int = struct.field(pytree_node=False, default=16)
 
     # Asset config baked into constants (immutable default) for asset overrides
-    ASSET_CONFIG: tuple = _get_default_asset_config()
+    ASSET_CONFIG: tuple = struct.field(pytree_node=False, default_factory=_get_default_asset_config)
 
     # -------- Centipede States --------
 
-class CentipedeState(NamedTuple):
+@struct.dataclass
+class CentipedeState:
     player_x: chex.Array
     player_y: chex.Array
     player_velocity_x: chex.Array
@@ -223,35 +217,23 @@ class CentipedeState(NamedTuple):
     spark_position: chex.Array
     rng_key: chex.PRNGKey
 
-class PlayerEntity(NamedTuple):
-    x: jnp.ndarray
-    y: jnp.ndarray
-    o: jnp.ndarray
-    width: jnp.ndarray
-    height: jnp.ndarray
-    active: jnp.ndarray
-
-class EntityPosition(NamedTuple):
-    x: jnp.ndarray
-    y: jnp.ndarray
-    width: jnp.ndarray
-    height: jnp.ndarray
-    active: jnp.ndarray
-
-class CentipedeObservation(NamedTuple):
-    player: PlayerEntity
-    mushrooms: jnp.ndarray      # Shape (MAX_MUSHROOMS, 5) - MAX_MUSHROOMS mushrooms, each with x,y,w,h,active
-    centipede: jnp.ndarray      # Shape (MAX_SEGMENTS, 5) - MAX_SEGMENTS Centipede segments, each with x,y,w,h,active
-    spider: EntityPosition      # Shape (5,) - one spider with x,y,w,h,active
-    flea: EntityPosition        # Shape (5,) - one flea with x,y,w,h,active
-    scorpion: EntityPosition    # Shape (5,) - one scorpion with x,y,w,h,active
-    player_spell: EntityPosition    # Shape (5,) - one spell with x,y,w,h,active
-    score: jnp.ndarray
+@struct.dataclass
+class CentipedeObservation:
+    player: ObjectObservation
+    mushrooms: ObjectObservation # Shape (MAX_MUSHROOMS, 5) - MAX_MUSHROOMS mushrooms, each with x,y,w,h,active
+    centipede: ObjectObservation      # Shape (MAX_SEGMENTS, 5) - MAX_SEGMENTS Centipede segments, each with x,y,w,h,active
+    spider: ObjectObservation      # Shape (5,) - one spider with x,y,w,h,active
+    flea: ObjectObservation        # Shape (5,) - one flea with x,y,w,h,active
+    scorpion: ObjectObservation    # Shape (5,) - one scorpion with x,y,w,h,active
+    player_spell: ObjectObservation    # Shape (5,) - one spell with x,y,w,h,active
     lives: jnp.ndarray
+    score: jnp.ndarray
 
-class CentipedeInfo(NamedTuple):
+@struct.dataclass
+class CentipedeInfo:
     wave: jnp.ndarray
     step_counter: jnp.ndarray
+    score: jnp.ndarray
 
 # -------- Game Logic --------
 
@@ -280,6 +262,35 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         ],
         dtype=jnp.int32,
     )
+    ACTION_DIRECTION_LUT: jnp.ndarray = jnp.array(
+        [
+            [0, 0],    # NOOP
+            [0, 0],    # FIRE
+            [0, -1],   # UP
+            [1, 0],    # RIGHT
+            [-1, 0],   # LEFT
+            [0, 1],    # DOWN
+            [1, -1],   # UPRIGHT
+            [-1, -1],  # UPLEFT
+            [1, 1],    # DOWNRIGHT
+            [-1, 1],   # DOWNLEFT
+            [0, -1],   # UPFIRE
+            [1, 0],    # RIGHTFIRE
+            [-1, 0],   # LEFTFIRE
+            [0, 1],    # DOWNFIRE
+            [1, -1],   # UPRIGHTFIRE
+            [-1, -1],  # UPLEFTFIRE
+            [1, 1],    # DOWNRIGHTFIRE
+            [-1, 1],   # DOWNLEFTFIRE
+        ],
+        dtype=jnp.int32,
+    )
+    ACTION_FIRE_LUT: jnp.ndarray = jnp.array(
+        [
+            0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1
+        ],
+        dtype=jnp.int32,
+    )
 
     def __init__(self, consts: CentipedeConstants = None):
         consts = consts or CentipedeConstants()
@@ -292,94 +303,30 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         """Render the game state to a raster image."""
         return self.renderer.render(state)
 
-    def flatten_entity_position(self, entity: EntityPosition) -> jnp.ndarray:
-        return jnp.concatenate([
-            jnp.array([entity.x], dtype=jnp.int32),
-            jnp.array([entity.y], dtype=jnp.int32),
-            jnp.array([entity.width], dtype=jnp.int32),
-            jnp.array([entity.height], dtype=jnp.int32),
-            jnp.array([entity.active], dtype=jnp.int32)
-        ])
-
-    def flatten_player_entity(self, entity: PlayerEntity) -> jnp.ndarray:
-        return jnp.concatenate([
-            jnp.array([entity.x], dtype=jnp.int32),
-            jnp.array([entity.y], dtype=jnp.int32),
-            jnp.array([entity.o], dtype=jnp.int32),
-            jnp.array([entity.width], dtype=jnp.int32),
-            jnp.array([entity.height], dtype=jnp.int32),
-            jnp.array([entity.active], dtype=jnp.int32)
-        ])
-
-    @partial(jax.jit, static_argnums=(0,))
-    def obs_to_flat_array(self, obs: CentipedeObservation) -> jnp.ndarray:
-        return jnp.concatenate([
-            self.flatten_player_entity(obs.player),
-            obs.mushrooms.flatten().astype(jnp.int32),
-            obs.centipede.flatten().astype(jnp.int32),
-            self.flatten_entity_position(obs.spider),
-            self.flatten_entity_position(obs.flea),
-            self.flatten_entity_position(obs.scorpion),
-            self.flatten_entity_position(obs.player_spell),
-            obs.score.flatten().astype(jnp.int32),
-            obs.lives.flatten().astype(jnp.int32),
-        ])
-
     def action_space(self) -> spaces.Discrete:
         return spaces.Discrete(len(self.ACTION_SET))
 
     def observation_space(self) -> spaces.Dict:
         """Returns the observation space for Centipede.
         The observation contains:
-        - player: PlayerEntity (x, y, o, width, height, active)
-        - mushrooms: array of shape (304, 5) with x,y,width,height,active for each mushroom
-        - centipede: array of shape (9, 5) with x,y,width,height,active for each segment
-        - spider: EntityPosition (x, y, width, height, active)
-        - flea: EntityPosition (x, y, width, height, active)
-        - scorpion: EntityPosition (x, y, width, height, active)
-        - player_spell: EntityPosition (x, y, width, height, active)
+        - player: ObjectObservation (x, y, width, height, active)
+        - mushrooms: ObjectObservation (304, 5) with x,y,width,height,active for each mushroom
+        - centipede: ObjectObservation (9, 5) with x,y,width,height,active for each segment
+        - spider: ObjectObservation (x, y, width, height, active)
+        - flea: ObjectObservation (x, y, width, height, active)
+        - scorpion: ObjectObservation (x, y, width, height, active)
+        - player_spell: ObjectObservation (x, y, width, height, active)
         - score: int (0-999999)
         - lives: int (0-3)
         """
         return spaces.Dict({
-            "player": spaces.Dict({
-                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
-                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-                "o": spaces.Box(low=-1, high=1, shape=(), dtype=jnp.int32),
-                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
-                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-                "active": spaces.Box(low=0, high=1, shape=(), dtype=jnp.int32),
-            }),
-            "mushrooms": spaces.Box(low=0, high=210, shape=(304, 5), dtype=jnp.int32),
-            "centipede": spaces.Box(low=0, high=210, shape=(9, 5), dtype=jnp.int32),
-            "spider": spaces.Dict({
-                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
-                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
-                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-                "active": spaces.Box(low=0, high=1, shape=(), dtype=jnp.int32),
-            }),
-            "flea": spaces.Dict({
-                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
-                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
-                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-                "active": spaces.Box(low=0, high=1, shape=(), dtype=jnp.int32),
-            }),
-            "scorpion": spaces.Dict({
-                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
-                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
-                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-                "active": spaces.Box(low=0, high=1, shape=(), dtype=jnp.int32),
-            }),
-            "player_spell": spaces.Dict({
-                "x": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
-                "y": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-                "width": spaces.Box(low=0, high=160, shape=(), dtype=jnp.int32),
-                "height": spaces.Box(low=0, high=210, shape=(), dtype=jnp.int32),
-                "active": spaces.Box(low=0, high=1, shape=(), dtype=jnp.int32),
-            }),
+            "player": spaces.get_object_space(n=None, screen_size=(self.consts.HEIGHT, self.consts.WIDTH)),
+            "mushrooms": spaces.get_object_space(n=self.consts.MAX_MUSHROOMS, screen_size=(self.consts.HEIGHT, self.consts.WIDTH)),
+            "centipede": spaces.get_object_space(n=self.consts.MAX_SEGMENTS, screen_size=(self.consts.HEIGHT, self.consts.WIDTH)),
+            "spider": spaces.get_object_space(n=None, screen_size=(self.consts.HEIGHT, self.consts.WIDTH)),
+            "flea": spaces.get_object_space(n=None, screen_size=(self.consts.HEIGHT, self.consts.WIDTH)),
+            "scorpion": spaces.get_object_space(n=None, screen_size=(self.consts.HEIGHT, self.consts.WIDTH)),
+            "player_spell": spaces.get_object_space(n=None, screen_size=(self.consts.HEIGHT, self.consts.WIDTH)),
             "score": spaces.Box(low=0, high=999999, shape=(), dtype=jnp.int32),
             "lives": spaces.Box(low=0, high=6, shape=(), dtype=jnp.int32),
         })
@@ -397,89 +344,106 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_observation(self, state: CentipedeState) -> CentipedeObservation:
-        # Create player (already scalar, no need for vectorization)
-        player = PlayerEntity(
-            x=state.player_x,
-            y=state.player_y,
-            o=jnp.array(0),  # No orientation in Centipede, set to 0
-            width=jnp.array(self.consts.PLAYER_SIZE[0]),
-            height=jnp.array(self.consts.PLAYER_SIZE[1]),
-            active=jnp.array(1),  # Player is always active
+        # Helper for vector to angle (0-360)
+        def vec_to_angle(dx, dy):
+            return jnp.mod(jnp.degrees(jnp.arctan2(dy, dx)), 360.0)
+
+        # --- Player ---
+        player = ObjectObservation.create(
+            x=jnp.clip(state.player_x, 0, self.consts.WIDTH),
+            y=jnp.clip(state.player_y, 0, self.consts.HEIGHT),
+            width=jnp.array(self.consts.PLAYER_SIZE[0], dtype=jnp.int32),
+            height=jnp.array(self.consts.PLAYER_SIZE[1], dtype=jnp.int32),
+            orientation=jnp.array(0.0, dtype=jnp.float32), # Player faces Up (0) or default
+            active=jnp.array(1, dtype=jnp.int32)
         )
 
-        # Define a function to convert mushroom positions to entity format
-        def convert_to_mushroom_entity(pos):
-            x, y, is_poisoned, lives = pos
-            return jnp.array([
-                x,  # x position
-                y,  # y position
-                self.consts.MUSHROOM_SIZE[0],  # width
-                self.consts.MUSHROOM_SIZE[1],  # height
-                lives > 0,  # active flag
-            ])
+        # --- Mushrooms ---
+        # mushroom_positions: (304, 4) -> x, y, is_poisoned, lives
+        m_x = state.mushroom_positions[:, 0]
+        m_y = state.mushroom_positions[:, 1]
+        m_poisoned = state.mushroom_positions[:, 2]
+        m_lives = state.mushroom_positions[:, 3]
 
-        # Mushrooms
-        mushrooms = jax.vmap(convert_to_mushroom_entity)(
-            state.mushroom_positions
+        mushrooms = ObjectObservation.create(
+            x=jnp.clip(m_x, 0, self.consts.WIDTH),
+            y=jnp.clip(m_y, 0, self.consts.HEIGHT),
+            width=jnp.full(m_x.shape, self.consts.MUSHROOM_SIZE[0], dtype=jnp.int32),
+            height=jnp.full(m_x.shape, self.consts.MUSHROOM_SIZE[1], dtype=jnp.int32),
+            state=m_poisoned.astype(jnp.int32), # 1 if poisoned, 0 if normal
+            active=(m_lives > 0).astype(jnp.int32)
         )
 
-        # Define a function to convert centipede segments to entity format
-        def convert_to_centipede_entity(pos):
-            x, y, speed_h, movement_v, status = pos
-            return jnp.array([
-                x.astype(jnp.int32),  # x position
-                y.astype(jnp.int32),  # y position
-                self.consts.SEGMENT_SIZE[0],  # width
-                self.consts.SEGMENT_SIZE[1],  # height
-                status != 0,  # active flag assuming status indicates activity
-            ])
-
-        # Centipede segments
-        centipede = jax.vmap(convert_to_centipede_entity)(
-            state.centipede_position
+        # --- Centipede ---
+        # centipede_position: (9, 5) -> x, y, speed_h, movement_v, status
+        c_x = state.centipede_position[:, 0]
+        c_y = state.centipede_position[:, 1]
+        c_vx = state.centipede_position[:, 2]
+        c_vy = state.centipede_position[:, 3]
+        c_status = state.centipede_position[:, 4]
+        
+        centipede = ObjectObservation.create(
+            x=jnp.clip(c_x, 0, self.consts.WIDTH),
+            y=jnp.clip(c_y, 0, self.consts.HEIGHT),
+            width=jnp.full(c_x.shape, self.consts.SEGMENT_SIZE[0], dtype=jnp.int32),
+            height=jnp.full(c_x.shape, self.consts.SEGMENT_SIZE[1], dtype=jnp.int32),
+            orientation=vec_to_angle(c_vx, c_vy),
+            active=(c_status != 0).astype(jnp.int32)
         )
 
-        # Spider (scalar)
-        spider_pos = state.spider_position
-        spider = EntityPosition(
-            x=spider_pos[0],
-            y=spider_pos[1],
-            width=jnp.array(self.consts.SPIDER_SIZE[0]),
-            height=jnp.array(self.consts.SPIDER_SIZE[1]),
-            active=spider_pos[0] != 0,
+        # --- Spider ---
+        # spider_position: (3) -> x, y, direction (-1 left, 1 right, 0 inactive)
+        s_x, s_y, s_dir = state.spider_position
+        # Direction to angle: Right(1)->90, Left(-1)->270, Inactive->0
+        s_angle = jnp.select([s_dir > 0, s_dir < 0], [90.0, 270.0], default=0.0)
+        
+        spider = ObjectObservation.create(
+            x=jnp.clip(s_x, 0, self.consts.WIDTH),
+            y=jnp.clip(s_y, 0, self.consts.HEIGHT),
+            width=jnp.array(self.consts.SPIDER_SIZE[0], dtype=jnp.int32),
+            height=jnp.array(self.consts.SPIDER_SIZE[1], dtype=jnp.int32),
+            orientation=s_angle.astype(jnp.float32),
+            active=(s_dir != 0).astype(jnp.int32)
         )
 
-        # Flea (scalar)
-        flea_pos = state.flea_position
-        flea = EntityPosition(
-            x=flea_pos[0].astype(jnp.int32),
-            y=flea_pos[1].astype(jnp.int32),
-            width=jnp.array(self.consts.FLEA_SIZE[0]),
-            height=jnp.array(self.consts.FLEA_SIZE[1]),
-            active=flea_pos[2] > 0,
+        # --- Flea ---
+        # flea_position: (3) -> x, y, lives
+        f_x, f_y, f_lives = state.flea_position
+        flea = ObjectObservation.create(
+            x=jnp.clip(f_x.astype(jnp.int32), 0, self.consts.WIDTH),
+            y=jnp.clip(f_y.astype(jnp.int32), 0, self.consts.HEIGHT),
+            width=jnp.array(self.consts.FLEA_SIZE[0], dtype=jnp.int32),
+            height=jnp.array(self.consts.FLEA_SIZE[1], dtype=jnp.int32),
+            orientation=jnp.array(180.0, dtype=jnp.float32), # Flea falls down (180)
+            active=(f_lives > 0).astype(jnp.int32)
         )
 
-        # Scorpion (scalar)
-        scorpion_pos = state.scorpion_position
-        scorpion = EntityPosition(
-            x=scorpion_pos[0],
-            y=scorpion_pos[1],
-            width=jnp.array(self.consts.SCORPION_SIZE[0]),
-            height=jnp.array(self.consts.SCORPION_SIZE[1]),
-            active=scorpion_pos[0] != 0,
+        # --- Scorpion ---
+        # scorpion_position: (4) -> x, y, direction, speed
+        sc_x, sc_y, sc_dir, _ = state.scorpion_position
+        sc_angle = jnp.select([sc_dir > 0, sc_dir < 0], [90.0, 270.0], default=0.0)
+        
+        scorpion = ObjectObservation.create(
+            x=jnp.clip(sc_x, 0, self.consts.WIDTH),
+            y=jnp.clip(sc_y, 0, self.consts.HEIGHT),
+            width=jnp.array(self.consts.SCORPION_SIZE[0], dtype=jnp.int32),
+            height=jnp.array(self.consts.SCORPION_SIZE[1], dtype=jnp.int32),
+            orientation=sc_angle.astype(jnp.float32),
+            active=(sc_dir != 0).astype(jnp.int32)
         )
 
-        # Player spell (scalar)
-        spell_pos = state.player_spell
-        player_spell = EntityPosition(
-            x=spell_pos[0],
-            y=spell_pos[1],
-            width=jnp.array(self.consts.PLAYER_SPELL_SIZE[0]),
-            height=jnp.array(self.consts.PLAYER_SPELL_SIZE[1]),
-            active=spell_pos[2] != 0,
+        # --- Player Spell ---
+        # player_spell: (3) -> x, y, is_alive
+        ps_x, ps_y, ps_alive = state.player_spell
+        player_spell = ObjectObservation.create(
+            x=jnp.clip(ps_x, 0, self.consts.WIDTH),
+            y=jnp.clip(ps_y, 0, self.consts.HEIGHT),
+            width=jnp.array(self.consts.PLAYER_SPELL_SIZE[0], dtype=jnp.int32),
+            height=jnp.array(self.consts.PLAYER_SPELL_SIZE[1], dtype=jnp.int32),
+            orientation=jnp.array(0.0, dtype=jnp.float32), # Moves Up (0)
+            active=(ps_alive != 0).astype(jnp.int32)
         )
 
-        # Return observation
         return CentipedeObservation(
             player=player,
             mushrooms=mushrooms,
@@ -489,14 +453,15 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             scorpion=scorpion,
             player_spell=player_spell,
             score=state.score,
-            lives=state.lives,
+            lives=state.lives
         )
-
+    
     @partial(jax.jit, static_argnums=(0,))
     def _get_info(self, state: CentipedeState) -> CentipedeInfo:
         return CentipedeInfo(
             wave=state.wave[1],
             step_counter=state.step_counter,
+            score=state.score,
         )
 
     @partial(jax.jit, static_argnums=(0,))
@@ -505,7 +470,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
     @partial(jax.jit, static_argnums=(0,))
     def _get_done(self, state: CentipedeState) -> bool:
-        return state.lives < 0
+        # episode ends once we have no lives left.
+        return state.lives <= 0
 
     # -------- Helper Functions --------
 
@@ -544,6 +510,32 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         col_idx = jnp.where(odd_row, pos[0], pos[0] - 4) / 8
         return row_idx * 16 + col_idx - 2
 
+    @partial(jax.jit, static_argnums=(0,))
+    def _mushroom_candidate_indices_for_point(self, x: chex.Array, y: chex.Array) -> tuple[chex.Array, chex.Array]:
+        row_base = jnp.floor((y - 7.0) / self.consts.MUSHROOM_Y_SPACING).astype(jnp.int32)
+        rows = jnp.array([row_base, row_base + 1], dtype=jnp.int32)
+        col_starts = jnp.where(
+            (rows % 2) == 0,
+            self.consts.MUSHROOM_COLUMN_START_EVEN,
+            self.consts.MUSHROOM_COLUMN_START_ODD
+        )
+        col_base = jnp.floor((x - col_starts) / self.consts.MUSHROOM_X_SPACING).astype(jnp.int32)
+        cols = jnp.stack([col_base, col_base + 1], axis=1)
+
+        row_ok = jnp.logical_and(rows >= 0, rows < self.consts.MUSHROOM_NUMBER_OF_ROWS)[:, None]
+        col_ok = jnp.logical_and(cols >= 0, cols < self.consts.MUSHROOM_NUMBER_OF_COLS)
+        valid = jnp.logical_and(row_ok, col_ok)
+
+        indices = rows[:, None] * self.consts.MUSHROOM_NUMBER_OF_COLS + cols
+        return indices.reshape(-1), valid.reshape(-1)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _mushroom_candidate_indices_for_points(self, points: chex.Array) -> tuple[chex.Array, chex.Array]:
+        indices, valid = jax.vmap(
+            lambda p: self._mushroom_candidate_indices_for_point(p[0], p[1])
+        )(points)
+        return indices.reshape(-1), valid.reshape(-1)
+
     # -------- Logic Functions --------
 
     ## -------- Centipede Move Logic -------- ##
@@ -553,25 +545,53 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             centipede_state: chex.Array,
             mushrooms_positions: chex.Array,
     ) -> chex.Array:
+        def segment_mushroom_collision(segment, poison_only=False):
+            direction = jnp.where(segment[2] > 0, 6.0, -6.0)
+            seg_x = segment[0]
+            seg_y = segment[1]
+            seg_w = float(self.consts.SEGMENT_SIZE[0])
+            seg_h = float(self.consts.SEGMENT_SIZE[1])
+            current_box = jnp.array([seg_x, seg_y])
+            future_box = jnp.array([seg_x + direction, seg_y])
 
-        # --- Utility: detect collision with mushroom ---
-        def check_mushroom_collision(segment, mushroom, seg_speed):
-            direction = jnp.where(seg_speed > 0, 6, -6)
-            collision = jnp.logical_and(
-                self.check_collision_single(
-                    pos1=jnp.array([segment[0], segment[1]]),
-                    size1=self.consts.SEGMENT_SIZE,
-                    pos2=mushroom[:2],
-                    size2=self.consts.MUSHROOM_SIZE,
-                ),
-                self.check_collision_single(
-                    pos1=jnp.array([segment[0] + direction, segment[1]]),
-                    size1=self.consts.SEGMENT_SIZE,
-                    pos2=mushroom[:2],
-                    size2=self.consts.MUSHROOM_SIZE,
-                ),
+            points = jnp.array(
+                [
+                    [seg_x, seg_y],
+                    [seg_x + seg_w - 1.0, seg_y],
+                    [seg_x, seg_y + seg_h - 1.0],
+                    [seg_x + seg_w - 1.0, seg_y + seg_h - 1.0],
+                    [seg_x + direction, seg_y],
+                    [seg_x + direction + seg_w - 1.0, seg_y],
+                    [seg_x + direction, seg_y + seg_h - 1.0],
+                    [seg_x + direction + seg_w - 1.0, seg_y + seg_h - 1.0],
+                ],
+                dtype=jnp.float32,
             )
-            return jnp.where(mushroom[3] > 0, collision, False)  # mushroom alive?
+
+            cand_idx, cand_valid = self._mushroom_candidate_indices_for_points(points)
+            safe_idx = jnp.clip(cand_idx, 0, self.consts.MAX_MUSHROOMS - 1)
+            candidates = mushrooms_positions[safe_idx]
+
+            def hit_for_candidate(mushroom, valid):
+                alive = mushroom[3] > 0
+                poison_ok = jnp.logical_or(jnp.logical_not(poison_only), mushroom[2] == 1)
+                overlap = jnp.logical_and(
+                    self.check_collision_single(
+                        pos1=current_box,
+                        size1=self.consts.SEGMENT_SIZE,
+                        pos2=mushroom[:2],
+                        size2=self.consts.MUSHROOM_SIZE,
+                    ),
+                    self.check_collision_single(
+                        pos1=future_box,
+                        size1=self.consts.SEGMENT_SIZE,
+                        pos2=mushroom[:2],
+                        size2=self.consts.MUSHROOM_SIZE,
+                    ),
+                )
+                return jnp.logical_and(valid, jnp.logical_and(alive, jnp.logical_and(poison_ok, overlap)))
+
+            return jnp.any(jax.vmap(hit_for_candidate)(candidates, cand_valid))
 
         # --- Poisoned zig-zag behaviour ---
         def poisoned_step(segment):
@@ -582,8 +602,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             # check walls & mushrooms
             hit_left = jnp.logical_and(new_x <= self.consts.PLAYER_BOUNDS[0][0], segment[2] < 0)
             hit_right = jnp.logical_and(new_x >= self.consts.PLAYER_BOUNDS[0][1], segment[2] > 0)
-            mushroom_collision = jnp.any(
-                jax.vmap(lambda m: check_mushroom_collision(segment, m, segment[2]))(mushrooms_positions))
+            mushroom_collision = segment_mushroom_collision(segment, poison_only=False)
 
             move_down = jnp.logical_or(
                 jnp.logical_or(hit_left, hit_right),
@@ -642,8 +661,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 return jnp.array([new_x, segment[1], new_speed, segment[3], segment[4]]), jnp.array(1)
 
             # detect collisions
-            collision = jnp.any(
-                jax.vmap(lambda m: check_mushroom_collision(segment, m, segment[2]))(mushrooms_positions))
+            collision = segment_mushroom_collision(segment, poison_only=False)
 
             move_down = jnp.logical_or(
                 collision,
@@ -663,10 +681,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         # --- Dispatcher: poisoned overrides normal ---
         def move_segment(segment, turn_around):
             # check poisoned collision now
-            poisoned_collision = jnp.any(
-                jax.vmap(lambda m: jnp.logical_and(check_mushroom_collision(segment, m, segment[2]), m[2] == 1))(
-                    mushrooms_positions)
-            )
+            poisoned_collision = segment_mushroom_collision(segment, poison_only=True)
             is_already_poisoned = jnp.logical_or(segment[3] == 2, segment[3] == -2)
             poisoned_active = jnp.logical_or(poisoned_collision, is_already_poisoned)
 
@@ -1060,41 +1075,50 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         spell_pos_x = spell_state[0]
         spell_pos_y = spell_state[1]
         spell_is_alive = spell_state[2] != 0
+        spell_box = jnp.array([spell_pos_x, spell_pos_y + self.consts.MUSHROOM_HITBOX_Y_OFFSET], dtype=jnp.float32)
+        spell_w = float(self.consts.PLAYER_SPELL_SIZE[0])
+        spell_h = float(self.consts.PLAYER_SPELL_SIZE[1])
+        points = jnp.array(
+            [
+                [spell_box[0], spell_box[1]],
+                [spell_box[0] + spell_w - 1.0, spell_box[1]],
+                [spell_box[0], spell_box[1] + spell_h - 1.0],
+                [spell_box[0] + spell_w - 1.0, spell_box[1] + spell_h - 1.0],
+            ],
+            dtype=jnp.float32,
+        )
+        cand_idx, cand_valid = self._mushroom_candidate_indices_for_points(points)
+        safe_idx = jnp.clip(cand_idx, 0, self.consts.MAX_MUSHROOMS - 1)
+        candidates = mushroom_positions[safe_idx]
 
-        def check_single_mushroom(is_alive, mushroom, score):
-            def no_hit():
-                return is_alive, mushroom, score
+        def candidate_hit(mushroom, valid):
+            alive = mushroom[3] > 0
+            collides = self.check_collision_single(
+                pos1=spell_box,
+                size1=self.consts.PLAYER_SPELL_SIZE,
+                pos2=mushroom[:2],
+                size2=self.consts.MUSHROOM_SIZE,
+            )
+            return jnp.logical_and(valid, jnp.logical_and(alive, collides))
 
-            def check_hit():
-                mush_pos = mushroom[:2]
-                mush_hp = mushroom[3]
+        hits = jax.vmap(candidate_hit)(candidates, cand_valid)
+        any_hit = jnp.logical_and(spell_is_alive, jnp.any(hits))
+        first_hit_pos = jnp.argmax(hits.astype(jnp.int32))
+        hit_idx = safe_idx[first_hit_pos]
 
-                collision = self.check_collision_single(
-                    pos1=jnp.array([spell_pos_x, spell_pos_y + self.consts.MUSHROOM_HITBOX_Y_OFFSET]),
-                    size1=self.consts.PLAYER_SPELL_SIZE,
-                    pos2=mush_pos,
-                    size2=self.consts.MUSHROOM_SIZE
-                )
-
-                def on_hit():
-                    new_hp = mush_hp - 1
-                    updated_mushroom_position = mushroom.at[3].set(new_hp)
-                    new_score = jnp.where(new_hp == 0, score + 1, score)
-                    return False, updated_mushroom_position, new_score
-
-                def check_hp():
-                    return jax.lax.cond(mush_hp > 0, on_hit, lambda: (is_alive, mushroom, score))
-
-                return jax.lax.cond(collision, check_hp, lambda: (is_alive, mushroom, score))
-
-            return jax.lax.cond(is_alive != 0, check_hit, no_hit)
-
-        spell_active, updated_mushrooms, updated_score = jax.vmap(
-            lambda m: check_single_mushroom(spell_is_alive, m, score)
-        )(mushroom_positions)
-
-        spell_active = jnp.invert(jnp.any(jnp.invert(spell_active)))
-        return spell_state.at[2].set(jnp.where(spell_active, 1, 0)), updated_mushrooms, jnp.max(updated_score)
+        old_hp = mushroom_positions[hit_idx, 3]
+        new_hp = jnp.maximum(old_hp - 1, 0)
+        updated_mushrooms = jax.lax.cond(
+            any_hit,
+            lambda: mushroom_positions.at[hit_idx, 3].set(new_hp),
+            lambda: mushroom_positions,
+        )
+        updated_score = jax.lax.cond(
+            jnp.logical_and(any_hit, new_hp == 0),
+            lambda: score + 1,
+            lambda: score,
+        )
+        return spell_state.at[2].set(jnp.where(any_hit, 0, spell_state[2])), updated_mushrooms, updated_score
 
     ## -------- Spider Mushroom Collision Logic -------- ##
     @partial(jax.jit, static_argnums=(0,))
@@ -1115,24 +1139,40 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             return mushroom_positions
 
         def check_hit():
-            # Prüfe pro Mushroom Kollision mit der Spinne
-            def collide_single(mushroom):
-                x, y, is_poisoned, lives = mushroom
+            spider_box = jnp.array([spider_x + 4, spider_y - 2], dtype=jnp.float32)
+            spider_size = jnp.array([2, 4], dtype=jnp.int32)
+            points = jnp.array(
+                [
+                    [spider_box[0], spider_box[1]],
+                    [spider_box[0] + 1.0, spider_box[1]],
+                    [spider_box[0], spider_box[1] + 3.0],
+                    [spider_box[0] + 1.0, spider_box[1] + 3.0],
+                ],
+                dtype=jnp.float32,
+            )
+            cand_idx, cand_valid = self._mushroom_candidate_indices_for_points(points)
+            safe_idx = jnp.clip(cand_idx, 0, self.consts.MAX_MUSHROOMS - 1)
+            candidates = mushroom_positions[safe_idx]
 
-                collision = self.check_collision_single(
-                    pos1=jnp.array([spider_x + 4, spider_y - 2]),
-                    size1=(2, 4), # mushrooms do not always react to the spider bumping into them so the spider frame to check has to be smaller than SPIDER_SIZE (so we take MUSHROOM_SIZE so that two mushrooms cannot be hit at the same time)
-                    pos2=jnp.array([x, y]),
+            def candidate_hit(mushroom, valid):
+                alive = mushroom[3] > 0
+                collides = self.check_collision_single(
+                    pos1=spider_box,
+                    size1=spider_size,
+                    pos2=mushroom[:2],
                     size2=self.consts.MUSHROOM_SIZE,
                 )
+                return jnp.logical_and(valid, jnp.logical_and(alive, collides))
 
-                # Bei Kollision direkt lives auf 0 setzen
-                new_lives = jnp.where(collision, 0, lives)
-
-                return jnp.array([x, y, is_poisoned, new_lives])
-
-            new_mushrooms = jax.vmap(collide_single)(mushroom_positions)
-            return new_mushrooms
+            hits = jax.vmap(candidate_hit)(candidates, cand_valid)
+            any_hit = jnp.any(hits)
+            first_hit_pos = jnp.argmax(hits.astype(jnp.int32))
+            hit_idx = safe_idx[first_hit_pos]
+            return jax.lax.cond(
+                any_hit,
+                lambda: mushroom_positions.at[hit_idx, 3].set(0),
+                lambda: mushroom_positions,
+            )
 
         return jax.lax.cond(spider_alive, check_hit, no_collision)
 
@@ -1713,68 +1753,50 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             player_velocity_x: chex.Array,
             action: chex.Array
     ) -> tuple[chex.Array, chex.Array, chex.Array]:
-        up = jnp.isin(action, jnp.array([
-            Action.UP,
-            Action.UPRIGHT,
-            Action.UPLEFT,
-            Action.UPFIRE,
-            Action.UPRIGHTFIRE,
-            Action.UPLEFTFIRE
-        ]))
-        down = jnp.isin(action, jnp.array([
-            Action.DOWN,
-            Action.DOWNRIGHT,
-            Action.DOWNLEFT,
-            Action.DOWNFIRE,
-            Action.DOWNRIGHTFIRE,
-            Action.DOWNLEFTFIRE
-        ]))
-        left = jnp.isin(action, jnp.array([
-            Action.LEFT,
-            Action.UPLEFT,
-            Action.DOWNLEFT,
-            Action.LEFTFIRE,
-            Action.UPLEFTFIRE,
-            Action.DOWNLEFTFIRE
-        ]))
-        right = jnp.isin(action, jnp.array([
-            Action.RIGHT,
-            Action.UPRIGHT,
-            Action.DOWNRIGHT,
-            Action.RIGHTFIRE,
-            Action.UPRIGHTFIRE,
-            Action.DOWNRIGHTFIRE
-        ]))
+        action_idx = jnp.clip(action.astype(jnp.int32), 0, self.ACTION_DIRECTION_LUT.shape[0] - 1)
+        direction = self.ACTION_DIRECTION_LUT[action_idx]
+        up = direction[1] < 0
+        down = direction[1] > 0
+        left = direction[0] < 0
+        right = direction[0] > 0
 
-        # x acceleration
+        # 1. Determine acceleration direction
         acc_dir = jnp.where(right, 1, jnp.where(left, -1, 0))
-        no_horiz_op = jnp.invert(jnp.logical_or(right, left))
-        turn_around = jnp.logical_or(
-            jnp.logical_and(jnp.greater(player_velocity_x, 1/32), left),
-            jnp.logical_and(jnp.less(player_velocity_x, -1/32), right),
+        no_horiz_op = (acc_dir == 0)
+
+        # 2. Detect if we are starting from rest or instantly turning around
+        starting_or_turning = (acc_dir != 0) & (
+            (player_velocity_x == 0) | (jnp.sign(player_velocity_x) != acc_dir)
         )
 
-        raw_vel_x = jnp.fix(player_velocity_x)
+        # 3. Update the trackball momentum (velocity)
         new_velocity_x = jnp.where(
             no_horiz_op,
+            # Sliding: If no input, keep the sign and set speed to 1.0 (we enforce the grid stop below)
+            jnp.where(player_x % 4 == 0, 0.0, jnp.sign(player_velocity_x) * 1.0),
             jnp.where(
-                player_x % 4 == 0,
-                0,
-                1/32 * jnp.sign(player_velocity_x),
+                starting_or_turning,
+                # Instant response: jump directly to speed 1 in the chosen direction
+                acc_dir * 1.0,
+                # Acceleration: add 1/8th per frame to create 8-frame tiers for speed 1, 2, and 3
+                jnp.clip(player_velocity_x + acc_dir * (1.0 / 8.0), -3.0, 3.0),
             ),
-            jnp.where(
-                turn_around,
-                1/32 * jnp.sign(player_velocity_x),
-                jnp.clip(
-                    jnp.where(jnp.abs(raw_vel_x) * 2 < 1, player_velocity_x + 1/4 * acc_dir, player_velocity_x + 1/8 * acc_dir),
-                    -3, 3,
-                ),
-            )
         )
-        new_player_x = jnp.where(
-            jnp.logical_and(no_horiz_op, player_x % 4 != 0),
-            player_x + jnp.where(new_velocity_x < 0, -1, 1),
-            jnp.clip(player_x + raw_vel_x, self.consts.PLAYER_BOUNDS[0][0], self.consts.PLAYER_BOUNDS[0][1])
+
+        # 4. Extract the integer pixel movement per frame
+        raw_vel_x = jnp.trunc(new_velocity_x).astype(jnp.int32)
+
+        # 5. Apply the slide-to-grid rule (if no input, slide exactly 1 pixel until x % 4 == 0)
+        dx = jnp.where(
+            no_horiz_op & (player_x % 4 != 0),
+            jnp.sign(player_velocity_x).astype(jnp.int32),
+            raw_vel_x,
+        )
+
+        new_player_x = jnp.clip(
+            player_x + dx,
+            self.consts.PLAYER_BOUNDS[0][0],
+            self.consts.PLAYER_BOUNDS[0][1],
         ).astype(jnp.int32)
 
         # Calculate new y position
@@ -1794,18 +1816,8 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             player_spell: chex.Array,
             action: chex.Array
     ) -> chex.Array:
-
-        fire = jnp.isin(action, jnp.array([
-            Action.FIRE,
-            Action.UPFIRE,
-            Action.RIGHTFIRE,
-            Action.LEFTFIRE,
-            Action.DOWNFIRE,
-            Action.UPRIGHTFIRE,
-            Action.UPLEFTFIRE,
-            Action.DOWNRIGHTFIRE,
-            Action.DOWNLEFTFIRE
-        ]))
+        action_idx = jnp.clip(action.astype(jnp.int32), 0, self.ACTION_FIRE_LUT.shape[0] - 1)
+        fire = self.ACTION_FIRE_LUT[action_idx] != 0
 
         spawn = jnp.logical_and(jnp.logical_not(player_spell[2] != 0), fire)
 
@@ -1831,11 +1843,9 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
         return jnp.array([new_x, new_y, new_is_alive])
 
-    @partial(jax.jit, static_argnums=(0, ))
-    def reset(self, key = 42) -> Tuple[CentipedeObservation, CentipedeState]:
-        """Initialize game state"""
-
-        key = jax.random.PRNGKey(time.time_ns() % (2 ** 32))  # Pseudo random number generator seed key, based on current system time.
+    @partial(jax.jit, static_argnums=(0,))
+    def reset(self, key: chex.PRNGKey = jax.random.PRNGKey(42)) -> Tuple[CentipedeObservation, CentipedeState]:
+        """Initialize game state (deterministic given `key`)."""
         new_key0, key_spider, key_scorpion = jax.random.split(key, 3)
 
         initial_spider_timer = jax.random.randint(key_spider, (), self.consts.SPIDER_MIN_SPAWN_FRAMES, self.consts.SPIDER_MAX_SPAWN_FRAMES + 1)
@@ -1871,8 +1881,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
     @partial(jax.jit, static_argnums=(0,))
     def step(self, state: CentipedeState, action: chex.Array) -> tuple[
         CentipedeObservation, CentipedeState, float, bool, CentipedeInfo]:
-        # Translate compact agent action index to ALE console action
-        action = jnp.take(self.ACTION_SET, action.astype(jnp.int32))
+        action = jnp.clip(action.astype(jnp.int32), 0, self.ACTION_SET.shape[0] - 1)
 
         previous_state = state  # for reward/info
 
@@ -1918,7 +1927,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                      self.consts.SCORPION_MAX_SPAWN_FRAMES + 1
                  )
 
-                 return state._replace(
+                 return state.replace(
                      player_x=jnp.array(self.consts.PLAYER_START_X),
                      player_y=jnp.array(self.consts.PLAYER_START_Y),
                      player_velocity_x=jnp.array(0.0),
@@ -1953,7 +1962,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             )
 
             new_score = jnp.where(
-                jnp.logical_and(new_death_counter > 0, new_death_counter % 8 == 0),
+                jnp.logical_and(new_death_counter > 0, new_death_counter % 4 == 0),
                 state.score + 5,
                 state.score
             )
@@ -1964,7 +1973,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
                 lambda: jnp.zeros(2, dtype=jnp.int32)
             )
 
-            state_during_animation = state._replace(
+            state_during_animation = state.replace(
                 player_spell=jnp.zeros(3, dtype=jnp.int32),
                 spider_position=jnp.zeros(3, dtype=jnp.int32),
                 spider_points=jnp.array([0, 0]),
@@ -2142,7 +2151,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
             new_centipede_timer = jnp.where(state.wave[0] == new_wave[0], new_centipede_timer, 0)
 
             # --- Return State ---
-            return state._replace(
+            return state.replace(
                 player_x=new_player_x,
                 player_y=new_player_y,
                 player_velocity_x=new_velocity_x,
@@ -2170,7 +2179,7 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
         death_animation_state = handle_death_animation()
 
         return_state = jax.lax.cond(
-            state.lives == 0,       # If no more lives
+            state.lives <= 0,      # If no more lives
             lambda: state,
             lambda: jax.lax.cond(
                 state.death_counter == 0,       # If not dead
@@ -2188,17 +2197,20 @@ class JaxCentipede(JaxEnvironment[CentipedeState, CentipedeObservation, Centiped
 
 
 class CentipedeRenderer(JAXGameRenderer):
-    def __init__(self, consts: CentipedeConstants = None):
-        super().__init__()
+    def __init__(self, consts: CentipedeConstants = None, config: render_utils.RendererConfig = None):
         self.consts = consts or CentipedeConstants()
-        self.sprite_path = f"{os.path.dirname(os.path.abspath(__file__))}/sprites/centipede"
+        super().__init__(self.consts)
+        self.sprite_path = os.path.join(render_utils.get_base_sprite_dir(), "centipede")
 
-        # 1. Configure the rendering utility
-        self.config = render_utils.RendererConfig(
-            game_dimensions=(self.consts.HEIGHT, self.consts.WIDTH),
-            channels=3,
-            #downscale=(84, 84)
-        )
+        # Use injected config if provided, else default
+        if config is None:
+            self.config = render_utils.RendererConfig(
+                game_dimensions=(self.consts.HEIGHT, self.consts.WIDTH),
+                channels=3,
+                downscale=None
+            )
+        else:
+            self.config = config
         self.jr = render_utils.JaxRenderingUtils(self.config)
 
         # 2. Start from (possibly modded) asset config provided via constants
@@ -2214,8 +2226,6 @@ class CentipedeRenderer(JAXGameRenderer):
         ) = self.jr.load_and_setup_assets(final_asset_config, self.sprite_path)
 
         # 4. Store original sprite color IDs (for palette swapping)
-        # These are based on the first frame/color in the original game
-        # Convert JAX arrays to numpy arrays, then to tuples for dictionary lookup
         self.PLAYER_ORIGINAL_ID = self.COLOR_TO_ID.get(tuple(np.asarray(self.consts.ORANGE)), 0)
         self.CENTIPEDE_ORIGINAL_ID = self.COLOR_TO_ID.get(tuple(np.asarray(self.consts.PINK)), 0)
         self.MUSHROOM_ORIGINAL_ID = self.COLOR_TO_ID.get(tuple(np.asarray(self.consts.ORANGE)), 0)
@@ -2224,12 +2234,7 @@ class CentipedeRenderer(JAXGameRenderer):
         self.SCORPION_ORIGINAL_ID = self.COLOR_TO_ID.get(tuple(np.asarray(self.consts.LIGHT_BLUE)), 0)
         self.BORDER_ORIGINAL_ID = self.COLOR_TO_ID.get(tuple(np.asarray(self.consts.GREEN)), 0)
 
-        # We assume the 4 spark sprites all use the same color in their source .npy
-        # and that we will dynamically "paint" them. Let's assume their original
-        # color is white (or the first color in the palette).
-        # We find this by checking the color of the 'sparks' sprite.
-        # This is complex. Let's assume they are different colors as in the old code.
-        # We need IDs for Blue, Yellow, Red, Orange for the sparks.
+        # Spark specific logic
         self.SPARK_BLUE_ID = self.COLOR_TO_ID.get(tuple(np.asarray(self.consts.DARK_BLUE)), 0)
         self.SPARK_YELLOW_ID = self.COLOR_TO_ID.get(tuple(np.asarray(self.consts.YELLOW)), 0)
         self.SPARK_RED_ID = self.COLOR_TO_ID.get(tuple(np.asarray(self.consts.RED)), 0)
@@ -2295,10 +2300,10 @@ class CentipedeRenderer(JAXGameRenderer):
             self.COLOR_TO_ID.get(tuple(np.asarray(self.consts.DARK_YELLOW)), 0),
             self.COLOR_TO_ID.get(tuple(np.asarray(self.consts.PINK)), 0),
             self.COLOR_TO_ID.get(tuple(np.asarray(self.consts.RED)), 0),
-            self.COLOR_TO_ID.get(tuple(np.asarray(self.consts.RED)), 0),  # Wave 7 also uses RED
+            self.COLOR_TO_ID.get(tuple(np.asarray(self.consts.RED)), 0),
         ])
 
-        # 6. Replicate Animation Stack Logic (from old load_sprites)
+        # 6. Replicate Animation Stack Logic
         self.SHAPE_MASKS['poisoned_mushroom'] = jnp.concatenate(
             [jnp.repeat(self.SHAPE_MASKS['poisoned_mushroom_group'][i][None], 4, axis=0) for i in range(16)]
         )
@@ -2314,11 +2319,11 @@ class CentipedeRenderer(JAXGameRenderer):
 
         # 7. Store animation lengths
         self.anim_len = {
-            'poisoned_mushroom': self.SHAPE_MASKS['poisoned_mushroom'].shape[0],  # 64
-            'spider': self.SHAPE_MASKS['spider'].shape[0],  # 32
-            'flea': self.SHAPE_MASKS['flea'].shape[0],  # 4
-            'scorpion': self.SHAPE_MASKS['scorpion'].shape[0],  # 16
-            'sparks': self.SHAPE_MASKS['sparks'].shape[0],  # 4
+            'poisoned_mushroom': self.SHAPE_MASKS['poisoned_mushroom'].shape[0],
+            'spider': self.SHAPE_MASKS['spider'].shape[0],
+            'flea': self.SHAPE_MASKS['flea'].shape[0],
+            'scorpion': self.SHAPE_MASKS['scorpion'].shape[0],
+            'sparks': self.SHAPE_MASKS['sparks'].shape[0],
         }
 
         # 8. Pre-build colored spark masks
@@ -2332,6 +2337,13 @@ class CentipedeRenderer(JAXGameRenderer):
 
         self.COLORED_SPARK_MASKS = jax.vmap(create_colored_mask)(self.SHAPE_MASKS['sparks'], spark_colors)
 
+        # 9. Stack spider score masks for branchless rendering
+        self.SPIDER_SCORE_MASKS = jnp.stack([
+            self.SHAPE_MASKS['spider_300'],
+            self.SHAPE_MASKS['spider_600'],
+            self.SHAPE_MASKS['spider_900']
+        ])
+
     @partial(jax.jit, static_argnums=(0,))
     def _get_frame_palette(self, wave: chex.Array) -> chex.Array:
         """Dynamically build the palette for the current wave."""
@@ -2340,7 +2352,7 @@ class CentipedeRenderer(JAXGameRenderer):
 
         frame_palette = frame_palette.at[self.PLAYER_ORIGINAL_ID].set(self.PLAYER_COLOR_IDS[wave_mod])
         frame_palette = frame_palette.at[self.CENTIPEDE_ORIGINAL_ID].set(self.CENTIPEDE_COLOR_IDS[wave_mod])
-        frame_palette = frame_palette.at[self.MUSHROOM_ORIGINAL_ID].set(self.PLAYER_COLOR_IDS[wave_mod])  # Uses player color
+        frame_palette = frame_palette.at[self.MUSHROOM_ORIGINAL_ID].set(self.PLAYER_COLOR_IDS[wave_mod])
         frame_palette = frame_palette.at[self.SPIDER_ORIGINAL_ID].set(self.SPIDER_COLOR_IDS[wave_mod])
         frame_palette = frame_palette.at[self.FLEA_ORIGINAL_ID].set(self.FLEA_COLOR_IDS[wave_mod])
         frame_palette = frame_palette.at[self.SCORPION_ORIGINAL_ID].set(self.SCORPION_COLOR_IDS[wave_mod])
@@ -2351,54 +2363,29 @@ class CentipedeRenderer(JAXGameRenderer):
 
     @partial(jax.jit, static_argnums=(0,))
     def _render_sparks(self, raster, state: CentipedeState) -> chex.Array:
-        """Render player death or mushroom healing sparks."""
+        is_player_spark = state.death_counter < 0
+        is_mush_spark = (state.death_counter > 0) & (((state.death_counter - 1) % 4) >= 2)
 
-        def no_render(r):
-            return r
+        p_idx = (-(state.death_counter // 4 + 1)) % 4
+        m_idx = (-jnp.mod(state.death_counter, 4)).astype(jnp.int32)
 
-        def player_sparks(r):
-            # Sparks logic is complex, just select a frame
-            idx = (-(state.death_counter // 4 + 1)) % 4
-            spark_mask = self.COLORED_SPARK_MASKS[idx]
+        idx = jnp.where(is_player_spark, p_idx, jnp.where(is_mush_spark, m_idx, 0))
+        spark_mask = self.COLORED_SPARK_MASKS[idx]
 
-            return self.jr.render_at_clipped(
-                r, state.player_x - 4, state.player_y + 3,
-                spark_mask, flip_offset=self.FLIP_OFFSETS['sparks']
-            )
+        mush_pos = state.spark_position
 
-        def mushroom_sparks(r):
-            idx = (-jnp.mod(state.death_counter, 4)).astype(jnp.int32)
-            spark_mask = self.COLORED_SPARK_MASKS[idx]
+        draw_x = jnp.where(is_player_spark, state.player_x - 4,
+                           jnp.where(is_mush_spark, mush_pos[0] - 2, -100)).astype(jnp.int32)
+        draw_y = jnp.where(is_player_spark, state.player_y + 3,
+                           jnp.where(is_mush_spark, mush_pos[1] - 2, -100)).astype(jnp.int32)
 
-
-            mush_pos = state.spark_position
-
-            return self.jr.render_at_clipped(
-                r, mush_pos[0] - 2, mush_pos[1] - 2, # Use the pre-calculated pos
-                spark_mask, flip_offset=self.FLIP_OFFSETS['sparks']
-            )
-
-        return jax.lax.cond(
-            state.death_counter != 0,
-            lambda r: jax.lax.cond(
-                state.death_counter < 0,
-                player_sparks,
-                lambda r_in: jax.lax.cond(
-                    (state.death_counter - 1) % 4 >= 2,
-                    mushroom_sparks,
-                    no_render,
-                    r_in
-                ),
-                r
-            ),
-            no_render,
-            raster
+        return self.jr.render_at_clipped(
+            raster, draw_x, draw_y, spark_mask, flip_offset=self.FLIP_OFFSETS['sparks']
         )
 
     @partial(jax.jit, static_argnums=(0,))
     def render(self, state: CentipedeState):
         # --- 1. Setup ---
-        # Start with the static background
         raster = self.jr.create_object_raster(self.BACKGROUND)
 
         # --- 2. Get Dynamic Animation Frames ---
@@ -2408,129 +2395,126 @@ class CentipedeRenderer(JAXGameRenderer):
         scorpion_anim_idx = state.step_counter % self.anim_len['scorpion']
 
         # --- 3. Render player ---
-        raster = jax.lax.cond(
-            state.death_counter >= 0,
-            lambda r: self.jr.render_at(
-                r, state.player_x, state.player_y,
-                self.SHAPE_MASKS['player'], flip_offset=self.FLIP_OFFSETS['player']
-            ),
-            lambda r: r,
-            raster
+        player_alive = state.death_counter >= 0
+        draw_player_x = jnp.where(player_alive, state.player_x, -100).astype(jnp.int32)
+        draw_player_y = jnp.where(player_alive, state.player_y, -100).astype(jnp.int32)
+
+        raster = self.jr.render_at_clipped(
+            raster, draw_player_x, draw_player_y,
+            self.SHAPE_MASKS['player'], flip_offset=self.FLIP_OFFSETS['player']
         )
 
         # --- 4. Render player spell ---
-        raster = jax.lax.cond(
-            state.player_spell[2] != 0,
-            lambda r: self.jr.render_at_clipped(
-                r, state.player_spell[0], state.player_spell[1],
-                self.SHAPE_MASKS['player_spell'], flip_offset=self.FLIP_OFFSETS['player_spell']
-            ),
-            lambda r: r,
-            raster
+        spell_alive = state.player_spell[2] != 0
+        draw_spell_x = jnp.where(spell_alive, state.player_spell[0], -100).astype(jnp.int32)
+        draw_spell_y = jnp.where(spell_alive, state.player_spell[1], -100).astype(jnp.int32)
+
+        raster = self.jr.render_at_clipped(
+            raster, draw_spell_x, draw_spell_y,
+            self.SHAPE_MASKS['player_spell'], flip_offset=self.FLIP_OFFSETS['player_spell']
         )
 
         # --- 5. Render mushrooms ---
-        frame_mushroom = self.SHAPE_MASKS['mushroom']
         frame_poisoned_mushroom = self.SHAPE_MASKS['poisoned_mushroom'][poison_anim_idx]
-        mush_offset = self.FLIP_OFFSETS['mushroom']
-        pmush_offset = self.FLIP_OFFSETS['poisoned_mushroom_group']  # Assumes all padded same
+        pmush_offset = self.FLIP_OFFSETS['poisoned_mushroom_group']
+        mushroom_alive = state.mushroom_positions[:, 3] > 0
+        mushroom_poisoned = state.mushroom_positions[:, 2] == 1
 
-        def render_mushroom_scan(raster_in, pos):
-            x, y, poisoned, lives = pos
-            alive = lives > 0
-            is_poisoned = poisoned == 1
+        normal_mushroom_mask = jnp.logical_and(mushroom_alive, jnp.logical_not(mushroom_poisoned))
+        normal_positions = jnp.where(
+            normal_mushroom_mask[:, None],
+            state.mushroom_positions[:, :2],
+            -jnp.ones_like(state.mushroom_positions[:, :2]),
+        ).astype(jnp.int32)
+        mushroom_sizes = jnp.tile(
+            jnp.array(self.consts.MUSHROOM_SIZE, dtype=jnp.int32)[None, :],
+            (state.mushroom_positions.shape[0], 1),
+        )
+        raster = self.jr.draw_rects(raster, normal_positions, mushroom_sizes, self.MUSHROOM_ORIGINAL_ID)
 
-            def render_fn(r):
-                mask = jax.lax.select(is_poisoned, frame_poisoned_mushroom, frame_mushroom)
-                offset = jax.lax.select(is_poisoned, pmush_offset, mush_offset)
-                return self.jr.render_at(r, x, y, mask, flip_offset=offset)
+        poisoned_mushroom_mask = jnp.logical_and(mushroom_alive, mushroom_poisoned)
+        p_x = jnp.where(poisoned_mushroom_mask, state.mushroom_positions[:, 0] - pmush_offset[0], -100).astype(
+            jnp.int32)
+        p_y = jnp.where(poisoned_mushroom_mask, state.mushroom_positions[:, 1] - pmush_offset[1], -100).astype(
+            jnp.int32)
 
-            return jax.lax.cond(alive, render_fn, lambda r: r, raster_in), None
-
-        raster, _ = jax.lax.scan(render_mushroom_scan, raster, state.mushroom_positions)
+        tiled_p_masks = jnp.tile(frame_poisoned_mushroom[None, :, :], (state.mushroom_positions.shape[0], 1, 1))
+        raster = self.jr.render_at_batch(raster, p_x, p_y, tiled_p_masks)
 
         # --- 6. Render centipede ---
         frame_centipede = self.SHAPE_MASKS['centipede']
         cent_offset = self.FLIP_OFFSETS['centipede']
 
-        def render_segment_scan(raster_in, pos):
-            x, y, _, _, alive_flag = pos
-            should_render = (alive_flag != 0) & (state.death_counter <= 0)
+        c_x = state.centipede_position[:, 0]
+        c_y = state.centipede_position[:, 1]
+        c_alive = state.centipede_position[:, 4] != 0
 
-            def render_fn(r):
-                return self.jr.render_at(r, x, y, frame_centipede, flip_offset=cent_offset)
+        segment_active = c_alive & (state.death_counter <= 0)
 
-            return jax.lax.cond(should_render, render_fn, lambda r: r, raster_in), None
+        draw_c_x = jnp.where(segment_active, c_x - cent_offset[0], -100).astype(jnp.int32)
+        draw_c_y = jnp.where(segment_active, c_y - cent_offset[1], -100).astype(jnp.int32)
 
-        raster, _ = jax.lax.scan(render_segment_scan, raster, state.centipede_position)
+        # Tile the mask for all 9 possible segments
+        tiled_c_masks = jnp.tile(frame_centipede[None, :, :], (state.centipede_position.shape[0], 1, 1))
+        raster = self.jr.render_at_batch(raster, draw_c_x, draw_c_y, tiled_c_masks)
 
         # --- 7. Render spider ---
         frame_spider = self.SHAPE_MASKS['spider'][spider_anim_idx]
         spider_offset = self.FLIP_OFFSETS['spider_group']
+        spider_alive = state.spider_position[2] != 0
 
-        raster = jax.lax.cond(
-            state.spider_position[2] != 0,
-            lambda r: self.jr.render_at_clipped(
-                r, state.spider_position[0] + 2, state.spider_position[1] - 2,
-                frame_spider, flip_offset=spider_offset
-            ),
-            lambda r: r,
-            raster
+        draw_spider_x = jnp.where(spider_alive, state.spider_position[0] + 2, -100).astype(jnp.int32)
+        draw_spider_y = jnp.where(spider_alive, state.spider_position[1] - 2, -100).astype(jnp.int32)
+
+        raster = self.jr.render_at_clipped(
+            raster, draw_spider_x, draw_spider_y,
+            frame_spider, flip_offset=spider_offset
         )
 
         # --- 8. Render spider score ---
-        frame_spider300 = self.SHAPE_MASKS['spider_300']
-        frame_spider600 = self.SHAPE_MASKS['spider_600']
-        frame_spider900 = self.SHAPE_MASKS['spider_900']
-
-        score_mask = jnp.where(
-            state.spider_points[0] == 1, frame_spider300,
-            jnp.where(state.spider_points[0] == 2, frame_spider600, frame_spider900)
-        )
-        # Assuming offsets are similar, pick one
+        score_idx = jnp.clip(state.spider_points[0] - 1, 0, 2).astype(jnp.int32)
+        score_mask = self.SPIDER_SCORE_MASKS[score_idx]
         score_offset = self.FLIP_OFFSETS['spider_300']
+        score_alive = state.spider_points[1] != 0
 
-        raster = jax.lax.cond(
-            state.spider_points[1] != 0,
-            lambda r: self.jr.render_at_clipped(
-                r, state.spider_position[0] + 2, state.spider_position[1] - 2,
-                score_mask, flip_offset=score_offset
-            ),
-            lambda r: r,
-            raster
+        draw_score_x = jnp.where(score_alive, state.spider_position[0] + 2, -100).astype(jnp.int32)
+        draw_score_y = jnp.where(score_alive, state.spider_position[1] - 2, -100).astype(jnp.int32)
+
+        raster = self.jr.render_at_clipped(
+            raster, draw_score_x, draw_score_y,
+            score_mask, flip_offset=score_offset
         )
 
         # --- 9. Render Flea ---
         frame_flea = self.SHAPE_MASKS['flea'][flea_anim_idx]
         flea_offset = self.FLIP_OFFSETS['flea_group']
-        raster = jax.lax.cond(
-            state.flea_position[2] != 0,
-            lambda r: self.jr.render_at_clipped(
-                r, state.flea_position[0], state.flea_position[1],
-                frame_flea, flip_offset=flea_offset
-            ),
-            lambda r: r,
-            raster
+        flea_alive = state.flea_position[2] != 0
+
+        draw_flea_x = jnp.where(flea_alive, state.flea_position[0], -100).astype(jnp.int32)
+        draw_flea_y = jnp.where(flea_alive, state.flea_position[1], -100).astype(jnp.int32)
+
+        raster = self.jr.render_at_clipped(
+            raster, draw_flea_x, draw_flea_y,
+            frame_flea, flip_offset=flea_offset
         )
 
         # --- 10. Render Scorpion ---
         frame_scorpion = self.SHAPE_MASKS['scorpion'][scorpion_anim_idx]
         scorpion_offset = self.FLIP_OFFSETS['scorpion_group']
+        scorpion_alive = state.scorpion_position[2] != 0
 
-        raster = jax.lax.cond(
-            state.scorpion_position[2] != 0,
-            lambda r: self.jr.render_at_clipped(
-                r, state.scorpion_position[0] + 2, state.scorpion_position[1] - 2,
-                frame_scorpion,
-                flip_horizontal=(state.scorpion_position[2] == -1),
-                flip_offset=scorpion_offset
-            ),
-            lambda r: r,
-            raster
+        draw_scorpion_x = jnp.where(scorpion_alive, state.scorpion_position[0] + 2, -100).astype(jnp.int32)
+        draw_scorpion_y = jnp.where(scorpion_alive, state.scorpion_position[1] - 2, -100).astype(jnp.int32)
+        flip_horizontal = state.scorpion_position[2] == -1
+
+        raster = self.jr.render_at_clipped(
+            raster, draw_scorpion_x, draw_scorpion_y,
+            frame_scorpion,
+            flip_horizontal=flip_horizontal,
+            flip_offset=scorpion_offset
         )
 
         # --- 11. Render sparks ---
-        # This function is complex and dynamically paints masks
         raster = self._render_sparks(raster, state)
 
         # --- 12. Render bottom border ---
@@ -2551,12 +2535,10 @@ class CentipedeRenderer(JAXGameRenderer):
         raster = self.jr.render_indicator(
             raster, 16, 187, state.lives - 1,
             self.SHAPE_MASKS['life_indicator'],
-            spacing=8, max_value=5  # Assuming max 5 lives
+            spacing=8, max_value=5
         )
 
-        # --- 15. Final Palette Lookup (Now with Dynamic Updates) ---
-
-        # Gather the palette indices we need to update
+        # --- 15. Final Palette Lookup ---
         wave_mod = state.wave[1] % 8
         indices_to_update = jnp.array([
             self.PLAYER_ORIGINAL_ID,
@@ -2572,7 +2554,7 @@ class CentipedeRenderer(JAXGameRenderer):
         new_color_ids = jnp.array([
             self.PLAYER_COLOR_IDS[wave_mod],
             self.CENTIPEDE_COLOR_IDS[wave_mod],
-            self.PLAYER_COLOR_IDS[wave_mod],  # Mushroom uses player color
+            self.PLAYER_COLOR_IDS[wave_mod],
             self.SPIDER_COLOR_IDS[wave_mod],
             self.FLEA_COLOR_IDS[wave_mod],
             self.SCORPION_COLOR_IDS[wave_mod],

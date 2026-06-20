@@ -26,6 +26,7 @@ import argparse
 import sys
 import os
 import time
+import pickle as pkl
 from typing import Tuple, Dict, Any, Optional, List
 
 import pygame
@@ -47,6 +48,10 @@ except ImportError:
 
 
 # --- Constants ---
+# Single playback cadence for the whole script: every paced tick advances JAX and ALE
+# by exactly one emulated frame each (when stepping), so wall-clock speed matches between panes.
+DEFAULT_PLAYBACK_FPS = 30
+
 # Use a smaller upscale factor to fit 3 screens
 UPSCALE_FACTOR = 3
 # Standard Atari resolution
@@ -74,6 +79,18 @@ ALL_SEMANTIC_ACTIONS = [
 
 # --- Environment Setup ---
 
+
+def pace_paired_emulation_frame(clock: pygame.time.Clock, playback_hz: int) -> None:
+    """
+    Wall-clock pacing for one display loop iteration.
+
+    In stepping paths we always call this exactly once after *both* environments have
+    been advanced by one emulated frame (or after a pause-only redraw), so JAX and ALE
+    never run on different timers.
+    """
+    clock.tick(max(1, playback_hz))
+
+
 def setup_ale_env(game_name: str, seed: int) -> gym.Env:
     """Initializes the Gymnasium ALE environment."""
     print(f"Initializing ALE env: 'ALE/{game_name}-v5'")
@@ -83,7 +100,8 @@ def setup_ale_env(game_name: str, seed: int) -> gym.Env:
             f"ALE/{game_name}-v5",
             render_mode="rgb_array",
             frameskip=1,
-            repeat_action_probability=0.0 # Deterministic
+            repeat_action_probability=0.0,  # Deterministic
+            full_action_space=False,  # Minimal action set; matches typical JAXAtari ACTION_SET sizing
         )
         env.reset(seed=seed)
         print("ALE environment initialized.")
@@ -93,11 +111,37 @@ def setup_ale_env(game_name: str, seed: int) -> gym.Env:
         print("Ensure you have ROMs installed (e.g., `ale-import-roms .` or `pip install gymnasium[accept-rom-license]`)")
         sys.exit(1)
 
+def load_ale_checkpoint(ale_env: gym.Env, checkpoint_path: str) -> None:
+    """
+    Load a pickled ALE cloneState checkpoint into the Gymnasium ALE env.
+
+    This supports checkpoints produced by scripts/ALE_RAMStateDeltas.py
+    via the 'C' key save flow (gym_ale_state_<Game>.pkl).
+    """
+    if not checkpoint_path:
+        return
+    if not os.path.isfile(checkpoint_path):
+        print(f"Error: ALE checkpoint file not found: {checkpoint_path}")
+        sys.exit(1)
+
+    try:
+        with open(checkpoint_path, "rb") as f:
+            state_to_load = pkl.load(f)
+        ale = ale_env.unwrapped.ale
+        ale.restoreState(state_to_load)
+        # Force render buffer refresh after restoring emulator state.
+        ale_env.render()
+        print(f"Loaded ALE checkpoint: {checkpoint_path}")
+    except Exception as e:
+        print(f"Error loading ALE checkpoint '{checkpoint_path}': {e}")
+        sys.exit(1)
+
 def setup_jax_env(game_name: str, seed: int) -> Dict[str, Any]:
     """Initializes the JAXAtari environment using core.py."""
     print(f"Initializing JAXAtari env: '{game_name}'")
     try:
-        env, renderer = core.make(game_name), core.make_renderer(game_name)
+        env = core.make(game_name)
+        renderer = env.renderer
         if env is None or renderer is None:
             raise ImportError(f"Could not load game or renderer for '{game_name}' from core.")
         
@@ -138,6 +182,52 @@ def build_ale_action_map(env: gym.Env) -> Dict[str, int]:
     except Exception as e:
         print(f"Warning: Could not get ALE action meanings: {e}. Defaulting to NOOP.")
         return {"NOOP": 0}
+
+def map_action_to_index(env, action_input, verbose=True):
+    """
+    Maps an input (Index or Constant) to the specific index required by env.step().
+    Includes logging to verify NN-to-JAXAtari mapping.
+    """
+    # 1. Identify the Semantic Name of the Constant for debugging
+    # This maps the integer value (e.g., 4) back to "LEFT"
+    action_names = {
+        v: k for k, v in vars(JAXAtariAction).items() 
+        if not k.startswith("_") and isinstance(v, int)
+    }
+
+    if hasattr(env, 'ACTION_SET'):
+        action_set = np.array(env.ACTION_SET)
+        noop_idx = int(np.where(action_set == JAXAtariAction.NOOP)[0][0]) if JAXAtariAction.NOOP in action_set else 0
+        
+        # If the input is already a JAXAtariAction constant (like from get_human_action)
+        # we find its position in the ACTION_SET.
+        if action_input in action_set:
+            matches = np.where(action_set == action_input)[0]
+            idx = int(matches[0])
+            val = int(action_input)
+        else:
+            # Two possible cases:
+            # 1) action_input is an already-valid action-set index (e.g. NN output)
+            # 2) action_input is an unsupported semantic constant for this env
+            #    (e.g. UP in Enduro's reduced action set)
+            candidate_idx = int(action_input)
+            is_valid_index = 0 <= candidate_idx < len(action_set)
+            candidate_val = int(action_set[candidate_idx]) if is_valid_index else None
+            matches_const = np.where(action_set == action_input)[0]
+
+            if is_valid_index and len(matches_const) == 0:
+                idx = candidate_idx
+                val = candidate_val
+            else:
+                # Unsupported semantic action constant: fall back to NOOP.
+                idx = noop_idx
+                val = int(action_set[idx])
+        
+        return jax.numpy.array(idx, dtype=jax.numpy.int32)
+    
+    else:
+        # Fallback for environments without a restricted ACTION_SET
+        return jax.numpy.array(action_input, dtype=jax.numpy.int32)
 
 def get_semantic_action_from_keys(pressed_keys: pygame.key.ScancodeWrapper) -> str:
     """
@@ -285,7 +375,7 @@ def run_parallel_mode(
     jax_data: Dict[str, Any],
     jax_action_map: Dict[str, int],
     ale_action_map: Dict[str, int],
-    fps: int,
+    playback_hz: int,
     seed: int
 ):
     """
@@ -337,19 +427,26 @@ def run_parallel_mode(
             )
             screen.blit(comparison_surface, (0, 0))
             pygame.display.flip()
-            clock.tick(fps)
+            pace_paired_emulation_frame(clock, playback_hz)
             continue  # Skip the game step
 
         # --- Game Step Logic ---
+        # 1. Get the semantic intent from your keyboard
         pressed_keys = pygame.key.get_pressed()
         semantic_action = get_semantic_action_from_keys(pressed_keys)
 
-        # --- Map Actions ---
-        jax_action = jax_action_map.get(semantic_action, JAXAtariAction.NOOP)
-        ale_action = ale_action_map.get(semantic_action, 0)  # 0 is NOOP
+        # 2. Map for ALE (Gymnasium)
+        # This looks up "LEFT" in the ALE meaning list (e.g., ALE index 3)
+        ale_action = ale_action_map.get(semantic_action, 0)
 
-        # --- Step Environments ---
-        jax_obs, jax_state, jax_reward, jax_done, jax_info = jitted_step(jax_state, jax_action)
+        # 3. Map for JAXAtari
+        # First, get the JAX constant for "LEFT" (value 4)
+        jax_const = jax_action_map.get(semantic_action, JAXAtariAction.NOOP)
+        # Second, find where constant 4 is in your game's ACTION_SET (e.g., JAX index 3)
+        jax_action_index = map_action_to_index(jax_data["env"], jax_const)
+
+        # 4. Execute (Both will now move Left simultaneously)
+        jax_obs, jax_state, jax_reward, jax_done, jax_info = jitted_step(jax_state, jax_action_index)
         ale_obs, ale_reward, ale_term, ale_trunc, ale_info = ale_env.step(ale_action)
         ale_done = ale_term or ale_trunc
 
@@ -380,7 +477,7 @@ def run_parallel_mode(
         if next_frame_asked:
             next_frame_asked = False
 
-        clock.tick(fps)
+        pace_paired_emulation_frame(clock, playback_hz)
 
 def run_record_replay_mode(
     screen: pygame.Surface,
@@ -390,7 +487,7 @@ def run_record_replay_mode(
     jax_data: Dict[str, Any],
     jax_action_map: Dict[str, int],
     ale_action_map: Dict[str, int],
-    fps: int,
+    playback_hz: int,
     seed: int
 ):
     """
@@ -445,7 +542,7 @@ def run_record_replay_mode(
             )
             screen.blit(single_surface, (0, 0))
             pygame.display.flip()
-            clock.tick(fps)
+            pace_paired_emulation_frame(clock, playback_hz)
             continue
 
         # --- Game Step Logic ---
@@ -456,8 +553,9 @@ def run_record_replay_mode(
         recorded_actions.append(semantic_action)
         
         # --- Map & Step JAX ---
-        jax_action = jax_action_map.get(semantic_action, JAXAtariAction.NOOP)
-        jax_obs, jax_state, jax_reward, jax_done, jax_info = jitted_step(jax_state, jax_action)
+        jax_action_constant = jax_action_map.get(semantic_action, JAXAtariAction.NOOP)
+        jax_action_index = map_action_to_index(jax_data["env"], jax_action_constant)
+        jax_obs, jax_state, jax_reward, jax_done, jax_info = jitted_step(jax_state, jax_action_index)
         
         # --- Render JAX ---
         jax_frame = np.array(jitted_render(jax_state))
@@ -477,7 +575,7 @@ def run_record_replay_mode(
         if next_frame_asked:
             next_frame_asked = False
             
-        clock.tick(fps)
+        pace_paired_emulation_frame(clock, playback_hz)
  
     print(f"\n--- REPLAY PHASE ---")
     print(f"Stopped recording. Replaying {len(recorded_actions)} actions...")
@@ -527,6 +625,7 @@ def run_record_replay_mode(
                     pause = False
                     frame_by_frame = False
                     next_frame_asked = False
+                    pace_paired_emulation_frame(clock, playback_hz)
                     continue
  
         # --- Pause/Frame-by-Frame Logic ---
@@ -539,18 +638,25 @@ def run_record_replay_mode(
             )
             screen.blit(comparison_surface, (0, 0))
             pygame.display.flip()
-            clock.tick(fps)
+            pace_paired_emulation_frame(clock, playback_hz)
             continue
              
         # --- Replay Step Logic ---
+        # 1. Get the semantic action from the recorded sequence
         semantic_action = recorded_actions[replay_idx]
          
-        # --- Map Actions ---
-        jax_action = jax_action_map.get(semantic_action, JAXAtariAction.NOOP)
+        # 2. Map for ALE (Gymnasium)
+        # This looks up "LEFT" in the ALE meaning list (e.g., ALE index 3)
         ale_action = ale_action_map.get(semantic_action, 0)
-         
-        # --- Step Environments ---
-        jax_obs, jax_state, jax_reward, jax_done, jax_info = jitted_step(jax_state, jax_action)
+
+        # 3. Map for JAXAtari
+        # First, get the JAX constant for "LEFT" (value 4)
+        jax_const = jax_action_map.get(semantic_action, JAXAtariAction.NOOP)
+        # Second, find where constant 4 is in your game's ACTION_SET (e.g., JAX index 3)
+        jax_action_index = map_action_to_index(jax_data["env"], jax_const)
+
+        # 4. Execute (Both will now move Left simultaneously)
+        jax_obs, jax_state, jax_reward, jax_done, jax_info = jitted_step(jax_state, jax_action_index)
         ale_obs, ale_reward, ale_term, ale_trunc, ale_info = ale_env.step(ale_action)
         # --- Render Frames ---
         jax_frame = np.array(jitted_render(jax_state))
@@ -571,7 +677,7 @@ def run_record_replay_mode(
         if next_frame_asked:
             next_frame_asked = False
              
-        clock.tick(fps)
+        pace_paired_emulation_frame(clock, playback_hz)
          
     print("Replay finished.")
     # Keep the final frame on screen for a moment
@@ -604,14 +710,30 @@ def main():
     parser.add_argument(
         "--fps",
         type=int,
-        default=30,
-        help="Frame rate for playback."
+        default=DEFAULT_PLAYBACK_FPS,
+        help=(
+            "Wall-clock Hz for the pygame loop. Each tick shows one paired frame: "
+            "exactly one JAXAtari step and one ALE step (when not paused), so both "
+            "panes advance in lockstep at this rate."
+        ),
+    )
+    parser.add_argument(
+        "--ale_load_state",
+        type=str,
+        default=None,
+        help=(
+            "Path to a pickled ALE cloneState checkpoint (for example from "
+            "scripts/ALE_RAMStateDeltas.py, e.g. gym_ale_state_<Game>.pkl). "
+            "Loads ALE from that state before starting."
+        ),
     )
     args = parser.parse_args()
+    playback_hz = max(1, int(args.fps))
     
     # Capitalize game name for ALE (e.g., 'pong' -> 'Pong')
-    ale_game_name = args.game.capitalize()
-    
+    #ale_game_name = args.game.capitalize()
+    ale_game_name = args.game
+
     # --- Setup ---
     pygame.init()
     pygame.font.init()
@@ -625,6 +747,12 @@ def main():
 
     # Init environments
     ale_env = setup_ale_env(ale_game_name, args.seed)
+    if args.ale_load_state:
+        load_ale_checkpoint(ale_env, args.ale_load_state)
+        print(
+            "Note: ALE was loaded from checkpoint; JAXAtari still starts from "
+            "its standard reset state."
+        )
     jax_data = setup_jax_env(args.game.lower(), args.seed)
 
     # Build universal action maps
@@ -653,6 +781,10 @@ def main():
     print("  Reset:     R")
     print("  Quit:      ESCAPE (Q in Record mode)")
     print("="*44)
+    print(
+        f"Paired playback: {playback_hz} Hz — one JAX + one ALE emulated frame per tick "
+        f"(ALE frameskip=1); both use the same pygame clock."
+    )
     print(f"Starting in '{args.mode}' mode in 3 seconds...\n")
     time.sleep(3)
     # --- *** END NEW SECTION *** ---
@@ -662,12 +794,12 @@ def main():
         if args.mode == "parallel":
             run_parallel_mode(
                 screen, clock, font, ale_env, jax_data,
-                jax_action_map, ale_action_map, args.fps, args.seed
+                jax_action_map, ale_action_map, playback_hz, args.seed
             )
         elif args.mode == "record_replay":
             run_record_replay_mode(
                 screen, clock, font, ale_env, jax_data,
-                jax_action_map, ale_action_map, args.fps, args.seed
+                jax_action_map, ale_action_map, playback_hz, args.seed
             )
     except Exception as e:
         print(f"\nAn error occurred during the game loop: {e}")
