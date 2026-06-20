@@ -1,4 +1,4 @@
-from jaxatari.games.mods.centipede_mod_plugins import SlowSpellMod, RandomMushroomsMod, RandomPlayerMovementMod
+from jaxatari.games.mods.centipede.centipede_mod_plugins import SlowSpellMod, RandomMushroomsMod
 from jaxatari.modification import JaxAtariModController
 
 
