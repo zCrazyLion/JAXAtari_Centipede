@@ -1,3 +1,4 @@
+import random
 from functools import partial
 import time
 from typing import Any
@@ -7,7 +8,8 @@ import jax
 import jax.numpy as jnp
 
 from jaxatari.games.jax_centipede import CentipedeState
-from jaxatari.modification import JaxAtariInternalModPlugin
+from jaxatari.games.jax_centipede import JaxCentipede
+from jaxatari.modification import JaxAtariInternalModPlugin, JaxAtariPostStepModPlugin
 from jaxatari.wrappers import JaxatariWrapper
 
 class SlowSpellMod(JaxAtariInternalModPlugin):
@@ -53,14 +55,37 @@ class RandomMushroomsMod(JaxAtariInternalModPlugin):
         # Flatten to (N*M, 4)
         return grid.reshape(-1, 4)
 
-class RandomPlayerMovementMod(JaxAtariInternalModPlugin):       # TODO: fix retrieval of action / no direct overwrite of step()
-    """Overwrites player movement with random action with probability 0.2"""
+
+_ORIGINAL_PLAYER_STEP = JaxCentipede.player_step
+
+class RandomPlayerMovementMod(JaxAtariInternalModPlugin):
+    """Overwrites player movement with a random action with probability RANDOM_ACTION_PROB."""
+
+    RANDOM_ACTION_PROB: float = 0.5
+
     @partial(jax.jit, static_argnums=(0,))
-    def step(self, state: CentipedeState, action: int|float) -> tuple[chex.Array, CentipedeState, float, bool, dict[Any, Any]]:
-        random_movement_key, random_action_key = jax.random.split(state.rng_key)
+    def player_step(
+        self,
+        player_x: chex.Array,
+        player_y: chex.Array,
+        player_velocity_x: chex.Array,
+        action: chex.Array,
+    ) -> tuple[chex.Array, chex.Array, chex.Array]:
+        # Fold traced values into the key so it varies every actual call,
+        # instead of being a Python-level constant baked in at trace time.
+        key = jax.random.PRNGKey(time.time_ns() % (2 ** 32))
+        key = jax.random.fold_in(key, player_x.astype(jnp.int32))
+        key = jax.random.fold_in(key, player_y.astype(jnp.int32))
+        key = jax.random.fold_in(
+            key, jax.lax.bitcast_convert_type(player_velocity_x.astype(jnp.float32), jnp.int32)
+        )
+        key = jax.random.fold_in(key, action.astype(jnp.int32))
+        move_key, action_key = jax.random.split(key)
 
-        random_movement_indicator = jax.random.bernoulli(random_movement_key,0.2)  # might be a bit heavy, lower also possible
-        random_action = jax.random.randint(random_action_key, (), 0, 18)
+        use_random_action = jax.random.bernoulli(move_key, self.RANDOM_ACTION_PROB)
+        random_action = jax.random.randint(action_key, (), 0, 18)
+        new_action = jnp.where(use_random_action, random_action, action)
 
-        new_action = jnp.where(random_movement_indicator, random_action, action)
-        return self._env.step(state, new_action)
+        # Call the pristine implementation directly — NOT self._env.player_step,
+        # which is this very override and would recurse.
+        return _ORIGINAL_PLAYER_STEP(self._env, player_x, player_y, player_velocity_x, new_action)
