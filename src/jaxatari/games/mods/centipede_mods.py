@@ -1,5 +1,5 @@
 from jaxatari.games.mods.centipede.centipede_mod_plugins import SlowSpellMod, RandomMushroomsMod, \
-    RandomPlayerMovementMod
+    RandomPlayerMovementMod, DeadlyMushroomsMod
 from jaxatari.modification import JaxAtariModController
 
 
@@ -13,6 +13,7 @@ class CentipedeEnvMod(JaxAtariModController):
         "slow_spell": SlowSpellMod,
         "random_mushrooms": RandomMushroomsMod,
         "random_player_movement": RandomPlayerMovementMod,
+        "deadly_mushrooms": DeadlyMushroomsMod,
     }
 
     def __init__(self,

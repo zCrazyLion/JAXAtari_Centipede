@@ -86,6 +86,50 @@ class RandomPlayerMovementMod(JaxAtariInternalModPlugin):
         random_action = jax.random.randint(action_key, (), 0, 18)
         new_action = jnp.where(use_random_action, random_action, action)
 
-        # Call the pristine implementation directly — NOT self._env.player_step,
-        # which is this very override and would recurse.
         return _ORIGINAL_PLAYER_STEP(self._env, player_x, player_y, player_velocity_x, new_action)
+
+class DeadlyMushroomsMod(JaxAtariPostStepModPlugin):
+    """Mushrooms are deadly to the player on contact, instead of just being obstacles."""
+    @partial(jax.jit, static_argnums=(0,))
+    def run(self, prev_state: CentipedeState, new_state: CentipedeState) -> CentipedeState:
+        player_rect = jnp.array(
+            [
+                new_state.player_x,
+                new_state.player_y,
+                self._env.consts.PLAYER_SIZE[0],
+                self._env.consts.PLAYER_SIZE[1],
+            ],
+            dtype=jnp.int32,
+        )
+
+        mushroom_x = new_state.mushroom_positions[:, 0]
+        mushroom_y = new_state.mushroom_positions[:, 1]
+        mushroom_lives = new_state.mushroom_positions[:, 3]
+
+        mushroom_rects = jnp.stack(
+            [
+                mushroom_x,
+                mushroom_y,
+                jnp.full_like(mushroom_x, self._env.consts.MUSHROOM_SIZE[0]),
+                jnp.full_like(mushroom_y, self._env.consts.MUSHROOM_SIZE[1]),
+            ],
+            axis=1,
+        )
+
+        collision_x = jnp.logical_and(
+            player_rect[0] < mushroom_rects[:, 0] + mushroom_rects[:, 2],
+            player_rect[0] + player_rect[2] > mushroom_rects[:, 0],
+        )
+        collision_y = jnp.logical_and(
+            player_rect[1] < mushroom_rects[:, 1] + mushroom_rects[:, 3],
+            player_rect[1] + player_rect[3] > mushroom_rects[:, 1],
+        )
+        collision = jnp.logical_and(collision_x, collision_y)
+        deadly_collision = jnp.logical_and(collision, mushroom_lives > 0)
+
+        was_alive_and_playing = prev_state.death_counter == 0
+        should_trigger = jnp.logical_and(jnp.any(deadly_collision), was_alive_and_playing)
+
+        new_death_counter = jnp.where(should_trigger, jnp.array(-1), new_state.death_counter)
+
+        return new_state.replace(death_counter=new_death_counter)
