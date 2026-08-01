@@ -26,6 +26,11 @@ class FastSpellMod(JaxAtariInternalModPlugin):
         "PLAYER_SPELL_SPEED": 18,
     }
 
+class MaxLivesResetMod(JaxAtariInternalModPlugin):
+    constants_overrides = {
+        "PLAYER_LIVES_RESET": 6,
+    }
+
 class RandomMushroomsMod(JaxAtariPostStepModPlugin):
     """Initialize mushroom positions randomly."""
     """def __init__(self, env):
