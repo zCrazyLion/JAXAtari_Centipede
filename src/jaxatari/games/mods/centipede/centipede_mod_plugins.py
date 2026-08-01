@@ -14,8 +14,16 @@ from jaxatari.wrappers import JaxatariWrapper
 
 class SlowSpellMod(JaxAtariInternalModPlugin):
     """Player spells have a third the speed."""
+    conflicts_with = ["fast_spell"]
     constants_overrides = {
         "PLAYER_SPELL_SPEED": 3,
+    }
+
+class FastSpellMod(JaxAtariInternalModPlugin):
+    """Player spells have double the speed."""
+    conflicts_with = ["slow_spell"]
+    constants_overrides = {
+        "PLAYER_SPELL_SPEED": 18,
     }
 
 class RandomMushroomsMod(JaxAtariInternalModPlugin):
