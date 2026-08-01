@@ -170,3 +170,134 @@ class DeadlyMushroomsMod(JaxAtariPostStepModPlugin):
         new_death_counter = jnp.where(should_trigger, jnp.array(-1), new_state.death_counter)
 
         return new_state.replace(death_counter=new_death_counter)
+
+class InvincibleMobsMod(JaxAtariInternalModPlugin):
+    """Mobs (centipede excluded) are invincible to the player."""
+
+    ## -------- Spider Spell Collision Logic -------- ##
+    @partial(jax.jit, static_argnums=(0,))
+    def check_spell_spider_collision(
+            self,
+            spell_state: chex.Array,
+            spider_position: chex.Array,
+            score: chex.Array,
+            player_y: chex.Array,
+            spider_points: chex.Array,
+    ) -> tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
+
+        # Check if spell is still active
+        spell_pos_x = spell_state[0]
+        spell_pos_y = spell_state[1]
+        spell_is_alive = spell_state[2] != 0
+
+        # Check if spider is still active
+        spider_x, spider_y, spider_dir = spider_position
+        spider_alive = spider_dir != 0
+
+        # Default return (no collision, no sprite)
+        def no_collision():
+            return spell_state, spider_position, score, spider_points
+
+        def check_hit():
+            collision = self._env.check_collision_single(
+                pos1=jnp.array([spell_pos_x, spell_pos_y]),
+                size1=self._env.consts.PLAYER_SPELL_SIZE,
+                pos2=jnp.array([spider_x + 2, spider_y - 2]),
+                size2=self._env.consts.SPIDER_SIZE,
+            )
+
+            def on_hit():
+                new_spell = spell_state.at[2].set(0)
+                return new_spell, spider_position, score, spider_points
+
+            return jax.lax.cond(collision, on_hit, no_collision)
+
+        return jax.lax.cond(
+            jnp.logical_and(spell_is_alive, spider_alive),
+            check_hit,
+            no_collision,
+        )
+
+    ## -------- Flea Spell Collision Logic -------- ##
+    @partial(jax.jit, static_argnums=(0,))
+    def check_spell_flea_collision(
+            self,
+            spell_state: chex.Array,
+            flea_position: chex.Array,
+            flea_spawn_counter: chex.Array,
+            score: chex.Array,
+    ) -> tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
+        # Spell info
+        spell_pos_x = spell_state[0]
+        spell_pos_y = spell_state[1]
+        spell_is_alive = spell_state[2] != 0
+
+        flea_x, flea_y, flea_lives = flea_position
+        flea_alive = flea_lives != 0
+
+        # Default: no collision
+        def no_collision():
+            return spell_state, flea_position, flea_spawn_counter, score
+
+        def check_hit():
+            # Collision check
+            collision = self._env.check_collision_single(
+                pos1=jnp.array([spell_pos_x, spell_pos_y]),
+                size1=self._env.consts.PLAYER_SPELL_SIZE,
+                pos2=jnp.array([flea_x, flea_y]),
+                size2=self._env.consts.FLEA_SIZE,
+            )
+
+            def on_hit():
+                new_spell = spell_state.at[2].set(0)
+                return new_spell, flea_position, flea_spawn_counter, score
+
+            return jax.lax.cond(collision, on_hit, no_collision)
+
+        return jax.lax.cond(
+            jnp.logical_and(spell_is_alive, flea_alive),
+            check_hit,
+            no_collision
+        )
+
+    ## -------- Scorpion Spell Collision Logic -------- ##
+    @partial(jax.jit, static_argnums=(0,))
+    def check_spell_scorpion_collision(
+            self,
+            spell_state: chex.Array,
+            scorpion_position: chex.Array,
+            score: chex.Array,
+    ) -> tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
+        # Spell info
+        spell_pos_x = spell_state[0]
+        spell_pos_y = spell_state[1]
+        spell_is_alive = spell_state[2] != 0
+
+        # Scorpion info
+        scorpion_x, scorpion_y, scorpion_dir, scorpion_speed = scorpion_position
+        scorpion_alive = scorpion_dir != 0
+
+        # Default: no collision
+        def no_collision():
+            return spell_state, scorpion_position, score, jnp.array(0, dtype=jnp.int32)
+
+        def check_hit():
+            # Collision check
+            collision = self._env.check_collision_single(
+                pos1=jnp.array([spell_pos_x, spell_pos_y]),
+                size1=self._env.consts.PLAYER_SPELL_SIZE,
+                pos2=jnp.array([scorpion_x, scorpion_y]),
+                size2=self._env.consts.SCORPION_SIZE,
+            )
+
+            def on_hit():
+                new_spell = spell_state.at[2].set(0)
+                return new_spell, scorpion_position, score, jnp.array(0, dtype=jnp.int32)
+
+            return jax.lax.cond(collision, on_hit, no_collision)
+
+        return jax.lax.cond(
+            jnp.logical_and(spell_is_alive, scorpion_alive),
+            check_hit,
+            no_collision
+        )
