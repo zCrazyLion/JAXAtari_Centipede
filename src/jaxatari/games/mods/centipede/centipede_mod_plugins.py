@@ -352,3 +352,57 @@ class FriendlyMobsMod(JaxAtariInternalModPlugin):
             check_hit,
             no_collision
         )
+
+class RandomCentipedeMod(JaxAtariInternalModPlugin):
+    def __init__(self):
+        super().__init__()
+    ## -------- Centipede Spawn Logic -------- ##
+    @partial(jax.jit, static_argnums=(0, ))
+    def initialize_centipede_positions(self, wave: chex.Array) -> chex.Array:
+        # Generate key fresh each time using current time to ensure randomness across runs
+        # (JAX JIT doesn't allow mutable state updates to propagate to Python level)
+        key = jax.random.PRNGKey(time.time_ns() % (2 ** 32))
+        key = jax.random.fold_in(key, wave[0].astype(jnp.int32))
+        key, key_x, key_y = jax.random.split(key, 3)
+        base_x = (16 + 4 * jax.random.randint(key_x, (1,), 0, 23))[0]  # min: 16, max: 108
+        base_y = (5 + 9 * jax.random.randint(key_y, (1,), 0, 2))[0]  # min: 5, max: 23
+
+        jax.debug.print("key: {}", key)
+
+        wave = wave[0]
+        slow_wave = wave < 0
+        num_heads = jnp.abs(wave)
+        main_segments = self._env.consts.MAX_SEGMENTS - num_heads
+
+        def spawn_segment(i):
+            def main_body():
+                is_head = i == 0
+                return jnp.where(
+                    slow_wave,
+                    jnp.where(
+                        is_head,
+                        jnp.array([base_x + 4 * i, base_y, -1, 1, 2]),
+                        jnp.array([base_x + 4 * i, base_y, -1, 1, 1]),
+                    ),
+                    jnp.where(
+                        is_head,
+                        jnp.array([base_x + 4 * i, base_y, -2, 1, 2]),
+                        jnp.array([base_x + 4 * i, base_y, -2, 1, 1]),
+                    )
+                )
+
+            def single_head():      # May not be 100% accurate (1-2px offset, varying per round)
+                nonlocal key
+                key, key_x, key_y = jax.random.split(key, 3)
+                x = (16 + 4 * jax.random.randint(key_x, (1,), 0, 23))[0]  # min: 16, max: 108
+                y = (5 + 9 * jax.random.randint(key_y, (1,), 0, 2))[0]  # min: 5, max: 23
+                return jnp.array([x, y, -2, 1, 2])
+
+            return jax.lax.cond(
+                i < main_segments,
+                main_body,
+                single_head,
+            )
+
+        carry = jnp.arange(0, 9)
+        return jax.vmap(spawn_segment)(carry).astype(jnp.float32)

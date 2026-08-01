@@ -1,5 +1,6 @@
 from jaxatari.games.mods.centipede.centipede_mod_plugins import SlowSpellMod, RandomMushroomsMod, \
-    RandomPlayerMovementMod, DeadlyMushroomsMod, FastSpellMod, MaxLivesResetMod, InvincibleMobsMod, FriendlyMobsMod
+    RandomPlayerMovementMod, DeadlyMushroomsMod, FastSpellMod, MaxLivesResetMod, InvincibleMobsMod, FriendlyMobsMod, \
+    RandomCentipedeMod
 from jaxatari.modification import JaxAtariModController
 
 
@@ -18,6 +19,7 @@ class CentipedeEnvMod(JaxAtariModController):
         "max_lives_reset": MaxLivesResetMod, # Player starts with the maximum number of lives
         "invincible_mobs": InvincibleMobsMod, # Mobs cannot be killed by the player
         "friendly_mobs": FriendlyMobsMod, # Mobs are friendly to the player and do not harm them
+        "random_centipede": RandomCentipedeMod, # Centipede spawns are randomized
     }
 
     def __init__(self,
