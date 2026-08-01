@@ -10,14 +10,14 @@ class CentipedeEnvMod(JaxAtariModController):
     """
 
     REGISTRY = {
-        "slow_spell": SlowSpellMod,
-        "fast_spell": FastSpellMod,
-        "random_mushrooms": RandomMushroomsMod,
-        "random_player_movement": RandomPlayerMovementMod,
-        "deadly_mushrooms": DeadlyMushroomsMod,
-        "max_lives_reset": MaxLivesResetMod,
-        "invincible_mobs": InvincibleMobsMod,
-        "friendly_mobs": FriendlyMobsMod,
+        "slow_spell": SlowSpellMod, # Spells have 1/3 the speed
+        "fast_spell": FastSpellMod, # Spells have 2x the speed
+        "random_mushrooms": RandomMushroomsMod, # Mushrooms are randomly placed on the screen in initialization, new wave and after death
+        "random_player_movement": RandomPlayerMovementMod, # Player movement gets randomly altered
+        "deadly_mushrooms": DeadlyMushroomsMod, # Mushrooms are deadly and cause the player to lose a life on contact
+        "max_lives_reset": MaxLivesResetMod, # Player starts with the maximum number of lives
+        "invincible_mobs": InvincibleMobsMod, # Mobs cannot be killed by the player
+        "friendly_mobs": FriendlyMobsMod, # Mobs are friendly to the player and do not harm them
     }
 
     def __init__(self,
