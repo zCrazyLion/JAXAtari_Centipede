@@ -301,3 +301,54 @@ class InvincibleMobsMod(JaxAtariInternalModPlugin):
             check_hit,
             no_collision
         )
+
+class FriendlyMobsMod(JaxAtariInternalModPlugin):
+    """Spiders are friendly to the player and do not harm them."""
+    ## -------- Player Enemy Collision Logic -------- ##
+    @partial(jax.jit, static_argnums=(0,))
+    def check_player_enemy_collision(
+            self,
+            player_x,
+            player_y,
+            centipede_position,
+            spider_position,
+            flea_position,
+    ) -> chex.Array:
+        # Get centipede params
+        centipede_is_alive = jnp.any(centipede_position[:, 3] != 0)
+
+        # Default: no collision
+        def no_collision():
+            return jnp.array(0)
+
+        def check_hit():
+            # Check Centipede Player collision
+            def single_collision(c_xy, active):
+                return jnp.where(
+                    active != 0,
+                    self._env.check_collision_single(
+                        pos1=jnp.array([player_x, player_y + 1]),
+                        size1=(4, 8),
+                        pos2=c_xy,
+                        size2=self._env.consts.SEGMENT_SIZE,
+                    ),
+                    False
+                )
+
+            centipede_collision = jax.vmap(single_collision)(
+                centipede_position[:, :2],
+                centipede_position[:, 3]
+            )
+
+            collision = jnp.any(centipede_collision)
+
+            def on_hit():
+                return jnp.array(-1)
+
+            return jax.lax.cond(collision, on_hit, no_collision)
+
+        return jax.lax.cond(
+            centipede_is_alive,
+            check_hit,
+            no_collision
+        )
