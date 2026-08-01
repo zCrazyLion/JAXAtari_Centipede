@@ -26,7 +26,7 @@ class FastSpellMod(JaxAtariInternalModPlugin):
         "PLAYER_SPELL_SPEED": 18,
     }
 
-class RandomMushroomsMod(JaxAtariInternalModPlugin):
+class RandomMushroomsMod(JaxAtariPostStepModPlugin):
     """Initialize mushroom positions randomly."""
     """def __init__(self, env):
         super().__init__(env)
@@ -35,12 +35,11 @@ class RandomMushroomsMod(JaxAtariInternalModPlugin):
         self._env.initialize_mushroom_positions = self.initialize_mushroom_positions.__get__(self._env)"""
 
     @partial(jax.jit, static_argnums=(0,))
-    def initialize_mushroom_positions(self):
+    def spawn_mushrooms(self, p: jnp.ndarray = jnp.array(0.0888)) -> chex.Array:
         # Overrides the default function from the env
         rows = jnp.arange(self._env.consts.MUSHROOM_NUMBER_OF_ROWS) # 19
         cols = jnp.arange(self._env.consts.MUSHROOM_NUMBER_OF_COLS) # 16
         key = jax.random.PRNGKey(time.time_ns() % (2 ** 32))
-        p = 0.0888  # ~ 27 / 304 -> roughly same number of mushrooms on screen
 
         spawn = jax.random.bernoulli(key, p, (19,16))
 
@@ -63,6 +62,31 @@ class RandomMushroomsMod(JaxAtariInternalModPlugin):
         # Flatten to (N*M, 4)
         return grid.reshape(-1, 4)
 
+    def run(self, prev_state, new_state):
+        """
+        if prev_state is None:
+            p = jnp.array(0.0888)   # ~ 27 / 304 -> roughly same number of mushrooms on screen
+            new_mushroom_positions = self.spawn_mushrooms(p=p)
+            return new_state.replace(mushroom_positions=new_mushroom_positions)
+        """
+
+        num_mushrooms = jnp.sum(new_state.mushroom_positions[:, 3] > 0)
+        p = num_mushrooms / 304  # Adjust probability based on current number of mushrooms
+        new_mushroom_positions = self.spawn_mushrooms(p=p)
+
+        cond = jnp.logical_or(
+            jnp.equal(prev_state.step_counter, 0),
+            jnp.logical_or(
+                jnp.invert(jnp.all(jnp.equal(prev_state.wave, new_state.wave))),
+                jnp.not_equal(prev_state.lives, new_state.lives)
+            )
+        )
+
+        return jax.lax.cond(
+            cond,
+            lambda: new_state.replace(mushroom_positions=new_mushroom_positions),
+            lambda: new_state,
+        )
 
 _ORIGINAL_PLAYER_STEP = JaxCentipede.player_step
 
