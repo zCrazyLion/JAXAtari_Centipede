@@ -406,3 +406,120 @@ class RandomCentipedeMod(JaxAtariInternalModPlugin):
 
         carry = jnp.arange(0, 9)
         return jax.vmap(spawn_segment)(carry).astype(jnp.float32)
+
+class FastCentipedeMod(JaxAtariInternalModPlugin):
+    @partial(jax.jit, static_argnums=(0,))
+    def check_spell_centipede_collision(
+            self,
+            spell_state: chex.Array,
+            centipede_position: chex.Array,
+            mushroom_positions: chex.Array,
+            score: chex.Array,
+    ) -> tuple[chex.Array, chex.Array, chex.Array, chex.Array]:
+        spell_active = spell_state[2] != 0
+
+        def no_hit():
+            return (
+                jnp.repeat(spell_active, centipede_position.shape[0]),
+                centipede_position,
+                jnp.repeat(0, centipede_position.shape[0]),
+                jnp.repeat(0, centipede_position.shape[0]),
+                jnp.repeat(-1, centipede_position.shape[0])
+            )
+
+        def check_single_segment(is_alive, seg):
+            seg_pos = seg[:2]
+
+            collision = self._env.check_collision_single(
+                pos1=jnp.array([spell_state[0], spell_state[1]]),
+                size1=self._env.consts.PLAYER_SPELL_SIZE,
+                pos2=seg_pos,
+                size2=self._env.consts.SEGMENT_SIZE,
+            )
+
+            def on_hit():
+                mush_y = seg[1] + 2
+                odd_mush_row = seg[1] % 2 == 0
+                mush_x = jnp.where(
+                    odd_mush_row,
+                    jnp.where(
+                        seg[2] > 0,
+                        jnp.ceil(seg[0] / 8) * 8,
+                        jnp.floor(seg[0] / 8) * 8,
+                    ),
+                    jnp.where(
+                        seg[2] > 0,
+                        jnp.ceil(seg[0] / 8) * 8 + 4,
+                        jnp.floor(seg[0] / 8) * 8 + 4,
+                    )
+                )
+                out_of_border = jnp.where(
+                    odd_mush_row,
+                    jnp.logical_or(
+                        jnp.logical_and(seg[2] > 0, mush_x > 136),
+                        jnp.logical_and(seg[2] < 0, mush_x < 16)
+                    ),
+                    jnp.logical_or(
+                        jnp.logical_and(seg[2] > 0, mush_x > 140),
+                        jnp.logical_and(seg[2] < 0, mush_x < 20)
+                    )
+                )
+                idx = jnp.where(out_of_border, -1, self._env.get_mushroom_index(jnp.array([mush_x, mush_y])))
+                return (
+                    False,
+                    jnp.zeros_like(seg),
+                    jnp.where(seg[4] == 2, 100, 10),
+                    jnp.array(1),
+                    jnp.array(idx, dtype=jnp.int32)
+                )
+
+            return jax.lax.cond(collision, on_hit, lambda: (is_alive, seg, 0, jnp.array(0), jnp.array(-1)))
+
+        check = jax.vmap(lambda s: check_single_segment(spell_active, s), in_axes=0)
+
+        (
+            spell_active,
+            new_centipede_position,
+            new_score,
+            segment_hit,
+            mush_idx
+        ) = jax.lax.cond(spell_active != 0, lambda: check(centipede_position), no_hit)
+        spell_active = jnp.invert(jnp.any(jnp.invert(spell_active)))
+
+        new_score = jnp.sum(new_score)
+        new_heads = jnp.roll(segment_hit, 1)
+        mush_idx = jnp.max(mush_idx)
+        new_mushroom_positions = jnp.where(
+            jnp.logical_and(
+                jnp.logical_and(
+                    mush_idx >= 0,
+                    mush_idx < self._env.consts.MAX_MUSHROOMS
+                ),
+                mushroom_positions[mush_idx, 3] == 0
+            ),
+            mushroom_positions.at[mush_idx, 3].set(3),
+            mushroom_positions
+        )
+
+        def speed_up(seg):
+            return jnp.where(
+                jnp.not_equal(seg[4], 0), # jnp.logical_and(seg[4] != 0, seg[4] != 2),
+                seg.at[2].set(seg[2] * 1.25),
+                seg
+            )
+
+        new_centipede_position = jnp.where(
+            jnp.all(jnp.equal(centipede_position, new_centipede_position)),
+            new_centipede_position,
+            jax.vmap(speed_up)(new_centipede_position),
+        )
+
+        def set_new_status(seg, new):  # change value of hit following segment to head
+            return jnp.where(jnp.logical_and(new == 1, seg[4] != 0), seg.at[4].set(2), seg)
+
+        return (
+            spell_state.at[2].set(jnp.where(spell_active, 1, 0)),
+            jax.vmap(set_new_status)(new_centipede_position, new_heads),
+            new_mushroom_positions,
+            score + new_score
+        )
